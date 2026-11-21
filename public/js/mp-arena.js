@@ -33,7 +33,7 @@
         NOAH: { atk: 'noahCrescent', atkW: 110 * 2, spc: 'noahNova', range: 113 },
         DESTINY: { atk: 'destinySlash', atkW: 83 * 1.6, spc: 'destinyRally', range: 55 },
         MARKIE: { atk: 'markieCleave', atkW: 76 * 2.2, spc: 'markieQuake', range: 51 },
-        ESPIRIT: { atk: 'espiritArrow', atkW: 60, spc: 'espiritStorm', range: 273 },
+        ESPIRIT: { atk: 'espiritArrow', atkW: 60, spc: 'espiritStorm', range: 546 }, // 2x V19 reach (server RULES.espiritRangeMul)
     };
     const SPECIAL_RADIUS = { NOAH: 140, DESTINY: 120, MARKIE: 107, ESPIRIT: 227 }; // fallback; events carry r
     const SLAM_R = 55; // Temple Warden shockwave radius (world units)

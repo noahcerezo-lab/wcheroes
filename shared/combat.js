@@ -33,6 +33,11 @@ const RULES = {
     // Critical hits (rolled on the server for every hit): 14% base, x1.85 damage. FURY and SQUAD
     // SYNERGY add to the chance. Consecutive crits by the same hero build a Critical Chain.
     critBase: 0.14, critMul: 1.85,
+    // LEVEL UP: clearing every 10th wave (10, 20, 30...) levels up every living hero (human and AI):
+    // +12% base max HP, +10% base damage, +2% crit chance, +3% move speed per level, and a full heal.
+    // Downed heroes miss that level-up (they are not "living"); they keep their current level.
+    levelEvery: 10, levelHpFrac: 0.12, levelDmgFrac: 0.10, levelCrit: 0.02, levelSpeedFrac: 0.03,
+    espiritRangeMul: 2, // Espirit's arrow reach: about double V19's (Noah's brief, milestone 2)
     // Power-ups: one glowing pickup appears every 10-17 s during a run (max 2 on the field, each lasts
     // 15 s). A living hero collects it by walking over it; the server checks the distance.
     pickupEveryMs: [10000, 17000], pickupLifeMs: 15000, pickupMax: 2, pickupRadius: 26,
@@ -75,7 +80,7 @@ const KITS = {
 
 // Sheet stats -> small modifiers. LUK = crit chance, VIT = damage taken.
 // Crit chance for a hero right now: 14% base + active boosts (FURY, SQUAD SYNERGY; see power-ups).
-const critChance = (h, w) => Math.min(0.95, RULES.critBase + (w && h ? critBonus(w, h) : 0));
+const critChance = (h, w) => Math.min(0.95, RULES.critBase + (h ? ((h.level || 1) - 1) * RULES.levelCrit : 0) + (w && h ? critBonus(w, h) : 0));
 function critBonus(w, h) { return (w.time < (h.furyUntil || 0) ? RULES.furyCrit : 0) + (w.time < (h.synergyUntil || 0) ? RULES.synergyCrit : 0) }
 const PICKUP_KINDS = ['heal', 'fury', 'haste', 'ward']; // index = snapshot kind
 // Move speed right now (HASTE: x1.5). Server input handling, AI and client prediction all use this.
@@ -104,8 +109,9 @@ function createBattle(opts = {}) {
         enemyDamageMul: opts.enemyDamageMul || 1, // difficulty knob (server env ENEMY_DAMAGE_MUL)
         heroes: ROSTER.HEROES.map((cfg, i) => ({
             name: cfg.name, x: spawn[i][0], y: spawn[i][1], facing: i % 2 ? -1 : 1, aim: i % 2 ? 4 : 0, vx: 0, vy: 0, moving: false, chain: 0,
-            hp: cfg.v19.hp, maxHp: cfg.v19.hp, damage: cfg.v19.damage, range: S(cfg.v19.range), cool: cfg.v19.cool,
-            speed: SIM.speedFromV19(cfg.v19.speed), stats: cfg.stats,
+            hp: cfg.v19.hp, maxHp: cfg.v19.hp, damage: cfg.v19.damage, range: S(cfg.v19.range) * (cfg.name === 'ESPIRIT' ? RULES.espiritRangeMul : 1), cool: cfg.v19.cool,
+            speed: SIM.speedFromV19(cfg.v19.speed), stats: cfg.stats, level: 1,
+            base: { hp: cfg.v19.hp, damage: cfg.v19.damage, speed: SIM.speedFromV19(cfg.v19.speed) },
             state: 'alive', reviveMs: 0, attackAt: -1e9, specialAt: -1e9, healAt: 0, attackN: 0, specialN: 0,
             buffUntil: 0, shieldUntil: 0, furyUntil: 0, hasteUntil: 0, wardUntil: 0, synergyUntil: 0, critChain: 0, wantAttack: false, wantSpecial: false, ai: true, controller: null, seq: 0,
         })),
@@ -355,8 +361,24 @@ function stepWaves(w) {
         for (const h of w.heroes) if (alive(h)) h.hp = Math.min(h.maxHp, h.hp + RULES.waveClearHeal);
         emit(w, { t: 'clear', n: w.wave });
         w.hooks.onWaveCleared?.(w, w.wave);
-        if (w.wave % 10 === 0) w.hooks.onUpgrade?.(w, w.wave); // Phase D: V19 hero ascension every 10 waves
+        if (w.wave % RULES.levelEvery === 0) { levelUp(w); w.hooks.onUpgrade?.(w, w.wave) }
     }
+}
+
+// LEVEL UP (every 10th wave cleared): living heroes gain a level, stats and a full heal.
+function levelUp(w) {
+    const got = [];
+    w.heroes.forEach((h, i) => {
+        if (!alive(h)) return;
+        h.level = (h.level || 1) + 1;
+        const n = h.level - 1, b = h.base;
+        h.maxHp = Math.round(b.hp * (1 + RULES.levelHpFrac * n));
+        h.damage = Math.round(b.damage * (1 + RULES.levelDmgFrac * n));
+        h.speed = b.speed * (1 + RULES.levelSpeedFrac * n);
+        h.hp = h.maxHp;
+        got.push(i);
+    });
+    if (got.length) emit(w, { t: 'lvl', all: got, n: w.wave, lv: Math.max(...got.map(i => w.heroes[i].level)) });
 }
 
 // ---------------- power-ups ----------------
@@ -548,6 +570,7 @@ function snapshot(w) {
             name: h.name, x: h.x, y: h.y, vx: h.vx, vy: h.vy, facing: h.facing, aim: h.aim, moving: h.moving, controller: h.controller, seq: h.seq,
             cs: h.chain, // chain stage of the last swing (2 = finisher)
             cc: h.critChain || 0, // Critical Chain: consecutive crits
+            lv: h.level || 1, // hero level (LEVEL UP every 10th wave)
             hp: h.hp, maxHp: h.maxHp, state: h.state === 'alive' ? 0 : 1, rv: h.state === 'downed' ? Math.round(h.reviveMs / RULES.reviveMs * 100) : 0,
             attackN: h.attackN, specialN: h.specialN, buff: w.time < h.buffUntil ? 1 : 0, shield: w.time < h.shieldUntil ? 1 : 0,
             cd: Math.max(0, Math.round((h.specialAt + RULES.specialCooldownMs - w.time) / 100)), // special cooldown, 0.1 s
@@ -561,4 +584,4 @@ function snapshot(w) {
     };
 }
 
-module.exports = { PICKUP_KINDS, moveSpeed, stepPickups, collectPickup, damageEnemy, nextChainStage, aimOf, RULES, ENEMY_TYPES, ENEMY_INDEX, KITS, createBattle, step, snapshot, spawnEnemy, performAttack, performSpecial, damageHero, attackTargets, isBossWave, waveSize, critChance, damageTakenMul, inArc };
+module.exports = { levelUp, PICKUP_KINDS, moveSpeed, stepPickups, collectPickup, damageEnemy, nextChainStage, aimOf, RULES, ENEMY_TYPES, ENEMY_INDEX, KITS, createBattle, step, snapshot, spawnEnemy, performAttack, performSpecial, damageHero, attackTargets, isBossWave, waveSize, critChance, damageTakenMul, inArc };
