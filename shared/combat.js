@@ -282,6 +282,11 @@ function spawnEnemy(w, typeIndex = pickEnemyType(w)) {
     const x = side === 0 ? -m : side === 1 ? ARENA.width + m : ARENA.minX + rng(w) * (ARENA.maxX - ARENA.minX);
     const y = side === 3 ? ARENA.height + m : ARENA.minY + 20 + rng(w) * (ARENA.maxY - ARENA.minY - 20);
     const e = { id: w.nextEnemyId++, type: typeIndex, x, y, hp: t.hp(w.wave), max: t.hp(w.wave), speed: t.speed(w.wave), dmg: Math.round(t.dmg(w.wave) * w.enemyDamageMul), at: -1e9, windUntil: 0, strikeAt: -1e9, aim: null, kx: 0, ky: 0, stunUntil: 0, facing: -1, entered: false, tauntBy: -1, tauntUntil: 0 };
+    if (typeIndex === ENEMY_INDEX.voidEmperor) {
+        e.x = ARENA.width / 2; e.y = ARENA.minY + 55; e.entered = true;
+        e.entranceUntil = w.time + 1400; e.attackCount = 0; e.attackMode = 'slam';
+        emit(w, { t: 'boss:enter', id: e.id, x: Math.round(e.x), y: Math.round(e.y), name: 'VOID EMPEROR' });
+    }
     w.enemies.push(e);
     return e;
 }
@@ -295,6 +300,15 @@ function keepInside(e) {
 
 function strike(w, e, t, target) {
     e.strikeAt = w.time;
+    if (e.type === ENEMY_INDEX.voidEmperor && e.attackMode === 'target') {
+        const aim = e.aim;
+        if (aim) {
+            emit(w, { t: 'slam', id: e.id, x: Math.round(aim.x), y: Math.round(aim.y), r: 58 });
+            for (const h of w.heroes) if (alive(h) && Math.hypot(h.x - aim.x, h.y - aim.y) <= 58) damageHero(w, h, e.dmg, e);
+        }
+        e.aim = null;
+        return;
+    }
     if (t.kind === 'slam') {
         emit(w, { t: 'slam', id: e.id, x: Math.round(e.x), y: Math.round(e.y), r: t.slamR });
         for (const h of w.heroes) if (alive(h) && dist(h, e) <= t.slamR) damageHero(w, h, e.dmg, e);
@@ -310,7 +324,8 @@ function stepEnemies(w) {
         e.x += e.kx; e.y += e.ky;
         e.kx *= RULES.knockDecay; e.ky *= RULES.knockDecay;
         keepInside(e);
-        if (w.time < e.stunUntil) { e.windUntil = 0; continue } // stuns cancel a windup
+        if (w.time < e.stunUntil) { e.windUntil = 0; e.aim = null; continue } // stuns cancel a windup
+        if (e.entranceUntil && w.time < e.entranceUntil) continue; // cinematic entrance, sim continues
         if (!living.length) continue;
         let target = e.tauntUntil > w.time && alive(w.heroes[e.tauntBy]) ? w.heroes[e.tauntBy] : null;
         if (!target) { let best = Infinity; for (const h of living) { const d = dist(h, e); if (d < best) { best = d; target = h } } }
@@ -326,7 +341,16 @@ function stepEnemies(w) {
             e.y += (target.y - e.y) / d * Math.min(e.speed, d - want + 0.5);
             keepInside(e);
         }
-        if (inRange && w.time - e.at >= t.atkMs) { e.at = w.time; e.windUntil = w.time + t.windMs }
+        if (e.type === ENEMY_INDEX.voidEmperor && w.time - e.at >= t.atkMs && d <= 250) {
+            e.at = w.time;
+            e.attackCount = (e.attackCount || 0) + 1;
+            e.attackMode = e.attackCount % 2 === 0 ? 'target' : 'slam';
+            e.windUntil = w.time + (e.attackMode === 'target' ? 1100 : t.windMs);
+            if (e.attackMode === 'target') {
+                e.aim = { x: Math.round(target.x), y: Math.round(target.y) };
+                emit(w, { t: 'boss:target', id: e.id, x: e.aim.x, y: e.aim.y, r: 58, ms: 1100 });
+            }
+        } else if (e.type !== ENEMY_INDEX.voidEmperor && inRange && w.time - e.at >= t.atkMs) { e.at = w.time; e.windUntil = w.time + t.windMs }
     }
     // Light separation so a crowd doesn't collapse into one sprite.
     const es = w.enemies;
@@ -571,7 +595,7 @@ function snapshot(w) {
         tick: w.tick, time: w.time, zone: w.zone, wave: w.wave, ws: w.waveState === 'fighting' ? 1 : 0,
         next: w.waveState === 'intermission' ? Math.max(0, w.nextWaveAt - w.time) : 0, left: w.toSpawn + w.enemies.length,
         score: w.score, kills: w.kills, combo: w.time < w.comboUntil ? w.combo : 0, over: w.over ? 1 : 0,
-        boss: w.bossWave && w.waveState === 'fighting' ? (() => { const e = w.enemies.find(e => e.type === ENEMY_INDEX.voidEmperor); return e ? { id: e.id, hp: Math.max(0, e.hp), max: e.max, name: 'VOID EMPEROR' } : null })() : null,
+        boss: w.bossWave && w.waveState === 'fighting' ? (() => { const e = w.enemies.find(e => e.type === ENEMY_INDEX.voidEmperor); return e ? { id: e.id, hp: Math.max(0, e.hp), max: e.max, name: 'VOID EMPEROR', mode: e.attackMode, entering: w.time < (e.entranceUntil || 0) ? 1 : 0 } : null })() : null,
         heroes: w.heroes.map(h => ({
             name: h.name, x: h.x, y: h.y, vx: h.vx, vy: h.vy, facing: h.facing, aim: h.aim, moving: h.moving, controller: h.controller, seq: h.seq,
             cs: h.chain, // chain stage of the last swing (2 = finisher)
