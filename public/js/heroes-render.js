@@ -39,12 +39,12 @@
                 ESPIRIT: {}
             },
             overlay: {
-                MARKIE(g) { // red headband with knot tails
-                    g.fillStyle = '#c23b32';
+                MARKIE(g) { // blue headband with knot tails (hero sheet 2)
+                    g.fillStyle = '#3a4a9a';
                     g.fillRect(30, 30, 40, 4);
                     g.fillRect(68, 32, 8, 3);
                     g.fillRect(72, 35, 4, 7);
-                    g.fillStyle = '#ff6a5a';
+                    g.fillStyle = '#7d92e0';
                     g.fillRect(30, 30, 40, 1)
                 }
             },
