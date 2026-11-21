@@ -42,15 +42,14 @@ const RULES = {
 };
 
 // Enemy types (art: Draper's /workspace/wcheroes-design/enemies.md). The acolyte is V19's armored
-// swordsman (hp 30+8w, speed 1+0.1w per frame, 7+w damage every 850 ms). The others are new for co-op.
+// swordsman (hp 30+8w, speed 1+0.1w per frame, 7+w damage every 850 ms); the warden is new for co-op.
+// No projectile enemies (Noah removed the Lantern Wisp and Tomoe Archer): every threat is up close.
 //   kind 'melee': walks to `reach`, telegraphs for `windMs`, then strikes if the hero is still in reach.
-//   kind 'ranged': holds at ~`range`, telegraphs, then fires a dodgeable projectile at where the hero was.
 //   kind 'slam': heavy, telegraphs longest, then hits every hero within `slamR` (shockwave).
+// `weight(wave)` is the spawn share; wardens ramp from ~16% at wave 3 to 35% so later waves stay heavy.
 const ENEMY_TYPES = [
-    { key: 'acolyte', kind: 'melee', from: 1, weight: 1, hp: w => 30 + 8 * w, speed: w => Math.min(5.2, (1 + 0.1 * w) * 2), dmg: w => 7 + w, reach: S(29) + 3, atkMs: 850, windMs: 150, knockResist: 0, radius: 12, points: 1 },
-    { key: 'wisp', kind: 'ranged', from: 3, weight: 0.3, hp: w => 14 + 4 * w, speed: w => Math.min(5.6, (1.2 + 0.08 * w) * 2), dmg: w => 5 + 0.6 * w, range: 190, atkMs: 2200, windMs: 250, shot: { speed: 4.5, r: 14 }, knockResist: 0, radius: 10, points: 1 },
-    { key: 'archer', kind: 'ranged', from: 4, weight: 0.3, hp: w => 22 + 6 * w, speed: w => Math.min(5, (1 + 0.08 * w) * 2), dmg: w => 6 + 0.8 * w, range: 165, atkMs: 1700, windMs: 220, shot: { speed: 9, r: 12 }, knockResist: 0, radius: 12, points: 1.5 },
-    { key: 'warden', kind: 'slam', from: 5, weight: 0.16, hp: w => 90 + 22 * w, speed: w => Math.min(3.4, (0.7 + 0.05 * w) * 2), dmg: w => 14 + 2 * w, reach: S(40) + 3, slamR: 55, atkMs: 1600, windMs: 350, knockResist: 0.6, radius: 18, points: 3 },
+    { key: 'acolyte', kind: 'melee', from: 1, weight: () => 1, hp: w => 30 + 8 * w, speed: w => Math.min(5.2, (1 + 0.1 * w) * 2), dmg: w => 7 + w, reach: S(29) + 3, atkMs: 850, windMs: 150, knockResist: 0, radius: 12, points: 1 },
+    { key: 'warden', kind: 'slam', from: 3, weight: w => Math.min(0.54, (0.1 + 0.03 * w) / (0.9 - 0.03 * w)), hp: w => 90 + 22 * w, speed: w => Math.min(3.4, (0.7 + 0.05 * w) * 2), dmg: w => 14 + 2 * w, reach: S(40) + 3, slamR: 55, atkMs: 1600, windMs: 350, knockResist: 0.6, radius: 18, points: 3 },
 ];
 const ENEMY_INDEX = Object.fromEntries(ENEMY_TYPES.map((t, i) => [t.key, i]));
 
@@ -94,7 +93,6 @@ function createBattle(opts = {}) {
             buffUntil: 0, shieldUntil: 0, wantAttack: false, wantSpecial: false, ai: true, controller: null, seq: 0,
         })),
         enemies: [],
-        shots: [], nextShotId: 1, // enemy projectiles
         events: [],
         hooks: opts.hooks || {},
     };
@@ -238,9 +236,9 @@ function performSpecial(w, h) {
 // ---------------- enemies ----------------
 function pickEnemyType(w) {
     const avail = ENEMY_TYPES.filter(t => w.wave >= t.from);
-    const total = avail.reduce((s, t) => s + t.weight, 0);
+    const total = avail.reduce((s, t) => s + t.weight(w.wave), 0);
     let r = rng(w) * total;
-    for (const t of avail) { if ((r -= t.weight) <= 0) return ENEMY_INDEX[t.key] }
+    for (const t of avail) { if ((r -= t.weight(w.wave)) <= 0) return ENEMY_INDEX[t.key] }
     return 0;
 }
 
@@ -262,14 +260,8 @@ function keepInside(e) {
     else { const m = RULES.enemyMargin + 10; e.x = clamp(e.x, -m, ARENA.width + m); e.y = clamp(e.y, -m, ARENA.height + m) } // still walking in: never knocked far away
 }
 
-function fireShot(w, e, t, target) {
-    const dx = target.x - e.x, dy = target.y - e.y, d = Math.hypot(dx, dy) || 1;
-    w.shots.push({ id: w.nextShotId++, kind: e.type, x: e.x, y: e.y - 0, vx: dx / d * t.shot.speed, vy: dy / d * t.shot.speed, r: t.shot.r, dmg: e.dmg, left: Math.ceil((t.range * 1.35) / t.shot.speed), from: e.id });
-}
-
 function strike(w, e, t, target) {
     e.strikeAt = w.time;
-    if (t.kind === 'ranged') return fireShot(w, e, t, target);
     if (t.kind === 'slam') {
         emit(w, { t: 'slam', id: e.id, x: Math.round(e.x), y: Math.round(e.y), r: t.slamR });
         for (const h of w.heroes) if (alive(h) && dist(h, e) <= t.slamR) damageHero(w, h, e.dmg, e);
@@ -295,24 +287,13 @@ function stepEnemies(w) {
         }
         const d = dist(target, e) || 1;
         e.facing = Math.sign(target.x - e.x) || -1;
-        const want = t.kind === 'ranged' ? (e.entered ? t.range * 0.85 : 0) : t.reach; // ranged units walk in before holding range
-        const inRange = t.kind === 'ranged' ? d <= t.range && e.entered : d <= t.reach;
-        if (t.kind === 'ranged' && e.entered && d < want * 0.55) { // too close: back off a little
-            e.x -= (target.x - e.x) / d * e.speed * 0.6; e.y -= (target.y - e.y) / d * e.speed * 0.6; keepInside(e);
-        } else if (d > want) {
+        const want = t.reach, inRange = d <= t.reach;
+        if (d > want) {
             e.x += (target.x - e.x) / d * Math.min(e.speed, d - want + 0.5);
             e.y += (target.y - e.y) / d * Math.min(e.speed, d - want + 0.5);
             keepInside(e);
         }
         if (inRange && w.time - e.at >= t.atkMs) { e.at = w.time; e.windUntil = w.time + t.windMs }
-    }
-    // Projectiles: straight lines, hit the first living hero they touch, vanish at the arena edge.
-    for (let j = w.shots.length - 1; j >= 0; j--) {
-        const p = w.shots[j];
-        p.x += p.vx; p.y += p.vy; p.left--;
-        const hitHero = w.heroes.find(h => alive(h) && Math.hypot(h.x - p.x, (h.y - p.y) * 1.2) <= p.r);
-        if (hitHero) damageHero(w, hitHero, p.dmg, { id: p.from });
-        if (hitHero || p.left <= 0 || p.x < ARENA.minX - 30 || p.x > ARENA.maxX + 30 || p.y < ARENA.minY - 30 || p.y > ARENA.maxY + 30) w.shots.splice(j, 1);
     }
     // Light separation so a crowd doesn't collapse into one sprite.
     const es = w.enemies;
@@ -456,8 +437,7 @@ function enemyFlags(w, e) {
     return (w.time < e.stunUntil ? 1 : 0) | (w.time < e.tauntUntil ? 2 : 0) | (e.windUntil ? 4 : 0) | (w.time - e.strikeAt < 250 ? 8 : 0);
 }
 
-// Compact per-tick snapshot. Enemies are arrays: [id, type, x, y, hp%, facing, flags];
-// enemy shots are [id, enemyType, x, y, vx*10, vy*10].
+// Compact per-tick snapshot. Enemies are arrays: [id, type, x, y, hp%, facing, flags].
 function snapshot(w) {
     return {
         tick: w.tick, time: w.time, zone: w.zone, wave: w.wave, ws: w.waveState === 'fighting' ? 1 : 0,
@@ -471,7 +451,6 @@ function snapshot(w) {
             cd: Math.max(0, Math.round((h.specialAt + RULES.specialCooldownMs - w.time) / 100)) // special cooldown, 0.1 s
         })),
         enemies: w.enemies.map(e => [e.id, e.type, Math.round(e.x), Math.round(e.y), Math.max(0, Math.round(e.hp / e.max * 100)), e.facing, enemyFlags(w, e)]),
-        shots: w.shots.map(p => [p.id, p.kind, Math.round(p.x), Math.round(p.y), Math.round(p.vx * 10), Math.round(p.vy * 10)]),
         ev: w.events,
     };
 }

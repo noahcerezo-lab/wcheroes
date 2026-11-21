@@ -138,7 +138,7 @@ test('waves advance after a clear, harder enemy types unlock, every 15th wave is
     }
     assert.deepEqual(waves.slice(0, 5), [1, 2, 3, 4, 5]);
     assert.deepEqual(clears.slice(0, 4), [1, 2, 3, 4]);
-    assert.ok(types.has('acolyte') && types.has('wisp'), [...types].join());
+    assert.ok(types.has('acolyte') && types.has('warden') && types.size === 2, [...types].join());
     assert.equal(C.waveSize(1), 8);
     assert.equal(C.isBossWave(15), true);
     assert.equal(C.isBossWave(14), false);
@@ -152,16 +152,18 @@ test('AI teammates fight on their own and the same seed replays the same battle'
     assert.deepEqual(C.snapshot(a), C.snapshot(b));
 });
 
-test('ranged enemies fire dodgeable projectiles; melee strikes can be dodged during the windup', () => {
-    const w = quiet(); spread(w);
-    const h = place(w, 0, 300, 300);
-    const archer = C.spawnEnemy(w, C.ENEMY_INDEX.archer); archer.x = 440; archer.y = 300; archer.entered = true;
-    let shot = false;
-    for (let i = 0; i < 40 && !shot; i++) { C.step(w); shot = w.shots.length > 0 }
-    assert.ok(shot, 'archer fired');
-    const hp = h.hp;
-    for (let i = 0; i < 30; i++) C.step(w);
-    assert.ok(h.hp < hp, 'standing still: hit by the arrow');
+test('no projectile enemies: only acolytes and wardens spawn, no shots in the sim or snapshots; melee strikes can be dodged', () => {
+    assert.deepEqual(C.ENEMY_TYPES.map(t => t.key), ['acolyte', 'warden']);
+    assert.ok(C.ENEMY_TYPES.every(t => t.kind !== 'ranged' && !t.shot));
+    for (const seed of [1, 2, 3]) {
+        const w = C.createBattle({ seed, firstWaveDelayMs: 0 });
+        const kinds = new Set();
+        for (let i = 0; i < 20 * 400 && !w.over; i++) { C.step(w); for (const e of w.enemies) kinds.add(e.type) }
+        assert.equal(w.shots, undefined, 'no projectile list');
+        assert.equal(C.snapshot(w).shots, undefined, 'no shots in snapshots');
+        assert.ok([...kinds].every(k => k === 0 || k === 1), 'seed ' + seed + ': ' + [...kinds]);
+        assert.ok(kinds.has(1), 'wardens fill later waves (seed ' + seed + ', wave ' + w.wave + ')');
+    }
     const w2 = quiet(); spread(w2);
     const me = place(w2, 0, 300, 300), ac = C.spawnEnemy(w2, 0); ac.x = 318; ac.y = 300; ac.entered = true;
     C.step(w2); // acolyte starts its windup

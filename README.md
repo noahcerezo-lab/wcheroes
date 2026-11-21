@@ -25,9 +25,9 @@ Server -> client: `room:update`, `battle:start`, `battle:state`, `battle:end`, `
 
 `player:input` is **intent only**: movement plus `attack`/`special` booleans. The server checks cooldowns and resolves every hit; any other field (damage, hp, targets…) is ignored.
 
-`battle:state` (20 Hz, compact) = `{tick, wave, ws (1 = fighting), next (ms to next wave), left, score, kills, combo, over, zone, heroes:[…], enemies:[[id, type, x, y, hp%, facing, flags]…], shots:[[id, type, x, y, vx×10, vy×10]…], ev:[…]}`.
+`battle:state` (20 Hz, compact) = `{tick, wave, ws (1 = fighting), next (ms to next wave), left, score, kills, combo, over, zone, heroes:[…], enemies:[[id, type, x, y, hp%, facing, flags]…], ev:[…]}`.
 - heroes (slot order 1P NOAH, 2P DESTINY, 3P MARKIE, 4P ESPIRIT): `name, x, y, vx, vy, facing, aim (0–7, 0 = right, 2 = down, 4 = left, 6 = up), moving, controller, seq (prediction ack), hp, maxHp, state (0 alive, 1 downed), rv (revive %), attackN, specialN, cs (chain stage of last swing, 2 = finisher), buff, shield, cd (special cooldown, 0.1 s)`.
-- enemy types: 0 Horned Acolyte (melee), 1 Lantern Wisp (slow ember bolt), 2 Tomoe Archer (arrows), 3 Temple Warden (ground slam). Flags: 1 stunned, 2 taunted, 4 winding up (telegraph), 8 just struck.
+- enemy types: 0 Horned Acolyte (melee), 1 Temple Warden (ground slam). No projectile enemies. Flags: 1 stunned, 2 taunted, 4 winding up (telegraph), 8 just struck.
 - events `ev`: `hit {id,d,c (crit),f (finisher),h,x,y}`, `kill`, `hurt`, `heal`, `buff`, `spc`, `slam`, `down`, `revive`, `wave`, `clear`, `over`.
 - `battle:start` and `session:resume` add `arena` and `enemyTypes`. `battle:end {reason: 'host'|'wipe', wave, score, kills}`.
 
@@ -45,7 +45,7 @@ Bandwidth: ~21 KB/s of JSON per client in a 4-player fight; WebSocket compressio
 - **Heroes** (V19 numbers): NOAH crescent arc + ARCANE NOVA blast; DESTINY spear strike with stun, RALLY STRIKE (team heal 35, +25% damage 5 s, stun) and a healing aura; MARKIE 360° axe cleave (front ×1.5), EARTHSHATTER (×4, taunt 4 s, damage shield 3 s); ESPIRIT long-range single arrow, ARROW STORM. LUK → crit chance, VIT → damage taken (stats from the hero sheets, `public/assets/heroes.json`).
 - **Feel.** Attacks aim in 8 directions (the way you last moved; AI aims at its target). Swings chain 1-2-3; the 3rd is a finisher (×1.6 damage, ×1.8 knockback, longer reach, then a short recovery). The chain resets if you pause longer than the cooldown + 450 ms. Movement accelerates and decelerates (full speed in ~200 ms), diagonals are normalized, walls stop velocity. All of it is in the shared modules, so client prediction matches the server exactly.
 - **Downed / revive.** At 0 HP a hero is downed (can't move or attack). Stand next to them for 2 s (two helpers = faster) to revive at 40% HP. Everyone downed = game over; after 8 s (`GAME_OVER_RETURN_MS`) the room returns to the lobby, or the host can return earlier.
-- **Waves.** Wave n has 5 + 3n enemies, at most 24 alive (`MAX_ENEMIES`). They spawn off-screen and can't leave the arena once inside. +25 HP to living heroes on a clear, 3 s break. Wisps from wave 3, archers from 4, wardens from 5. Every 15th wave is flagged as a boss wave and every 10th calls an upgrade hook (both no-ops until Phase D).
+- **Waves.** Wave n has 5 + 3n enemies, at most 24 alive (`MAX_ENEMIES`). They spawn off-screen and can't leave the arena once inside. +25 HP to living heroes on a clear, 3 s break. Wardens join from wave 3 and grow to about a third of each wave by wave 10. Every 15th wave is flagged as a boss wave and every 10th calls an upgrade hook (both no-ops until Phase D).
 - **Env knobs.** `FIRST_WAVE_DELAY_MS` (3000), `GAME_OVER_RETURN_MS` (8000), `ENEMY_DAMAGE_MUL` (1, difficulty), `COMBAT_SEED` (fixed fights for testing), `WS_DEFLATE=0` (turn compression off).
 
 ## Art

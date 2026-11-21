@@ -3,8 +3,8 @@
  *
  * Draws the server's battle snapshots:
  *   - V19 battlefield (Moonlit Temple and the other three zones) and V19 hero sprites
- *   - enemies with Draper's sprites (combat-art.js): Horned Acolyte, Lantern Wisp, Tomoe Archer,
- *     Temple Warden, each with idle / walk / windup / strike / die sheets picked from server flags.
+ *   - enemies with Draper's sprites (combat-art.js):  Horned Acolyte and
+ *     Temple Warden (no projectile enemies), each with idle / walk / windup / strike / die sheets picked from server flags.
  *   - combat effects from the server's per-tick events: hero attack/special sheets, hit sparks,
  *     crit flashes, damage numbers (#FFF2A0 normal, #FFD36D crit, #ADFFCB heal), heal/buff auras,
  *     stun/taunt marks, downed/revive rings, combo counter, wave banners and the game-over card.
@@ -47,7 +47,7 @@
         const g = canvas.getContext('2d');
         g.imageSmoothingEnabled = false;
         const interpEnabled = opts.interpolate !== false;
-        const snaps = []; // {tick, at, heroes, enemies, shots, zone, hud}
+        const snaps = []; // {tick, at, heroes, enemies, zone, hud}
         let clockOffset = null; // estimated (client receive time - tick * TICK_MS)
         let running = false;
         const stats = { snapshots: 0, frames: 0 };
@@ -87,9 +87,8 @@
             if (clockOffset === null || sample < clockOffset) clockOffset = sample;
             else clockOffset += (sample - clockOffset) * 0.02;
             const enemies = Array.isArray(world.enemies) ? world.enemies : [];
-            const shots = Array.isArray(world.shots) ? world.shots : [];
             const prevSnap = snaps[snaps.length - 1];
-            snaps.push({ tick, at: now, heroes: world.heroes, enemies, shots, zone: world.zone || 0, hud: world });
+            snaps.push({ tick, at: now, heroes: world.heroes, enemies, zone: world.zone || 0, hud: world });
             while (snaps.length > 40) snaps.shift();
             stats.snapshots++;
             const ev = Array.isArray(world.ev) ? world.ev : [];
@@ -197,7 +196,7 @@
         function sample(now) {
             if (!snaps.length) return null;
             const latest = snaps[snaps.length - 1];
-            if (!interpEnabled || snaps.length < 2) return { heroes: latest.heroes, enemies: latest.enemies, shots: latest.shots, zone: latest.zone, hud: latest.hud };
+            if (!interpEnabled || snaps.length < 2) return { heroes: latest.heroes, enemies: latest.enemies, zone: latest.zone, hud: latest.hud };
             const renderTick = (now - INTERP_DELAY_MS - clockOffset) / TICK_MS;
             let a = snaps[0], b = latest;
             if (renderTick >= latest.tick) { a = b = latest }
@@ -214,7 +213,7 @@
                 if (Math.hypot(hb.x - ha.x, hb.y - ha.y) > SNAP_DISTANCE) return hb;
                 return Object.assign({}, hb, { x: lerp(ha.x, hb.x, t), y: lerp(ha.y, hb.y, t) });
             });
-            // Enemies and shots are matched by id (they appear and vanish between snapshots).
+            // Enemies are matched by id (they appear and vanish between snapshots).
             const blend = (listA, listB) => {
                 const prev = new Map(listA.map(e => [e[0], e]));
                 return listB.map(eb => {
@@ -223,7 +222,7 @@
                     const out = eb.slice(); out[2] = lerp(ea[2], eb[2], t); out[3] = lerp(ea[3], eb[3], t); return out;
                 });
             };
-            return { heroes, enemies: blend(a.enemies, b.enemies), shots: blend(a.shots, b.shots), zone: b.zone, hud: b.hud };
+            return { heroes, enemies: blend(a.enemies, b.enemies), zone: b.zone, hud: b.hud };
         }
 
         // Bigger sprites/labels when the canvas is shown small (phones), so units stay readable.
@@ -535,8 +534,7 @@
             else if (wind && has(art.wind)) { key = art.wind; mode = 'hold'; t0 = m.windAt }
             else if (walking && has(art.walk)) { key = art.walk; flip = false }
             else if (struck) ox = dir * 7; // procedural lunge fallback
-            if (art.key === 'wisp' && dieAt === undefined) oy = Math.sin(now / 260 + id) * 4 - 6; // hovers
-            else if (walking && key === art.key) oy = -Math.abs(Math.sin(now / 90 + id)) * 3; // bob fallback
+            if (walking && key === art.key) oy = -Math.abs(Math.sin(now / 90 + id)) * 3; // bob fallback
             if (flash) ox += Math.sin(now / 34) * 3; // hurt shake
             g.save();
             g.translate(Math.round(ex * S), Math.round(ey * S));
@@ -561,7 +559,7 @@
                 g.globalCompositeOperation = 'source-over';
             }
             g.globalAlpha = fade !== undefined ? Math.max(0, fade) : 1;
-            const top = art.key === 'warden' ? -88 : art.key === 'wisp' ? -56 : -68;
+            const top = art.key === 'warden' ? -88 : -68;
             if (hpPct < 100 && fade === undefined) {
                 g.fillStyle = '#292035'; g.fillRect(-20, top, 40, 4);
                 g.fillStyle = '#ff5d73'; g.fillRect(-20, top, 40 * hpPct / 100, 4);
@@ -571,27 +569,6 @@
                 if (flags & 2) A.loop(g, 'tauntMark', now, (flags & 1) ? 18 : 0, top - 6, 26);
             }
             g.restore();
-        }
-
-        function drawShots(shots, k) {
-            for (const p of shots) {
-                const [, type, x, y, vx, vy] = p;
-                const art = A && A.ENEMY_ART[type];
-                g.save();
-                g.translate(x * S, y * S - 36);
-                g.scale(k, k);
-                if (art && art.key === 'wisp') { // slow ember bolt
-                    g.fillStyle = '#FF9B5688'; g.beginPath(); g.arc(0, 0, 9, 0, Math.PI * 2); g.fill();
-                    g.fillStyle = '#FFD36D'; g.fillRect(-4, -4, 8, 8);
-                    g.fillStyle = '#FFF4AD'; g.fillRect(-2, -2, 4, 4);
-                } else { // tomoe archer arrow: hilt-brown shaft, steel head, red fletching
-                    g.rotate(Math.atan2(vy, vx));
-                    g.fillStyle = '#C28B61'; g.fillRect(-16, -1, 26, 3);
-                    g.fillStyle = '#B8C0D0'; g.fillRect(10, -2, 6, 5);
-                    g.fillStyle = '#C8505A'; g.fillRect(-18, -3, 5, 7);
-                }
-                g.restore();
-            }
         }
 
         function frame() {
@@ -622,7 +599,6 @@
             for (const gh of ghosts) { const el = now - gh.start; units.push({ y: gh.e[3], e: gh.e, dieAt: gh.start, fade: el < gh.life - 160 ? 1 : (gh.life - el) / 160 }) } // die frames, then fade
             units.sort((a, b) => a.y - b.y).forEach(u => u.e ? drawEnemy(u.e, now, k, u.fade, u.dieAt) : drawHero(u.h, u.i, now, room, myId, k));
             if (enemyMotion.size > 64) { const live = new Set((view.enemies || []).map(e => e[0])); for (const id of enemyMotion.keys()) if (!live.has(id)) enemyMotion.delete(id) }
-            drawShots(view.shots || [], k);
             drawActionFx(view, now, k);
             drawParticles(now);
             drawNumbers(now);
