@@ -1175,9 +1175,12 @@
                     g.restore();
                 }
             } else if (skin.shape === 'crown') {
-                g.beginPath(); g.moveTo(-16, -91); g.lineTo(-10, -100); g.lineTo(-3, -93);
-                g.lineTo(0, -104); g.lineTo(4, -93); g.lineTo(11, -100); g.lineTo(16, -91); g.stroke();
-                g.fillStyle = skin.light; g.fillRect(-2, -108, 4, 4);
+                // Gold shoulder epaulettes avoid the HP/nameplate above the head.
+                for (const side of [-1, 1]) {
+                    g.beginPath(); g.moveTo(side * 20, -67); g.lineTo(side * 29, -75);
+                    g.lineTo(side * 35, -66); g.lineTo(side * 27, -61); g.stroke();
+                    g.fillStyle = skin.light; g.fillRect(side * 31 - 2, -73, 4, 4);
+                }
             } else if (skin.shape === 'embers') {
                 for (let j = 0; j < 3; j++) {
                     const x = (j - 1) * 31, y = -39 - ((now / (13 + j * 3) + j * 19) % 42);
@@ -1190,6 +1193,24 @@
                     g.save(); g.translate(x, y); g.rotate(side * .6 + Math.sin(phase) * .2);
                     g.beginPath(); g.ellipse(0, 0, 4, 9, .4, 0, Math.PI * 2); g.stroke();
                     g.beginPath(); g.moveTo(0, -7); g.lineTo(0, 7); g.stroke(); g.restore();
+                }
+            }
+            // Enhanced finishers: a brief personal energy flare after the third combo strike.
+            // Uses snapshot combo stage, never modifies hit detection or authoritative combat.
+            if (h.cs === 2 && h.attackN && !h.state) {
+                const action = anim && anim.stateOf(i);
+                const atk = action && action.atk;
+                const age = atk ? now - atk.start : Infinity;
+                if (age >= 0 && age < 300) {
+                    const p = age / 300;
+                    g.globalAlpha = (1 - p) * .8;
+                    g.strokeStyle = skin.light; g.lineWidth = 3 * (1 - p) + 1;
+                    g.beginPath(); g.ellipse(0, -41, 25 + p * 30, 35 + p * 20, 0, 0, Math.PI * 2); g.stroke();
+                    for (let j = 0; j < 4; j++) {
+                        const an = j * Math.PI / 2 + phase * .3, r = 32 + p * 30;
+                        g.fillStyle = skin.primary;
+                        g.fillRect(Math.round(Math.cos(an) * r - 3), Math.round(-41 + Math.sin(an) * r * .7 - 3), 6, 6);
+                    }
                 }
             }
             // A bright, restrained shoulder glint while empowered.
