@@ -4,8 +4,7 @@
  * Draws the server's battle snapshots:
  *   - V19 battlefield (Moonlit Temple and the other three zones) and V19 hero sprites
  *   - enemies with Draper's sprites (combat-art.js): Horned Acolyte, Lantern Wisp, Tomoe Archer,
- *     Temple Warden. Only idle loops exist, so walking (bob), windup (lean + telegraph), strike
- *     (lunge) and death (flash + fade) are procedural here.
+ *     Temple Warden, each with idle / walk / windup / strike / die sheets picked from server flags.
  *   - combat effects from the server's per-tick events: hero attack/special sheets, hit sparks,
  *     crit flashes, damage numbers (#FFF2A0 normal, #FFD36D crit, #ADFFCB heal), heal/buff auras,
  *     stun/taunt marks, downed/revive rings, combo counter, wave banners and the game-over card.
@@ -40,6 +39,9 @@
     const SLAM_R = 55; // Temple Warden shockwave radius (world units)
 
     function lerp(a, b, t) { return a + (b - a) * t }
+    // 8-way aim index (shared-sim DIR8: 0 right, 2 down, 4 left, 6 up) -> unit vector.
+    const aimVec = (aim, facing) => { const i = Number.isInteger(aim) ? aim : (facing === -1 ? 4 : 0); return { x: Math.cos(i * Math.PI / 4), y: Math.sin(i * Math.PI / 4) } };
+    const reducedMotion = () => { try { return root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches } catch { return false } };
 
     function createArena(canvas, opts) {
         const g = canvas.getContext('2d');
@@ -58,6 +60,21 @@
         const ghosts = []; // dying enemies fading out
         const lastActs = []; // per hero {a, s} counters from the previous snapshot
         const enemyMotion = new Map(); // id -> {x, y, moveAt}
+        // Screen shake: small (<= 7 px) and short (<= 180 ms); disabled under prefers-reduced-motion.
+        const shake = { amp: 0, start: 0, life: 1, count: 0 };
+        function addShake(amp, life, now) {
+            if (reducedMotion()) return;
+            const left = shake.amp * Math.max(0, 1 - (now - shake.start) / shake.life);
+            if (amp < left) return;
+            Object.assign(shake, { amp: Math.min(7, amp), start: now, life: Math.min(180, life) });
+            shake.count++;
+        }
+        function shakeOffset(now) {
+            const t = (now - shake.start) / shake.life;
+            if (t >= 1 || !shake.amp) return { x: 0, y: 0 };
+            const a = shake.amp * (1 - t);
+            return { x: Math.round(Math.sin(now / 17) * a), y: Math.round(Math.cos(now / 23) * a * .6) };
+        }
 
         function push(world) {
             if (!world || !Array.isArray(world.heroes)) return;
@@ -99,11 +116,12 @@
                 lastActs[i] = { a: h.attackN || 0, s: h.specialN || 0 };
                 if (!prev) return;
                 if (h.attackN > prev.a) {
-                    const f = { kind: 'attack', i, name: h.name, start: now, life: 300, facing: h.facing === -1 ? -1 : 1, x: h.x, y: h.y };
+                    // Swing direction = the hero's 8-way aim; stage 2 = chain finisher (bigger effect).
+                    const f = { kind: 'attack', i, name: h.name, start: now, life: 300, facing: h.facing === -1 ? -1 : 1, aim: aimVec(h.aim, h.facing), stage: h.cs || 0, x: h.x, y: h.y };
                     if (h.name === 'ESPIRIT') {
                         const hit = ev.find(e => e.t === 'hit' && e.h === i);
-                        f.tx = hit ? hit.x : h.x + f.facing * KIT.ESPIRIT.range;
-                        f.ty = hit ? hit.y : h.y;
+                        f.tx = hit ? hit.x : h.x + f.aim.x * KIT.ESPIRIT.range;
+                        f.ty = hit ? hit.y : h.y + f.aim.y * KIT.ESPIRIT.range;
                         f.life = Math.max(120, Math.hypot(f.tx - h.x, f.ty - h.y) * S / 3.2);
                     }
                     fx.push(f);
@@ -117,20 +135,32 @@
                 case 'hit': {
                     flashes.set(e.id, now + 200);
                     const px = e.x * S, py = e.y * S - 40;
-                    const sheet = e.c ? (e.h === 3 ? 'espiritCrit' : 'critFlash') : 'hitSpark';
-                    fx.push({ kind: 'sheet', key: sheet, x: px + (Math.random() - .5) * 10, y: py + (Math.random() - .5) * 10, w: e.c ? 64 : 34, start: now, life: A ? A.duration(sheet) : 220 });
-                    burst(px, py, e.c ? '#FFD36D' : '#FFF2B5', e.c ? 9 : 5);
-                    floatText(px, py - 30, String(e.d) + (e.c ? '!' : ''), e.c ? NUM.crit : NUM.normal, e.c ? 24 : 18);
+                    const big = e.c || e.f; // crit or 3rd-hit finisher
+                    const sheet = e.c ? (e.h === 3 ? 'espiritCrit' : 'critFlash') : e.f ? 'critFlash' : 'hitSpark';
+                    fx.push({ kind: 'sheet', key: sheet, x: px + (Math.random() - .5) * 10, y: py + (Math.random() - .5) * 10, w: big ? 64 : 34, start: now, life: A ? A.duration(sheet) : 220 });
+                    // Expanding impact ring on the floor under the target.
+                    fx.push({ kind: 'ring', x: e.x * S, y: e.y * S, r0: 8, r1: e.f ? 62 : big ? 44 : 30, color: e.c ? '#FFD36D' : e.f ? '#FFF1C5' : '#FFF2B5', width: e.f ? 5 : 3, start: now, life: e.f ? 320 : 230 });
+                    burst(px, py, e.c ? '#FFD36D' : '#FFF2B5', e.f ? 16 : e.c ? 9 : 5, e.f ? 6 : 4);
+                    if (e.f) burst(px, py, heroCfg(latestHero(e.h)?.name).color, 8, 6);
+                    floatText(px, py - 30, String(e.d) + (e.c ? '!' : ''), e.c ? NUM.crit : NUM.normal, e.f ? 26 : e.c ? 24 : 18);
+                    if (e.f) addShake(4, 140, now); else if (e.c) addShake(2, 100, now);
                     break;
                 }
                 case 'kill': {
                     burst(e.x * S, e.y * S - 30, '#FF6C78', 13, 5); // enemies.md death burst
                     const last = prevSnap && prevSnap.enemies.find(v => v[0] === e.id);
-                    if (last) ghosts.push({ e: last.slice(), start: now, life: 380 });
+                    if (last) { const art = A && A.ENEMY_ART[last[1]]; ghosts.push({ e: last.slice(), start: now, life: art && A.ready(art.die) ? A.duration(art.die) + 120 : 380 }) }
                     if (e.combo >= 2) comboAt = now;
                     break;
                 }
-                case 'hurt': { const h = latestHero(e.h); if (h) { floatText(h.x * S, h.y * S - 95, '-' + e.d, NUM.hurt, 17); burst(h.x * S, h.y * S - 40, '#FF6574', 4) } break }
+                case 'hurt': {
+                    const h = latestHero(e.h);
+                    if (!h) break;
+                    floatText(h.x * S, h.y * S - 95, '-' + e.d, NUM.hurt, 17); burst(h.x * S, h.y * S - 40, '#FF6574', 4);
+                    const myId = opts.getMyId && opts.getMyId();
+                    if (myId && h.controller === myId) addShake(3, 120, now); // only when YOUR hero is hit
+                    break;
+                }
                 case 'heal': {
                     const h = latestHero(e.h);
                     if (!h) break;
@@ -143,10 +173,11 @@
                     if (!h) break;
                     const r = (e.r || SPECIAL_RADIUS[h.name] || 140) * S;
                     fx.push({ kind: 'special', name: h.name, x: h.x * S, y: h.y * S, r, start: now, life: 700 });
+                    addShake(3, 150, now);
                     banners.push({ str: h.name + ' • ' + e.k, color: heroCfg(h.name).color, born: now, life: 1300, small: true });
                     break;
                 }
-                case 'slam': fx.push({ kind: 'floor', key: 'impact', x: e.x * S, y: e.y * S, r: (e.r || SLAM_R) * S, start: now, life: A ? A.duration('impact') : 420 }); break;
+                case 'slam': addShake(5, 170, now); fx.push({ kind: 'floor', key: 'impact', x: e.x * S, y: e.y * S, r: (e.r || SLAM_R) * S, start: now, life: A ? A.duration('impact') : 420 }); break;
                 case 'down': { const h = latestHero(e.h); if (h) banners.push({ str: h.name + ' IS DOWN — STAND NEXT TO THEM TO REVIVE', color: '#ff8a8a', born: now, life: 2200, small: true }); break }
                 case 'revive': {
                     const h = latestHero(e.h);
@@ -343,6 +374,10 @@
                         g.save(); g.globalAlpha = Math.max(0, .9 * (1 - t)); g.strokeStyle = color; g.lineWidth = 7;
                         g.beginPath(); g.ellipse(f.x, f.y, f.r * (.25 + .75 * t), f.r * (.25 + .75 * t) * .42, 0, 0, Math.PI * 2); g.stroke(); g.restore();
                     }
+                } else if (f.kind === 'ring') { // expanding impact ring (perspective ellipse, never flipped)
+                    const t = el / f.life, r = lerp(f.r0, f.r1, 1 - (1 - t) * (1 - t));
+                    g.save(); g.globalAlpha = Math.max(0, 1 - t); g.strokeStyle = f.color; g.lineWidth = f.width;
+                    g.beginPath(); g.ellipse(f.x, f.y, r, r * .42, 0, 0, Math.PI * 2); g.stroke(); g.restore();
                 } else if (f.kind === 'floor' && A) {
                     A.play(g, f.key, el, f.x, f.y, f.r * 2, f.r * 2 * .5);
                 }
@@ -364,9 +399,17 @@
                         A.loop(g, 'espiritArrow', now, 0, 0, kit.atkW * k);
                         g.restore();
                     } else {
-                        const dir = h.facing === -1 ? -1 : 1;
-                        const ox = f.name === 'MARKIE' ? 0 : dir * kit.atkW * .28 * k;
-                        A.play(g, kit.atk, el, h.x * S + ox, h.y * S - 34 * k, kit.atkW * k, null, dir < 0);
+                        // Directional swing: the sheet faces right; mirror for leftward aims, then rotate to
+                        // the 8-way aim (up/down/diagonals). Markie's cleave is 360° so it only mirrors.
+                        const a = f.aim, fin = f.stage === 2, size = kit.atkW * k * (fin ? 1.35 : 1);
+                        g.save();
+                        g.translate(h.x * S, h.y * S - 34 * k);
+                        if (a.x < -0.01) g.scale(-1, 1);
+                        if (f.name !== 'MARKIE') g.rotate(Math.atan2(a.y, Math.abs(a.x) < 0.01 ? 0.0001 : Math.abs(a.x)));
+                        const ox = f.name === 'MARKIE' ? 0 : kit.atkW * .28 * k;
+                        A.play(g, kit.atk, el, ox, 0, size);
+                        if (fin) { g.globalAlpha = .5; g.globalCompositeOperation = 'lighter'; A.play(g, kit.atk, el, ox, 0, size * 1.15); }
+                        g.restore();
                     }
                 } else if (f.kind === 'sheet' && A) {
                     let x = f.x, y = f.y;
@@ -423,6 +466,15 @@
                 g.stroke();
                 g.restore();
             }
+            if (role === 'me' && !h.state) { // aim marker: where your next attack goes (8-way)
+                const a = aimVec(h.aim, h.facing);
+                g.save();
+                g.translate(a.x * 44, 3 + a.y * 44 * .42);
+                g.rotate(Math.atan2(a.y * .42, a.x));
+                g.fillStyle = '#ffd279'; g.globalAlpha = .85;
+                g.beginPath(); g.moveTo(8, 0); g.lineTo(-5, -6); g.lineTo(-2, 0); g.lineTo(-5, 6); g.closePath(); g.fill();
+                g.restore();
+            }
             const entity = Object.assign({ name: h.name, facing: h.facing === -1 ? -1 : 1, moving: !!h.moving && !h.state, color, upgradeTier: h.upgradeTier || 0, theme: ART_THEME }, poseFor(i, now));
             if (h.state) { // downed: lying on the ground, greyed, with a revive progress ring
                 g.save();
@@ -459,50 +511,56 @@
             g.restore();
         }
 
-        // Enemy: Draper idle loop + procedural motion. flags: 1 stunned, 2 taunted, 4 windup, 8 struck.
-        function drawEnemy(e, now, k, fade) {
+        // Enemy: Draper's sheets chosen from the server flags (1 stunned, 2 taunted, 4 winding up,
+        // 8 just struck): wind -> windup/charge/draw/plant, strike -> slash/fire/slam, moving -> walk
+        // (front-facing, not flipped), else idle. Dying enemies play their die sheet then fade.
+        function drawEnemy(e, now, k, fade, dieAt) {
             const [id, type, ex, ey, hpPct, facing, flags] = e;
             const art = (A && A.ENEMY_ART[type]) || { key: 'acolyte', w: 50 };
             const flash = (flashes.get(id) || 0) > now;
             let m = enemyMotion.get(id);
-            if (!m) { m = { x: ex, y: ey, moveAt: 0 }; enemyMotion.set(id, m) }
+            if (!m) { m = { x: ex, y: ey, moveAt: 0, windAt: 0, strikeAt: 0, wasWind: false, wasStrike: false }; enemyMotion.set(id, m) }
             if (Math.hypot(ex - m.x, ey - m.y) > 0.3) { m.moveAt = now; m.x = ex; m.y = ey }
+            const wind = !!(flags & 4), struck = !!(flags & 8);
+            if (wind && !m.wasWind) m.windAt = now;
+            if (struck && !m.wasStrike) m.strikeAt = now;
+            m.wasWind = wind; m.wasStrike = struck;
             const walking = now - m.moveAt < 120;
             const dir = facing === -1 ? -1 : 1;
-            let ox = 0, oy = 0, lean = 0;
-            if (art.key === 'wisp') oy = Math.sin(now / 260 + id) * 4 - 6; // hovers
-            else if (walking) oy = -Math.abs(Math.sin(now / 90 + id)) * 3; // step bob
-            if (flags & 4) lean = -0.08 * dir; // windup: lean back
-            if (flags & 8) { ox = dir * 7; lean = 0.1 * dir } // strike: lunge
+            // Pick the sheet; fall back to idle + procedural motion if an action sheet is missing.
+            let key = art.key, mode = 'loop', t0 = 0, flip = dir < 0, ox = 0, oy = 0;
+            const has = k2 => A && k2 && A.ready(k2);
+            if (dieAt !== undefined && has(art.die)) { key = art.die; mode = 'once'; t0 = dieAt }
+            else if (struck && has(art.strike) && now - m.strikeAt < A.duration(art.strike)) { key = art.strike; mode = 'once'; t0 = m.strikeAt }
+            else if (wind && has(art.wind)) { key = art.wind; mode = 'hold'; t0 = m.windAt }
+            else if (walking && has(art.walk)) { key = art.walk; flip = false }
+            else if (struck) ox = dir * 7; // procedural lunge fallback
+            if (art.key === 'wisp' && dieAt === undefined) oy = Math.sin(now / 260 + id) * 4 - 6; // hovers
+            else if (walking && key === art.key) oy = -Math.abs(Math.sin(now / 90 + id)) * 3; // bob fallback
             if (flash) ox += Math.sin(now / 34) * 3; // hurt shake
             g.save();
             g.translate(Math.round(ex * S), Math.round(ey * S));
             g.scale(k, k);
-            if (fade !== undefined) g.globalAlpha = fade;
-            // Telegraphs on the floor (enemies.md): warden = warning ring at the slam radius.
-            if ((flags & 4) && art.key === 'warden' && A) A.loop(g, 'warning', now, 0, 0, SLAM_R * S * 2 / k, SLAM_R * S / k);
+            if (fade !== undefined) g.globalAlpha = Math.max(0, fade);
+            // World-scale telegraph (sheets only hint at it): warden plant ring at the slam radius.
+            if (wind && art.key === 'warden' && A) A.loop(g, 'warning', now, 0, 0, SLAM_R * S * 2 / k, SLAM_R * S / k);
             g.fillStyle = '#0006';
             g.beginPath(); g.ellipse(0, 1, art.w * .36, 6, 0, 0, Math.PI * 2); g.fill();
-            g.save();
-            g.translate(ox, oy);
-            g.rotate(lean);
-            const drawn = A && A.loop(g, art.key, now, 0, 2, art.w, null, dir < 0, undefined, id * 37);
+            const drawFrame = () => {
+                if (!A) return false;
+                if (mode === 'loop') return A.loop(g, key, now, ox, oy + 2, art.w, null, flip, undefined, id * 37);
+                const n = A.frameCount(key), f = Math.min(n - 1, Math.floor((now - t0) / A.SHEETS[key][4]));
+                return A.frame(g, key, f, ox, oy + 2, art.w, null, flip);
+            };
+            const drawn = drawFrame();
             if (!drawn) R.drawSprite(g, 0, 0, '#000', true, '', now, { facing: dir, hurt: flash ? 6 : 0, flash: flash ? 1 : 0 }); // V19 fallback while loading
-            if (drawn && (flash || fade !== undefined)) { // hit flash: brighten only the sprite's own pixels
+            if (drawn && flash) { // V19 hurt flash: 45% #FFF1C5, only on the sprite's own pixels
                 g.globalCompositeOperation = 'lighter';
-                g.globalAlpha = (fade !== undefined ? fade : 1) * .45;
-                A.loop(g, art.key, now, 0, 2, art.w, null, dir < 0, undefined, id * 37);
+                g.globalAlpha *= .45;
+                drawFrame();
                 g.globalCompositeOperation = 'source-over';
-                g.globalAlpha = fade !== undefined ? fade : 1;
             }
-            if ((flags & 4) && art.key !== 'warden') { // windup glint: visor flare / bow draw / lantern flare
-                g.globalAlpha = .55 + Math.sin(now / 40) * .3;
-                g.fillStyle = art.key === 'wisp' ? '#FFCF8B' : '#FF5A7A';
-                const hy = art.key === 'wisp' ? -28 : -48;
-                g.fillRect(-6 + dir * 4, hy, 12, 4);
-                g.globalAlpha = 1;
-            }
-            g.restore();
+            g.globalAlpha = fade !== undefined ? Math.max(0, fade) : 1;
             const top = art.key === 'warden' ? -88 : art.key === 'wisp' ? -56 : -68;
             if (hpPct < 100 && fade === undefined) {
                 g.fillStyle = '#292035'; g.fillRect(-20, top, 40, 4);
@@ -547,24 +605,28 @@
             const local = opts.getLocalHero && opts.getLocalHero();
             if (local && view.heroes[local.index]) {
                 view.heroes = view.heroes.slice();
-                view.heroes[local.index] = Object.assign({}, view.heroes[local.index], { x: local.x, y: local.y, facing: local.facing, moving: local.moving });
+                view.heroes[local.index] = Object.assign({}, view.heroes[local.index], { x: local.x, y: local.y, facing: local.facing, aim: local.aim ?? view.heroes[local.index].aim, moving: local.moving });
             }
             expire(now);
             const k = uiScale();
             g.setTransform(1, 0, 0, 1, 0, 0);
+            g.fillStyle = '#111025'; g.fillRect(0, 0, canvas.width, canvas.height); // edge strip during shake
+            const sh = shakeOffset(now);
+            g.setTransform(1, 0, 0, 1, sh.x, sh.y); // world layers shake; the HUD below does not
             g.imageSmoothingEnabled = false;
             R.drawArena(g, now, view.zone || 0);
             // Layering (combat-vfx.md): floor rings -> units -> slashes/projectiles -> sparks -> numbers -> HUD/combo.
             drawFloorFx(now);
             const units = view.heroes.map((h, i) => ({ y: h.y, h, i }));
             for (const e of view.enemies || []) units.push({ y: e[3], e });
-            for (const gh of ghosts) units.push({ y: gh.e[3], e: gh.e, fade: 1 - (now - gh.start) / gh.life });
-            units.sort((a, b) => a.y - b.y).forEach(u => u.e ? drawEnemy(u.e, now, k, u.fade) : drawHero(u.h, u.i, now, room, myId, k));
+            for (const gh of ghosts) { const el = now - gh.start; units.push({ y: gh.e[3], e: gh.e, dieAt: gh.start, fade: el < gh.life - 160 ? 1 : (gh.life - el) / 160 }) } // die frames, then fade
+            units.sort((a, b) => a.y - b.y).forEach(u => u.e ? drawEnemy(u.e, now, k, u.fade, u.dieAt) : drawHero(u.h, u.i, now, room, myId, k));
             if (enemyMotion.size > 64) { const live = new Set((view.enemies || []).map(e => e[0])); for (const id of enemyMotion.keys()) if (!live.has(id)) enemyMotion.delete(id) }
             drawShots(view.shots || [], k);
             drawActionFx(view, now, k);
             drawParticles(now);
             drawNumbers(now);
+            g.setTransform(1, 0, 0, 1, 0, 0);
             drawHud(view, room, myId, k, now);
             drawBanners(now, k);
             drawGameOver(now, view.hud);
@@ -574,7 +636,7 @@
         function start() { if (!running) { running = true; requestAnimationFrame(frame) } }
         function stop() { running = false }
 
-        return { push, reset, start, stop, sample, stats, interpolating: interpEnabled, fxCounts: () => ({ fx: fx.length, parts: parts.length, texts: texts.length, banners: banners.length, art: A ? A.loadedCount() : 0 }) };
+        return { push, reset, start, stop, sample, stats, interpolating: interpEnabled, fxCounts: () => ({ fx: fx.length, parts: parts.length, texts: texts.length, banners: banners.length, art: A ? A.loadedCount() : 0, shakes: shake.count, reducedMotion: reducedMotion() }), lastAttackFx: () => { const f = [...fx].reverse().find(v => v.kind === 'attack'); return f ? { name: f.name, aim: f.aim, stage: f.stage } : null } };
     }
 
     root.WCHArena = { createArena, TICK_MS, INTERP_DELAY_MS };

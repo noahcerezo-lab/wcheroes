@@ -13,7 +13,7 @@ function quiet(opts = {}) {
     return w;
 }
 const step = (w, n = 1) => { for (let i = 0; i < n; i++) C.step(w) };
-function place(w, i, x, y, facing = 1) { const h = w.heroes[i]; h.x = x; h.y = y; h.facing = facing; return h }
+function place(w, i, x, y, facing = 1, aim = facing === -1 ? 4 : 0) { const h = w.heroes[i]; h.x = x; h.y = y; h.facing = facing; h.aim = aim; h.vx = h.vy = 0; return h }
 function enemyAt(w, x, y, type = 0) { const e = C.spawnEnemy(w, type); e.x = x; e.y = y; e.entered = true; e.hp = e.max = 1000; e.stunUntil = 1e12; return e }
 function spread(w) { place(w, 0, 100, 120); place(w, 1, 860, 120); place(w, 2, 100, 500); place(w, 3, 860, 500) }
 
@@ -169,4 +169,83 @@ test('ranged enemies fire dodgeable projectiles; melee strikes can be dodged dur
     me.x = 200; // step away
     for (let i = 0; i < 4; i++) C.step(w2);
     assert.equal(me.hp, me.maxHp, 'dodged');
+});
+
+test('8-way aim: the last movement direction sets aim, attacks hit up/down/diagonal, not behind', () => {
+    const dirs = [[1, 0, 0], [1, 1, 1], [0, 1, 2], [-1, 1, 3], [-1, 0, 4], [-1, -1, 5], [0, -1, 6], [1, -1, 7]];
+    for (const [mx, my, want] of dirs) {
+        const h = { x: 400, y: 300, facing: 1 };
+        SIM.stepHero(h, SIM.normalizeMove(mx, my), 7);
+        assert.equal(h.aim, want, 'move ' + mx + ',' + my);
+        if (mx) assert.equal(h.facing, mx, 'sprite faces the horizontal part');
+        SIM.stepHero(h, { x: 0, y: 0 }, 7);
+        assert.equal(h.aim, want, 'aim is kept after releasing the stick');
+    }
+    for (const [dx, dy, aim] of [[0, -40, 6], [0, 40, 2], [30, 30, 1], [-30, -30, 5]]) {
+        const w = quiet(); spread(w);
+        const d = place(w, 1, 400, 300, 1, aim);
+        const target = enemyAt(w, 400 + dx, 300 + dy), opposite = enemyAt(w, 400 - dx, 300 - dy), side = enemyAt(w, 400 + dy, 300 - dx);
+        d.wantAttack = true; step(w);
+        assert.ok(target.hp < 1000, 'DESTINY hits along aim ' + aim);
+        assert.equal(opposite.hp, 1000, 'not behind (aim ' + aim + ')');
+        assert.equal(side.hp, 1000, 'not 90° off (aim ' + aim + ')');
+        assert.ok(Math.sign(target.kx) === Math.sign(dx) && Math.sign(Math.round(target.ky)) === Math.sign(dy), 'knocked along the aim');
+    }
+    // Espirit shoots straight up when her last move was up.
+    const w = quiet(); spread(w);
+    const es = place(w, 3, 400, 400, 1, 6);
+    const up = enemyAt(w, 400, 250), right = enemyAt(w, 550, 400);
+    es.wantAttack = true; step(w);
+    assert.ok(up.hp < 1000 && right.hp === 1000);
+});
+
+test('3-hit chain: stages 0,1,2 with a stronger finisher, then recovery; the chain resets after a pause', () => {
+    const w = quiet(); spread(w);
+    const d = place(w, 1, 400, 300, 1, 0);
+    const e = enemyAt(w, 440, 300);
+    const swing = () => { e.x = 440; e.y = 300; e.kx = e.ky = 0; const hp = e.hp; d.wantAttack = true; step(w); const kick = Math.hypot(e.kx, e.ky); return { stage: d.chain, dmg: hp - e.hp, kick, ev: w.events.find(v => v.t === 'hit') } };
+    const s1 = swing(); step(w, 6);
+    const s2 = swing(); step(w, 6);
+    const s3 = swing();
+    assert.deepEqual([s1.stage, s2.stage, s3.stage], [0, 1, 2]);
+    assert.equal(s1.dmg, 28); assert.equal(s2.dmg, 28);
+    assert.equal(s3.dmg, Math.round(28 * C.RULES.finisherDamageMul), 'finisher x1.6 damage');
+    assert.ok(s3.kick > s1.kick * 1.5, 'finisher knockback');
+    assert.equal(s3.ev.f, 1, 'finisher flagged for the bigger client effect');
+    assert.equal(s1.ev.f, undefined);
+    step(w, 6); d.wantAttack = true; step(w);
+    assert.equal(d.attackN, 3, 'recovery after the finisher blocks an immediate 4th swing');
+    step(w, 4); const s4 = swing();
+    assert.equal(s4.stage, 0, 'a new chain starts after the finisher');
+    step(w, 40); swing(); step(w, 6); const late = swing();
+    assert.equal(late.stage, 1);
+    step(w, 40); const reset = swing();
+    assert.equal(reset.stage, 0, 'waiting longer than cooldown + 450 ms resets the chain');
+});
+
+test('movement: acceleration, deceleration, diagonals no faster, walls stop velocity; replay parity', () => {
+    const h = { x: 400, y: 300, facing: 1 };
+    const sp = 7;
+    SIM.stepHero(h, { x: 1, y: 0 }, sp);
+    assert.ok(h.vx > 0 && h.vx < sp, 'first step is partial (acceleration)');
+    for (let i = 0; i < 10; i++) SIM.stepHero(h, { x: 1, y: 0 }, sp);
+    assert.ok(sp - h.vx < 0.01, 'reaches top speed in ~0.5 s');
+    let stops = 0;
+    while (h.vx > 0 && stops < 20) { SIM.stepHero(h, { x: 0, y: 0 }, sp); stops++ }
+    assert.ok(stops <= 8, 'stops within ' + stops + ' inputs');
+    const d = { x: 400, y: 300 }, s = { x: 400, y: 300 };
+    for (let i = 0; i < 30; i++) { SIM.stepHero(d, SIM.normalizeMove(1, 1), sp); SIM.stepHero(s, SIM.normalizeMove(1, 0), sp) }
+    assert.ok(Math.abs(Math.hypot(d.vx, d.vy) - Math.hypot(s.vx, s.vy)) < 1e-9, 'diagonal speed == straight speed');
+    const wall = { x: SIM.ARENA.maxX - 3, y: 300 };
+    for (let i = 0; i < 5; i++) SIM.stepHero(wall, { x: 1, y: 0 }, sp);
+    assert.equal(wall.x, SIM.ARENA.maxX); assert.equal(wall.vx, 0, 'no stored velocity into the wall');
+    // Parity: a client replaying the same inputs from a server state (incl. velocity) lands exactly on it.
+    const server = { x: 300, y: 300, facing: 1, vx: 0, vy: 0 }, inputs = [];
+    for (let i = 0; i < 40; i++) inputs.push(SIM.normalizeMove(Math.cos(i / 4), Math.sin(i / 7)));
+    for (const m of inputs.slice(0, 25)) SIM.stepHero(server, m, sp);
+    const snap = JSON.parse(JSON.stringify(server)); // what a snapshot carries
+    for (const m of inputs.slice(25)) SIM.stepHero(server, m, sp);
+    const client = { x: snap.x, y: snap.y, facing: snap.facing, vx: snap.vx, vy: snap.vy, aim: snap.aim };
+    for (const m of inputs.slice(25)) SIM.stepHero(client, m, sp);
+    assert.deepEqual([client.x, client.y, client.vx, client.vy, client.aim], [server.x, server.y, server.vx, server.vy, server.aim]);
 });

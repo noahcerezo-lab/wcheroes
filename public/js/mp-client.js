@@ -169,7 +169,7 @@
         if (i < 0 || !predictionOn) { if (predicted) resetPrediction(); return }
         const h = w.heroes[i];
         pending = pending.filter(p => p.seq > h.seq);
-        const next = { x: h.x, y: h.y, facing: h.facing };
+        const next = { x: h.x, y: h.y, facing: h.facing, vx: h.vx, vy: h.vy, aim: h.aim }; // velocity + aim too, so acceleration replays exactly
         if (!h.state && !w.over) for (const p of pending) SIM.stepHero(next, p.move, speedOf(i)); // downed: no movement to replay
         if (predicted && predictedFor === i) {
             // Keep what's on screen continuous: the correction fades out over a few frames.
@@ -183,7 +183,7 @@
     function localHero() {
         if (!predicted || !predictionOn) return null;
         visualOffset.x *= 0.8; visualOffset.y *= 0.8;
-        return { index: predictedFor, x: predicted.x + visualOffset.x, y: predicted.y + visualOffset.y, facing: predicted.facing, moving: performance.now() - lastLocalMove < 120 };
+        return { index: predictedFor, x: predicted.x + visualOffset.x, y: predicted.y + visualOffset.y, facing: predicted.facing, aim: predicted.aim, moving: performance.now() - lastLocalMove < 120 };
     }
 
     // ---------- input ----------

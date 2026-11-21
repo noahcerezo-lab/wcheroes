@@ -6,7 +6,8 @@
  * game rules win over a sheet's native pixel size (combat-vfx.md "Playback rules" 3), and floor
  * effects (rings, cracks, downed/revive, telegraphs) are never X-flipped (rule 2).
  *
- * Enemy art only has idle loops so far; walk / windup / strike / death are procedural in mp-arena.js.
+ * Enemies use Draper's idle, walk, windup, strike and death sheets; mp-arena.js picks one from the
+ * server's enemy flags. World-scale telegraph rings are drawn separately (the sheets only hint at them).
  */
 (function (root) {
     'use strict';
@@ -37,7 +38,28 @@
         wisp: ['enemy_lantern_wisp_32x48_4f.png', 32, 48, 4, 150, 1],
         archer: ['enemy_tomoe_archer_48x64_4f.png', 48, 64, 4, 190, 1],
         warden: ['enemy_temple_warden_64x80_4f.png', 64, 80, 4, 230, 1],
-        voidEmperor: ['boss_void_emperor_96x128_4f.png', 96, 128, 4, 220, 1], // Phase D boss
+        // Action frames (Draper, second pass). Walk/dart loops are front-facing: never flipped.
+        acolyteWalk: ['enemy_horned_acolyte_walk_48x64_4f.png', 48, 64, 4, 130, 1],
+        acolyteWind: ['enemy_horned_acolyte_windup_48x64_3f.png', 48, 64, 3, 50, 1],
+        acolyteStrike: ['enemy_horned_acolyte_slash_48x64_4f.png', 48, 64, 4, 60, 1],
+        acolyteDie: ['enemy_horned_acolyte_die_48x64_4f.png', 48, 64, 4, 95, 1],
+        wispWalk: ['enemy_lantern_wisp_dart_32x48_4f.png', 32, 48, 4, 110, 1],
+        wispWind: ['enemy_lantern_wisp_charge_32x48_3f.png', 32, 48, 3, 85, 1],
+        wispStrike: ['enemy_lantern_wisp_fire_32x48_3f.png', 32, 48, 3, 80, 1],
+        wispDie: ['enemy_lantern_wisp_die_32x48_4f.png', 32, 48, 4, 95, 1],
+        archerWalk: ['enemy_tomoe_archer_walk_48x64_4f.png', 48, 64, 4, 140, 1],
+        archerWind: ['enemy_tomoe_archer_draw_48x64_3f.png', 48, 64, 3, 75, 1],
+        archerStrike: ['enemy_tomoe_archer_fire_48x64_3f.png', 48, 64, 3, 80, 1],
+        archerDie: ['enemy_tomoe_archer_die_48x64_4f.png', 48, 64, 4, 95, 1],
+        wardenWalk: ['enemy_temple_warden_walk_64x80_4f.png', 64, 80, 4, 180, 1],
+        wardenWind: ['enemy_temple_warden_plant_64x80_3f.png', 64, 80, 3, 120, 1],
+        wardenStrike: ['enemy_temple_warden_slam_64x80_4f.png', 64, 80, 4, 60, 1],
+        wardenDie: ['enemy_temple_warden_die_64x80_5f.png', 64, 80, 5, 90, 1],
+        voidEmperor: ['boss_void_emperor_96x128_4f.png', 96, 128, 4, 220, 1], // Phase D boss (idle)
+        bossSlamWind: ['boss_void_emperor_slam_windup_96x128_4f.png', 96, 128, 4, 210, 1],
+        bossSlam: ['boss_void_emperor_slam_96x128_4f.png', 96, 128, 4, 90, 1],
+        bossTargetWind: ['boss_void_emperor_target_windup_96x128_4f.png', 96, 128, 4, 210, 1],
+        bossTargetSmash: ['boss_void_emperor_target_smash_96x128_4f.png', 96, 128, 4, 90, 1],
     };
     const images = {};
     let loaded = 0;
@@ -86,11 +108,13 @@
     }
 
     // Combat-sim enemy type index (shared/combat.js ENEMY_TYPES) -> Draper sprite + on-screen width.
+    // Each has idle / walk / wind (telegraph) / strike / die sheets.
+    const act = (key, w) => ({ key, w, walk: key + 'Walk', wind: key + 'Wind', strike: key + 'Strike', die: key + 'Die' });
     const ENEMY_ART = [
-        { key: 'acolyte', w: 50 }, // 0 acolyte: melee grunt, ~64px tall like V19's swordsman
-        { key: 'wisp', w: 36 }, // 1 wisp: ranged ember lantern (hovers)
-        { key: 'archer', w: 50 }, // 2 archer: mid-range arrows
-        { key: 'warden', w: 74 }, // 3 warden: heavy ground slam
+        act('acolyte', 50), // 0 acolyte: melee grunt, ~64px tall like V19's swordsman
+        act('wisp', 36), // 1 wisp: ranged ember lantern (hovers)
+        act('archer', 50), // 2 archer: mid-range arrows
+        act('warden', 74), // 3 warden: heavy ground slam
     ];
     load();
     root.WCHCombatArt = { SHEETS, ENEMY_ART, load, ready, frame, play, loop, frameCount, duration, loadedCount: () => loaded };

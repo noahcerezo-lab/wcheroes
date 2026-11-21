@@ -30,6 +30,9 @@ const RULES = {
     destinyAuraMs: 1500, destinyAuraHeal: 3, destinyAuraRadius: S(145),
     reviveRadius: 38, reviveMs: 2000, reviveHpFrac: 0.4,
     comboWindowMs: 4300,
+    // Three-hit attack chain (server-timed): a swing within cooldown + chainWindowMs of the previous
+    // one continues the chain; the 3rd hit is a finisher, then a short recovery before the next swing.
+    chainWindowMs: 450, finisherDamageMul: 1.6, finisherKnockMul: 1.8, finisherRangeMul: 1.15, finisherRecoveryMul: 0.6,
     knockPerTick: 2.338 / 1.5, knockDecay: Math.pow(0.76, 3), // V19 kx decays x0.76 per frame
     enemyMargin: S(85), // spawn distance outside the arena
     maxEnemies: 24, // cap on enemies alive (bandwidth + readability)
@@ -84,7 +87,7 @@ function createBattle(opts = {}) {
         maxEnemies: opts.maxEnemies || RULES.maxEnemies,
         enemyDamageMul: opts.enemyDamageMul || 1, // difficulty knob (server env ENEMY_DAMAGE_MUL)
         heroes: ROSTER.HEROES.map((cfg, i) => ({
-            name: cfg.name, x: spawn[i][0], y: spawn[i][1], facing: i % 2 ? -1 : 1, moving: false,
+            name: cfg.name, x: spawn[i][0], y: spawn[i][1], facing: i % 2 ? -1 : 1, aim: i % 2 ? 4 : 0, vx: 0, vy: 0, moving: false, chain: 0,
             hp: cfg.v19.hp, maxHp: cfg.v19.hp, damage: cfg.v19.damage, range: S(cfg.v19.range), cool: cfg.v19.cool,
             speed: SIM.speedFromV19(cfg.v19.speed), stats: cfg.stats,
             state: 'alive', reviveMs: 0, attackAt: -1e9, specialAt: -1e9, healAt: 0, attackN: 0, specialN: 0,
@@ -110,12 +113,16 @@ function damageEnemy(w, hero, e, base, o = {}) {
     d = Math.max(1, Math.round(d));
     e.hp -= d;
     const t = ENEMY_TYPES[e.type];
-    const dir = o.dir ?? (Math.sign(e.x - hero.x) || hero.facing);
+    // Knockback along the attack direction (8-way aim), or straight away from the hero by default.
+    let kv = o.dirVec;
+    if (!kv) { const dx = e.x - hero.x, dy = e.y - hero.y, dd = Math.hypot(dx, dy); kv = dd > 0.5 ? { x: dx / dd, y: dy / dd } : { x: hero.facing, y: 0 } }
     const kb = (o.knock ?? 11) * RULES.knockPerTick * (1 - t.knockResist);
-    e.kx = dir * kb;
-    e.ky = (rng(w) - 0.5) * 5 * RULES.knockPerTick * (1 - t.knockResist);
+    e.kx = kv.x * kb;
+    e.ky = kv.y * kb + (rng(w) - 0.5) * 2 * RULES.knockPerTick * (1 - t.knockResist);
     if (o.stun) e.stunUntil = Math.max(e.stunUntil, w.time + o.stun);
-    emit(w, { t: 'hit', id: e.id, d, c: crit ? 1 : 0, h: w.heroes.indexOf(hero), x: Math.round(e.x), y: Math.round(e.y) });
+    const ev = { t: 'hit', id: e.id, d, c: crit ? 1 : 0, h: w.heroes.indexOf(hero), x: Math.round(e.x), y: Math.round(e.y) };
+    if (o.finisher) ev.f = 1;
+    emit(w, ev);
     if (e.hp <= 0) killEnemy(w, hero, e);
 }
 
@@ -155,38 +162,54 @@ function healHero(w, h, amount, from) {
     return n;
 }
 
-// V19 inArc(): facing-locked cone, y squashed by 1.2 for the fake perspective.
+// Aim as a unit vector: 8 directions from the last movement (shared-sim stepHero) or the AI's target.
+const aimOf = h => SIM.DIR8[h.aim ?? (h.facing === -1 ? 4 : 0)];
+// V19 inArc(), generalised from left/right to the hero's 8-way aim. y is stretched by 1.2 for V19's
+// fake perspective, on both the offset and the aim, so the cone looks the same in every direction.
 function inArc(h, e, range, half) {
     const dx = e.x - h.x, dy = (e.y - h.y) * 1.2, d = Math.hypot(dx, dy);
     if (d > range || d < 0.5) return d < 0.5;
-    return dx * h.facing / d >= Math.cos(half);
+    const a = aimOf(h), ay = a.y * 1.2, al = Math.hypot(a.x, ay);
+    return (dx * a.x + dy * ay) / (d * al) >= Math.cos(half);
 }
 const inReach = (h, e, range) => Math.hypot(e.x - h.x, (e.y - h.y) * 1.2) <= range;
 
-// Targets a basic attack would hit right now (used by attack + AI decisions).
-function attackTargets(w, h) {
-    const k = KITS[h.name];
+// Targets a basic attack would hit right now (used by attack + AI decisions). `rangeMul` widens the
+// reach for the chain finisher.
+function attackTargets(w, h, rangeMul = 1) {
+    const k = KITS[h.name], range = h.range * rangeMul;
     if (h.name === 'ESPIRIT') {
-        const lane = w.enemies.filter(e => inArc(h, e, h.range, k.arc)).sort((a, b) => dist(a, h) - dist(b, h));
+        const lane = w.enemies.filter(e => inArc(h, e, range, k.arc)).sort((a, b) => dist(a, h) - dist(b, h));
         return lane.slice(0, 1); // single arrow, nearest in the lane
     }
-    if (h.name === 'MARKIE') return w.enemies.filter(e => inReach(h, e, h.range));
-    return w.enemies.filter(e => inArc(h, e, h.range, k.arc));
+    if (h.name === 'MARKIE') return w.enemies.filter(e => inReach(h, e, range));
+    return w.enemies.filter(e => inArc(h, e, range, k.arc));
+}
+
+// Next chain stage (0, 1, 2) if the hero swung now. The 3rd swing (stage 2) is the finisher.
+function nextChainStage(w, h, cool) {
+    return h.attackN > 0 && h.chain < 2 && w.time - h.attackAt <= cool + RULES.chainWindowMs ? h.chain + 1 : 0;
 }
 
 function performAttack(w, h) {
     if (!alive(h) || w.over) return false;
     const cool = h.ai ? h.cool * RULES.aiAttackCooldownMul : h.cool;
-    if (w.time - h.attackAt < cool) return false;
+    const recovery = h.chain === 2 ? cool * RULES.finisherRecoveryMul : 0; // brief pause after a finisher
+    if (w.time - h.attackAt < cool + recovery) return false;
+    const stage = nextChainStage(w, h, cool + recovery);
+    const fin = stage === 2;
+    h.chain = stage;
     h.attackAt = w.time;
     h.attackN++;
-    const k = KITS[h.name], i = w.heroes.indexOf(h);
-    const targets = attackTargets(w, h);
-    // No 'atk' event: clients animate swings from the hero's attackN counter (saves bandwidth).
+    const k = KITS[h.name];
+    const targets = attackTargets(w, h, fin ? RULES.finisherRangeMul : 1);
+    const a = aimOf(h);
+    // No 'atk' event: clients animate swings from attackN + chain stage in the snapshot (saves bandwidth).
     for (const e of [...targets]) {
         let dmg = h.damage;
-        if (h.name === 'MARKIE') dmg = Math.round(h.damage * (inArc(h, e, h.range, k.front) ? k.frontMul : k.sideMul));
-        damageEnemy(w, h, e, dmg, { knock: k.knock, stun: k.stun, dir: h.facing });
+        if (h.name === 'MARKIE') dmg = Math.round(h.damage * (inArc(h, e, h.range * 1.2, k.front) ? k.frontMul : k.sideMul));
+        if (fin) dmg = Math.round(dmg * RULES.finisherDamageMul);
+        damageEnemy(w, h, e, dmg, { knock: k.knock * (fin ? RULES.finisherKnockMul : 1), stun: k.stun, dirVec: h.name === 'MARKIE' ? null : a, finisher: fin });
     }
     return true;
 }
@@ -360,6 +383,8 @@ function moveToward(h, tx, ty, speed) {
     h.x = clamp(h.x + dx / d * s, ARENA.minX, ARENA.maxX);
     h.y = clamp(h.y + dy / d * s, ARENA.minY, ARENA.maxY);
     if (Math.abs(h.x - ox) > 0.05) h.facing = h.x > ox ? 1 : -1;
+    if (Math.abs(h.x - ox) + Math.abs(h.y - oy) > 0.05) h.aim = SIM.dir8Of(h.x - ox, h.y - oy);
+    h.vx = h.x - ox; h.vy = h.y - oy;
     return Math.abs(h.x - ox) + Math.abs(h.y - oy) > 0.01;
 }
 
@@ -377,9 +402,11 @@ function stepAI(w, h, leader) {
     }
     if (enemy && ed < S(380)) {
         const ideal = k.aiIdeal, dx = enemy.x - h.x;
-        if (Math.abs(dx) > 3) h.facing = Math.sign(dx);
         if (ed > ideal + 8) h.moving = moveToward(h, enemy.x - Math.sign(dx || 1) * ideal * 0.7, enemy.y, speed);
         else if (h.name === 'ESPIRIT' && ed < ideal - 25) h.moving = moveToward(h, h.x - Math.sign(dx || 1) * 20, h.y + (enemy.y - h.y) * -0.2, speed * 0.66);
+        else { h.vx = 0; h.vy = 0 }
+        h.aim = SIM.dir8Of(enemy.x - h.x, enemy.y - h.y); // AI aims (8-way) at its target
+        if (Math.abs(SIM.DIR8[h.aim].x) > 0.01) h.facing = SIM.DIR8[h.aim].x > 0 ? 1 : -1;
         if (attackTargets(w, h).length) performAttack(w, h);
         const crowd = w.enemies.filter(e => dist(e, h) < k.specialRadius * 0.8).length;
         const hurtAlly = h.name === 'DESTINY' && w.heroes.some(u => alive(u) && u.hp < u.maxHp * 0.4 && dist(u, h) < k.rallyRadius);
@@ -437,7 +464,8 @@ function snapshot(w) {
         next: w.waveState === 'intermission' ? Math.max(0, w.nextWaveAt - w.time) : 0, left: w.toSpawn + w.enemies.length,
         score: w.score, kills: w.kills, combo: w.time < w.comboUntil ? w.combo : 0, over: w.over ? 1 : 0,
         heroes: w.heroes.map(h => ({
-            name: h.name, x: h.x, y: h.y, facing: h.facing, moving: h.moving, controller: h.controller, seq: h.seq,
+            name: h.name, x: h.x, y: h.y, vx: h.vx, vy: h.vy, facing: h.facing, aim: h.aim, moving: h.moving, controller: h.controller, seq: h.seq,
+            cs: h.chain, // chain stage of the last swing (2 = finisher)
             hp: h.hp, maxHp: h.maxHp, state: h.state === 'alive' ? 0 : 1, rv: h.state === 'downed' ? Math.round(h.reviveMs / RULES.reviveMs * 100) : 0,
             attackN: h.attackN, specialN: h.specialN, buff: w.time < h.buffUntil ? 1 : 0, shield: w.time < h.shieldUntil ? 1 : 0,
             cd: Math.max(0, Math.round((h.specialAt + RULES.specialCooldownMs - w.time) / 100)) // special cooldown, 0.1 s
@@ -448,4 +476,4 @@ function snapshot(w) {
     };
 }
 
-module.exports = { RULES, ENEMY_TYPES, ENEMY_INDEX, KITS, createBattle, step, snapshot, spawnEnemy, performAttack, performSpecial, damageHero, attackTargets, isBossWave, waveSize, critChance, damageTakenMul, inArc };
+module.exports = { nextChainStage, aimOf, RULES, ENEMY_TYPES, ENEMY_INDEX, KITS, createBattle, step, snapshot, spawnEnemy, performAttack, performSpecial, damageHero, attackTargets, isBossWave, waveSize, critChance, damageTakenMul, inArc };

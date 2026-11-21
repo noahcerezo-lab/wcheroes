@@ -30,16 +30,37 @@
         return { x, y };
     }
 
-    // Apply one input step to a hero {x, y, facing}. Returns true if the hero moved.
+    // Movement feel (Phase C): velocity eases toward the stick instead of jumping. ACCEL is the share of
+    // the gap to the target velocity closed per 50 ms input while a direction is held (full speed in
+    // ~4 inputs = 200 ms); DECEL is the same when the stick is released (stops in ~4 inputs).
+    const ACCEL = 0.5, DECEL = 0.55, STOP_EPS = 0.05;
+    // Aim: 8 directions (0 = right, 2 = down, 4 = left, 6 = up; odd = diagonals). Attacks use it.
+    const DIR8 = Array.from({ length: 8 }, (_, i) => Object.freeze({ x: Math.round(Math.cos(i * Math.PI / 4) * 1e6) / 1e6, y: Math.round(Math.sin(i * Math.PI / 4) * 1e6) / 1e6 }));
+    const dir8Of = (x, y) => ((Math.round(Math.atan2(y, x) / (Math.PI / 4)) % 8) + 8) % 8;
+
+    // Apply one input step to a hero {x, y, facing, vx, vy, aim}. Returns true if the hero moved.
+    // Same function on server and client, so prediction replays match the server exactly.
     function stepHero(h, move, speed = HERO_SPEED) {
         const ox = h.x, oy = h.y;
-        h.x = clamp(h.x + move.x * speed, ARENA.minX, ARENA.maxX);
-        h.y = clamp(h.y + move.y * speed, ARENA.minY, ARENA.maxY);
-        if (Math.abs(move.x) > 0.01) h.facing = move.x > 0 ? 1 : -1;
+        const held = Math.hypot(move.x, move.y) > 0.01; // move is already normalized (length <= 1): diagonals aren't faster
+        const k = held ? ACCEL : DECEL;
+        let vx = num(h.vx), vy = num(h.vy);
+        vx += (move.x * speed - vx) * k;
+        vy += (move.y * speed - vy) * k;
+        if (!held && Math.hypot(vx, vy) < STOP_EPS) { vx = 0; vy = 0 }
+        h.x = clamp(h.x + vx, ARENA.minX, ARENA.maxX);
+        h.y = clamp(h.y + vy, ARENA.minY, ARENA.maxY);
+        if (h.x !== ox + vx) vx = 0; // hit a wall: lose that component instead of sliding into it
+        if (h.y !== oy + vy) vy = 0;
+        h.vx = vx; h.vy = vy;
+        if (Math.hypot(move.x, move.y) > 0.25) { // aim follows the direction you last pushed
+            h.aim = dir8Of(move.x, move.y);
+            if (Math.abs(DIR8[h.aim].x) > 0.01) h.facing = DIR8[h.aim].x > 0 ? 1 : -1;
+        } else if (h.aim === undefined) h.aim = h.facing === -1 ? 4 : 0;
         return Math.abs(h.x - ox) + Math.abs(h.y - oy) > 0.01;
     }
 
-    const api = { ARENA, TICK_MS, HERO_SPEED, V19_SCALE, fromV19, speedFromV19, clamp, normalizeMove, stepHero };
+    const api = { ARENA, TICK_MS, HERO_SPEED, V19_SCALE, fromV19, speedFromV19, clamp, normalizeMove, stepHero, ACCEL, DECEL, DIR8, dir8Of };
     root.WCHSim = api;
     if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);
