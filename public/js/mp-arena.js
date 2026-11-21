@@ -1151,6 +1151,53 @@
             MARKIE: { primary: '#ff9c58', light: '#ffe2a1', shape: 'embers' },
             ESPIRIT: { primary: '#74e6a8', light: '#dcffe8', shape: 'leaves' },
         };
+        // Anime-fantasy power silhouettes sit BEHIND the existing character artwork.
+        // Their strength responds to real buffs and special-attack animation, never to random gameplay state.
+        function drawAnimeMantle(h, i, now) {
+            if (h.state) return;
+            const skin = HERO_FINISH[h.name];
+            if (!skin) return;
+            const action = anim && anim.stateOf(i);
+            const sp = action && action.spc;
+            const specialAge = sp ? now - sp.start : Infinity;
+            const surge = specialAge >= 0 && specialAge < 750 ? Math.sin(Math.PI * specialAge / 750) : 0;
+            const empowered = !!(h.buff || h.shield || (h.pu && h.pu.some(Boolean)));
+            const intensity = empowered ? .72 : .30;
+            const wave = Math.sin(now / 280 + i);
+            g.save();
+            g.globalCompositeOperation = 'lighter';
+            g.globalAlpha = Math.min(.88, intensity + surge * .40);
+            const grad = g.createLinearGradient(0, -105, 0, 12);
+            grad.addColorStop(0, skin.primary + '00');
+            grad.addColorStop(.52, skin.primary + '77');
+            grad.addColorStop(1, skin.primary + '00');
+            g.fillStyle = grad;
+            // Flowing energy cloak / twin anime aura flames, anchored behind the sprite.
+            for (const side of [-1, 1]) {
+                g.beginPath();
+                g.moveTo(side * 11, -68);
+                g.bezierCurveTo(side * (37 + surge * 18), -105 - wave * 8, side * (51 + surge * 20), -54, side * (27 + surge * 14), -15);
+                g.quadraticCurveTo(side * 34, -55, side * 11, -68);
+                g.fill();
+            }
+            g.strokeStyle = skin.light;
+            g.lineWidth = 1.8 + surge * 2;
+            g.globalAlpha = .35 + surge * .48;
+            for (const side of [-1, 1]) {
+                g.beginPath();
+                g.moveTo(side * 17, -76);
+                g.quadraticCurveTo(side * (40 + surge * 12), -99 - wave * 8, side * (37 + surge * 15), -34);
+                g.stroke();
+            }
+            // Special attacks briefly bloom into a circular power-up halo.
+            if (surge > .03) {
+                g.globalAlpha = surge * .65;
+                g.strokeStyle = skin.light; g.lineWidth = 3;
+                g.beginPath(); g.ellipse(0, -44, 35 + surge * 16, 51 + surge * 14, 0, 0, Math.PI * 2); g.stroke();
+            }
+            g.restore();
+        }
+
         function drawHeroFinish(h, i, now, role, k) {
             if (h.state) return;
             const skin = HERO_FINISH[h.name];
@@ -1250,6 +1297,7 @@
                 g.beginPath(); g.moveTo(8, 0); g.lineTo(-5, -6); g.lineTo(-2, 0); g.lineTo(-5, 6); g.closePath(); g.fill();
                 g.restore();
             }
+            drawAnimeMantle(h, i, now);
             const entity = Object.assign({ name: h.name, facing: h.facing === -1 ? -1 : 1, moving: !!h.moving && !h.state, color, upgradeTier: h.upgradeTier || 0, theme: ART_THEME }, poseFor(i, now));
             if (h.state) { // downed: lying on the ground, greyed, with a revive progress ring
                 g.save();
