@@ -88,7 +88,29 @@
         const texts = [], banners = [];
         // Pooled particles (fx-pool.js) and the hero pose/attack animator (hero-anim.js).
         const pool = root.WCHFxPool.createPool(520);
-        const anim = root.WCHHeroAnim ? root.WCHHeroAnim.create({ R, pool, S, theme: ART_THEME }) : null;
+        const anim = root.WCHHeroAnim ? root.WCHHeroAnim.create({ R, pool, S, theme: ART_THEME, procedural: !!opts.procedural }) : null;
+        const SH = root.WCHSheets || null;
+        // Oracle's fx.js (impact presets, cosmetic hit-stop time scale) once its module has loaded.
+        let ofx = null; const OC = {};
+        function oracle() {
+            if (ofx || !root.WCHOracleFX) return ofx;
+            ofx = root.WCHOracleFX.createFX({ capacity: 2048, budgetMs: 18 });
+            OC.NOAH = ofx.particles.color('#79E4FF'); OC.MARKIE = ofx.particles.color('#FF9657'); OC.DESTINY = ofx.particles.color('#F5C65D'); OC.ESPIRIT = ofx.particles.color('#FFE17B'); OC.GOLD = ofx.particles.color('#FFD36D');
+            return ofx;
+        }
+        function emitO(preset, x, y, ang, scale, col) { const o = oracle(); if (o) o.particles.emit(preset, x, y, ang || 0, scale || 1, col === undefined ? -1 : col) }
+        // WebAudio cues (sfx.js). iOS only allows audio after a user gesture: unlock on the first tap/key.
+        function sfx(name, i, o) {
+            const X = root.WCHSfx; if (!X) return;
+            const mine = i === undefined || isMine(i);
+            const h = i !== undefined && latestHero(i);
+            X.play(name, Object.assign({ gain: mine ? 1 : .3, pan: h ? Math.max(-.6, Math.min(.6, (h.x * S / canvas.width - .5) * 1.2)) : 0 }, o));
+            stats.sfx = (stats.sfx || 0) + 1;
+        }
+        if (typeof document !== 'undefined') {
+            const unlock = () => { if (root.WCHSfx) { root.WCHSfx.unlock(); if (root.WCHSfx.isUnlocked()) for (const ev of ['pointerdown', 'touchend', 'keydown']) document.removeEventListener(ev, unlock, true) } };
+            for (const ev of ['pointerdown', 'touchend', 'keydown']) document.addEventListener(ev, unlock, true);
+        }
         const pendingHits = []; // hit visuals waiting for the weapon to connect: {at, e}
         const recoils = new Map(); // enemy id -> {at, dx, dy, holdUntil, x, y}
         let lastFrame = 0;
@@ -140,7 +162,18 @@
 
         // Particle cap keeps phones smooth: 260 squares at most, each one fillRect (no blur/shadows).
         function burst(x, y, color, n, speed = 4, o) { return pool.burst(x, y, color, n, speed, o) }
-        function floatText(x, y, str, color, size, life = 870) { if (texts.length < 80) texts.push({ x, y, str, color, size, born: performance.now(), life, dx: (Math.random() - .5) * 14 }) } // ~26 V19 ticks
+        function floatText(x, y, str, color, size, life = 870, key) {
+            const now = performance.now();
+            if (key !== undefined) { // damage numbers on the same target within 260 ms combine into one total
+                for (let j = texts.length - 1; j >= 0; j--) {
+                    const t = texts[j];
+                    if (t.key === key && now - t.born < 260 && t.color === color) { t.sum += +str || 0; t.str = String(t.sum) + (t.bang || ''); t.born = now; t.size = Math.max(t.size, size); return }
+                }
+            }
+            if (texts.length >= 40) texts.shift(); // cap: never a wall of numbers
+            const n = parseInt(str, 10);
+            texts.push({ x, y, str, color, size, born: now, life, dx: (Math.random() - .5) * 14, key, sum: isNaN(n) ? 0 : n, bang: /!$/.test(str) ? '!' : '' });
+        }
         function latestHero(i) { const s = snaps[snaps.length - 1]; return s && s.heroes[i] }
 
         // Attack/special animations come from the hero's attackN/specialN counters (robust to a missed
@@ -159,7 +192,19 @@
                         f.ty = hit ? hit.y : h.y + f.aim.y * KIT.ESPIRIT.range;
                         f.life = Math.max(120, Math.hypot(f.tx - h.x, f.ty - h.y) * S / 3.2);
                     }
-                    if (anim && anim.hasPose(h.name)) { anim.onAttack(i, h, f.stage, f.aim, now); f.pose = true }
+                    if (anim && anim.hasPose(h.name)) {
+                        anim.onAttack(i, h, f.stage, f.aim, now); f.pose = true;
+                        if (h.name === 'ESPIRIT') { // arrow leaves the string on the release frame and flies at bow speed
+                            f.rel = anim.releaseAt(i);
+                            f.flight = Math.max(60, Math.hypot(f.tx - h.x, f.ty - h.y) * S / anim.BOW.speed);
+                            f.life = f.rel - now + f.flight + 20;
+                            sfx('bowDraw', i);
+                            pendingHits.push({ at: f.rel, e: { t: 'sfx', name: 'bowRelease', i } });
+                        } else {
+                            sfx(h.name === 'MARKIE' ? 'axeSwing' : 'swing', i, { variant: f.stage + 1 });
+                            if (h.name === 'MARKIE') pendingHits.push({ at: anim.contactAt(i), e: { t: 'sfx', name: 'axeImpact', i, gain: f.stage === 2 ? 1.2 : .8 } });
+                        }
+                    }
                     fx.push(f);
                     if (!f.pose) attackBurst(f, h, now);
                 }
@@ -208,6 +253,34 @@
         }
         // Noah's impact: blue sparks + crystal shards at the collision point, flash, recoil, hit-stop; the
         // Arcane Breaker (finisher) adds a bright impact flash and an expanding magical shockwave.
+        // Per-hero impact at the collision point (everyone but Noah): hitflash sheet, preset particles, recoil,
+        // hit-stop on the attacker's sheet, sound, smaller number. Crits turn the impact gold.
+        const IMPACT = {
+            MARKIE: { preset: 'spark', dust: true, recoil: [11, 15, 20], stop: [60, 60, 95], cue: null, flash: '#FFC277' },
+            DESTINY: { preset: 'slash', dust: false, recoil: [7, 9, 13], stop: [40, 45, 70], cue: 'goldStrike', flash: '#FFF1C5' },
+            ESPIRIT: { preset: 'spark', dust: false, recoil: [6, 8, 11], stop: [0, 0, 0], cue: 'arrowHit', flash: '#FFF9D4' },
+        };
+        function heroImpact(e, now, h) {
+            const C = IMPACT[h.name]; if (!C) return false;
+            const px = e.x * S, py = e.y * S - 36;
+            const dx = e.x - h.x, dy = e.y - h.y, d = Math.hypot(dx, dy) || 1, ang = Math.atan2(dy, dx);
+            const cx = px - dx / d * 12, cy = py - dy / d * 7, fin = !!e.f, mine = isMine(e.h), st = fin ? 2 : e.c ? 1 : 0;
+            if (C.stop[st]) anim.hitStop(e.h, C.stop[st]);
+            impactRecoil(e, now, C.recoil[st]);
+            fx.push({ kind: 'ov', key: 'hit' + h.name, n: 5, fd: 45, x: cx, y: cy, sc: fin || e.c ? 1.6 : 1.2, start: now, life: 225 });
+            emitO(e.c ? 'gold' : C.preset, cx, cy, ang, fin ? 1.3 : e.c ? 1.1 : .8, e.c ? OC.GOLD : OC[h.name]);
+            if (C.dust && (fin || e.c)) emitO('dust', e.x * S, e.y * S - 4, -Math.PI / 2, fin ? 1.2 : .7);
+            if (h.name === 'DESTINY' && fin) emitO('glint', cx, cy - 6, 0, 1);
+            if (e.c) { emitO('glint', cx, cy, 0, 1); fx.push({ kind: 'flash', x: cx, y: cy, r: fin ? 34 : 26, color: '#FFE9A8', start: now, life: 120 }) }
+            if (C.cue) sfx(C.cue, e.h, { gain: fin ? 1.1 : .8 });
+            if (e.c) sfx('crit', e.h);
+            if (fin || e.c) addShake(mine ? (h.name === 'MARKIE' ? (fin ? 4.5 : 2.5) : fin ? 2.5 : 1.5) : .8, fin ? 150 : 100, now);
+            if (mine && (fin || e.c)) { const o = oracle(); if (o) o.hitStop(fin ? 55 : 35) } // cosmetic particle freeze only
+            hitNumber(e, cx, cy - 22, now);
+            if (e.c) { stats.crits = (stats.crits || 0) + 1; if (e.cc >= 2) { chains[e.h] = { n: e.cc, at: now }; stats.maxChain = Math.max(stats.maxChain || 0, e.cc) } }
+            stats.impacts = (stats.impacts || 0) + 1;
+            return true;
+        }
         function noahImpact(e, now) {
             const h = latestHero(e.h);
             const px = e.x * S, py = e.y * S - 36;
@@ -226,17 +299,24 @@
                 p.x = cx; p.y = cy; p.vx = Math.cos(a) * sp; p.vy = Math.sin(a) * sp; p.kind = 1; p.size = 3 + Math.random() * 3; p.life = 300 + Math.random() * 200;
                 p.color = Math.random() < .5 ? '#D8FFFF' : '#83B8FF'; p.add = true; p.rot = a; p.vr = .01;
             });
-            fx.push({ kind: 'flash', x: cx, y: cy, r: fin ? 46 : e.c ? 30 : 20, color: e.c ? '#FFE9A8' : '#D8FFFF', start: now, life: fin ? 160 : 110 });
+            fx.push({ kind: 'flash', x: cx, y: cy, r: fin ? 32 : e.c ? 24 : 16, color: e.c ? '#FFE9A8' : '#D8FFFF', start: now, life: fin ? 160 : 110 });
             if (fin) { // Arcane Breaker: shockwave rings (a dark refractive inner ring sells the "distortion")
                 fx.push({ kind: 'shock', x: e.x * S, y: e.y * S - 10, r0: 12, r1: 120, start: now, life: 420 });
                 addShake(mine ? 3.5 : 1.5, 140, now);
             } else if (e.c) addShake(mine ? 2.5 : 1, 100, now);
+            fx.push({ kind: 'ov', key: 'hitNOAH', n: 5, fd: 45, x: cx, y: cy, sc: fin ? 1.7 : 1.25, start: now, life: 225 });
+            if (fin && SH) fx.push({ kind: 'ov', sheet: 'noahShards', n: 6, fd: 50, x: cx, y: cy, sc: 1.4 * uiScale(), start: now, life: 300 });
+            emitO(e.c ? 'gold' : 'arcane', cx, cy, Math.atan2(dy, dx), fin ? 1.1 : .6, e.c ? OC.GOLD : -1);
+            sfx(fin ? 'arcaneBreaker' : 'arcaneHit', e.h, { gain: fin ? 1.1 : .8 });
+            if (e.c) sfx('crit', e.h);
+            if (mine && (fin || e.c)) { const o = oracle(); if (o) o.hitStop(fin ? 60 : 35) }
             hitNumber(e, cx, cy - 22, now);
             if (e.c) { stats.crits = (stats.crits || 0) + 1; if (e.cc >= 2) { chains[e.h] = { n: e.cc, at: now }; stats.maxChain = Math.max(stats.maxChain || 0, e.cc) } }
+            stats.impacts = (stats.impacts || 0) + 1;
             stats.noahImpacts = (stats.noahImpacts || 0) + 1;
         }
         function isMine(i) { const h = latestHero(i), id = opts.getMyId && opts.getMyId(); return !!(h && id && h.controller === id) }
-        function hitNumber(e, x, y, now) { floatText(x, y, String(e.d) + (e.c ? '!' : ''), e.c ? NUM.crit : NUM.normal, e.f ? 22 : e.c ? 22 : 16) }
+        function hitNumber(e, x, y, now) { floatText(x, y, String(e.d) + (e.c ? '!' : ''), e.c ? NUM.crit : NUM.normal, e.f ? 17 : e.c ? 18 : 13, e.c ? 760 : 620, e.id) } // small + merged per target
         function processPending(now) {
             for (let j = pendingHits.length - 1; j >= 0; j--) {
                 const p = pendingHits[j];
@@ -247,18 +327,25 @@
             }
         }
         function onEvent(e, now, prevSnap) {
+            if (e.t === 'sfx') { sfx(e.name, e.i, { gain: e.gain }); return }
             if (e.t === 'hit' && !e.late && anim) { // pose heroes: show the impact when the weapon connects
                 const h = latestHero(e.h);
                 if (h && anim.hasPose(h.name)) {
-                    const at = anim.contactAt(e.h);
+                    const dist = h.name === 'ESPIRIT' ? Math.hypot(e.x - h.x, e.y - h.y) * S : 0; // arrow flight
+                    const at = anim.contactAt(e.h, dist);
                     if (at > now) { pendingHits.push({ at, e }); recoilHold(e, at); return }
                 }
+            }
+            if (e.t === 'kill' && !e.late) { // the death waits for the blow that caused it
+                const p = pendingHits.find(q => q.e.t === 'hit' && q.e.id === e.id);
+                if (p) { e.prev = prevSnap && prevSnap.enemies.find(v => v[0] === e.id); pendingHits.push({ at: p.at + 1, e }); return }
             }
             switch (e.t) {
                 case 'hit': {
                     flashes.set(e.id, now + 200);
                     const hh = latestHero(e.h);
                     if (anim && hh && hh.name === 'NOAH') { noahImpact(e, now); break }
+                    if (anim && hh && heroImpact(e, now, hh)) break;
                     const px = e.x * S, py = e.y * S - 40;
                     const big = e.c || e.f; // crit or 3rd-hit finisher
                     const sheet = e.c ? (e.h === 3 ? 'espiritCrit' : 'critFlash') : e.f ? 'critFlash' : 'hitSpark';
@@ -281,9 +368,16 @@
                     break;
                 }
                 case 'kill': {
-                    burst(e.x * S, e.y * S - 30, '#FF6C78', 13, 5); // enemies.md death burst
-                    const last = prevSnap && prevSnap.enemies.find(v => v[0] === e.id);
-                    if (last) { const art = A && A.ENEMY_ART[last[1]]; ghosts.push({ e: last.slice(), start: now, life: art && A.ready(art.die) ? A.duration(art.die) + 120 : 380 }) }
+                    burst(e.x * S, e.y * S - 30, '#FF6C78', 7, 4); // enemies.md death burst (smaller; the die frames carry it)
+                    const last = e.prev || (prevSnap && prevSnap.enemies.find(v => v[0] === e.id));
+                    if (last) { // die frames + a short knockback slide away from the killer
+                        const art = A && A.ENEMY_ART[last[1]], kh = latestHero(e.h);
+                        const ddx = kh ? last[2] - kh.x : 0, ddy = kh ? last[3] - kh.y : 0, dd = Math.hypot(ddx, ddy) || 1;
+                        ghosts.push({ e: last.slice(), start: now, life: art && A.ready(art.die) ? A.duration(art.die) + 120 : 380, kx: ddx / dd * 16, ky: ddy / dd * 8 });
+                        recoils.delete(e.id);
+                    }
+                    emitO('dust', e.x * S, e.y * S - 6, -Math.PI / 2, .6);
+                    sfx('stagger', e.h, { gain: .5 });
                     if (e.combo >= 2) comboAt = now;
                     break;
                 }
@@ -307,6 +401,8 @@
                     if (!h) break;
                     const r = (e.r || SPECIAL_RADIUS[h.name] || 140) * S;
                     fx.push({ kind: 'special', name: h.name, x: h.x * S, y: h.y * S, r, start: now, life: 700 });
+                    if (h.name === 'DESTINY' && SH) fx.push({ kind: 'ov', sheet: 'destinyGuard', n: 8, fd: 70, follow: e.h, sc: 2.2 * uiScale(), start: now, life: 560 }); // gold shield + mint heal ring
+                    if (h.name === 'DESTINY') sfx('healChime', e.h);
                     addShake(3, 150, now);
                     banners.push({ str: h.name + ' • ' + e.k, color: heroCfg(h.name).color, born: now, life: 1300, small: true });
                     break;
@@ -330,6 +426,7 @@
                 case 'pick': {
                     const P = PICKUP[e.k] || PICKUP[0], h = latestHero(e.h);
                     stats.picks = (stats.picks || 0) + 1;
+                    sfx('pickup', e.h);
                     fx.push({ kind: 'ring', x: e.x * S, y: e.y * S, r0: 10, r1: 80, color: P.color, width: 4, start: now, life: 380 });
                     burst(e.x * S, e.y * S - 30, P.color, 14, 5); burst(e.x * S, e.y * S - 30, P.core, 8, 3);
                     if (h) floatText(h.x * S, h.y * S - 118, P.label + (P.key === 'heal' ? '' : '!'), P.core, 22, 1000);
@@ -352,10 +449,11 @@
                     }
                     banners.push({ str: 'LEVEL UP • SQUAD Lv ' + e.lv, color: '#FFD36D', born: now, life: 2200 });
                     stats.levelUps = (stats.levelUps || 0) + 1;
+                    sfx('levelUp');
                     break;
                 }
                 case 'wave': banners.push({ str: 'WAVE ' + e.n + (e.boss ? ' • BOSS WAVE' : ''), color: '#FFD36D', born: now, life: 2000 }); break;
-                case 'clear': banners.push({ str: 'WAVE ' + e.n + ' CLEARED • +25 HP', color: '#9ef0c0', born: now, life: 2200 }); break;
+                case 'clear': sfx('waveCleared'); banners.push({ str: 'WAVE ' + e.n + ' CLEARED • +25 HP', color: '#9ef0c0', born: now, life: 2200 }); break;
                 case 'over': overInfo = { wave: e.wave, score: e.score, kills: e.kills, at: now }; break;
             }
         }
@@ -686,6 +784,37 @@
                 if (Math.random() < .5 * a) pool.emit(1, p => { p.x = x + (Math.random() - .5) * 40; p.y = y - Math.random() * 30; p.vy = -.08 - Math.random() * .08; p.vx = (Math.random() - .5) * .02; p.kind = 3; p.size = 2 + Math.random() * 2; p.life = 700; p.color = Math.random() < .5 ? f.color : '#FFFFFF'; p.add = true });
             }
         }
+        // One-shot overhaul FX sheet: a per-hero hitflash (OV.hit*), or a hero-sheets FX (f.sheet), nearest-neighbor.
+        function drawOv(f, now, view, k) {
+            const el = now - f.start; if (el < 0) return;
+            const fr = Math.floor(el / f.fd); if (fr >= f.n) return;
+            let x = f.x, y = f.y;
+            if (f.follow !== undefined) { const h = view.heroes[f.follow]; if (!h) return; x = h.x * S; y = h.y * S - 30 * k }
+            if (f.sheet) { g.save(); g.translate(Math.round(x), Math.round(y)); SH.draw(g, f.sheet, fr, false, f.sc); g.restore(); return }
+            const im = OV[f.key]; if (!im) return;
+            const sz = 32 * f.sc * Math.min(k, 1.3);
+            g.imageSmoothingEnabled = false;
+            g.drawImage(im, fr * 32, 0, 32, 32, Math.round(x - sz / 2), Math.round(y - sz / 2), sz, sz);
+        }
+        // Espirit's arrow: launched on the bow's release frame from the bow hand, Draper's glowing arrow loop
+        // (arrowhead points right, rotated to the flight angle) with a short gold trail.
+        function drawArrow(f, now, k) {
+            const el = now - f.rel; if (el < 0 || el > f.flight) return;
+            const t = el / f.flight, fin = f.stage === 2;
+            const sx = f.x * S + f.aim.x * 18 * k, sy = f.y * S - 38 * k + f.aim.y * 10 * k, ex = f.tx * S, ey = f.ty * S - 38 * k;
+            const hx = lerp(sx, ex, t), hy = lerp(sy, ey, t), ang = Math.atan2(ey - sy, ex - sx);
+            const t0 = Math.max(0, t - .22), tx0 = lerp(sx, ex, t0), ty0 = lerp(sy, ey, t0);
+            g.save();
+            g.globalCompositeOperation = 'lighter'; g.lineCap = 'round';
+            g.globalAlpha = .55; g.strokeStyle = '#FFB948'; g.lineWidth = (fin ? 4 : 2.5) * Math.min(k, 1.3);
+            g.beginPath(); g.moveTo(tx0, ty0); g.lineTo(hx, hy); g.stroke();
+            g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+            g.translate(Math.round(hx), Math.round(hy)); g.rotate(ang);
+            const sc = (fin ? 1.25 : 1) * Math.min(k, 1.3);
+            if (!(SH && SH.draw(g, 'arrowGlow', Math.floor(now / 50) % 6, false, sc)) && A) A.loop(g, 'espiritArrow', now, 0, 0, KIT.ESPIRIT.atkW * k);
+            g.restore();
+            if (Math.random() < .4) emitO('arrowTrail', hx, hy, ang + Math.PI, 1, OC.ESPIRIT);
+        }
         function drawActionFx(view, now, k, dt) {
             if (anim) {
                 const room = opts.getRoom(), myId = opts.getMyId();
@@ -700,7 +829,9 @@
             for (const f of fx) {
                 const el = now - f.start;
                 if (f.kind === 'flash' || f.kind === 'shock' || f.kind === 'levelup') { drawFlashFx(f, now, view); continue }
-                if (f.kind === 'attack' && f.pose) continue; // drawn by hero-anim (blade-path crescent)
+                if (f.kind === 'ov') { drawOv(f, now, view, k); continue }
+                if (f.kind === 'attack' && f.pose && f.name === 'ESPIRIT') { drawArrow(f, now, k); continue }
+                if (f.kind === 'attack' && f.pose) continue; // drawn by hero-anim (blade-path crescent / sheets)
                 if (f.kind === 'attack' && A) {
                     const h = view.heroes[f.i] || f, kit = KIT[f.name];
                     if (!kit) continue;
@@ -1028,7 +1159,9 @@
             const view = sample(now);
             if (!view) return;
             processPending(now);
-            pool.update(dt);
+            const o = oracle();
+            const ts = o ? o.update(dt) : 1; // cosmetic hit-stop: scales particle time only (never the sim or prediction)
+            pool.update(dt * ts);
             const room = opts.getRoom(), myId = opts.getMyId();
             // Your own hero is drawn at its predicted position (instant response); others are interpolated.
             const local = opts.getLocalHero && opts.getLocalHero();
@@ -1050,12 +1183,18 @@
             drawPickups(view, now, k);
             const units = view.heroes.map((h, i) => ({ y: h.y, h, i }));
             for (const e of view.enemies || []) units.push({ y: e[3], e });
-            for (const gh of ghosts) { const el = now - gh.start; units.push({ y: gh.e[3], e: gh.e, dieAt: gh.start, fade: el < gh.life - 160 ? 1 : (gh.life - el) / 160 }) } // die frames, then fade
+            for (const gh of ghosts) { // die frames + knockback slide, then fade
+                const el = now - gh.start, u = Math.min(1, el / 240), ease = 1 - (1 - u) * (1 - u);
+                const e2 = gh.kx ? (gh.e2 || (gh.e2 = gh.e.slice())) : gh.e;
+                if (gh.kx) { e2[2] = gh.e[2] + gh.kx * ease; e2[3] = gh.e[3] + gh.ky * ease }
+                units.push({ y: e2[3], e: e2, dieAt: gh.start, fade: el < gh.life - 160 ? 1 : (gh.life - el) / 160 });
+            }
             units.sort((a, b) => a.y - b.y).forEach(u => u.e ? drawEnemy(u.e, now, k, u.fade, u.dieAt) : drawHero(u.h, u.i, now, room, myId, k));
             if (enemyMotion.size > 64) { const live = new Set((view.enemies || []).map(e => e[0])); for (const id of enemyMotion.keys()) if (!live.has(id)) enemyMotion.delete(id) }
             drawBuffs(view, now, k);
             drawActionFx(view, now, k, dt);
             drawParticles(now);
+            if (o) { o.draw(g); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over' }
             drawNumbers(now);
             drawChains(view, now, k);
             g.setTransform(1, 0, 0, 1, 0, 0);
@@ -1068,7 +1207,7 @@
         function start() { if (!running) { running = true; requestAnimationFrame(frame) } }
         function stop() { running = false }
 
-        return { push, reset, start, stop, sample, stats, interpolating: interpEnabled, fxCounts: () => ({ fx: fx.length, parts: pool.count, density: pool.density, texts: texts.length, banners: banners.length, art: A ? A.loadedCount() : 0, shakes: shake.count, reducedMotion: reducedMotion() }), pickupsShown: () => { const v = sample(performance.now()); return v ? (v.pk || []).length : 0 }, chainOf: i => chains[i] ? chains[i].n : 0, lastAttackFx: name => { const f = [...fx].reverse().find(v => v.kind === 'attack' && (!name || v.name === name)); return f ? { name: f.name, aim: f.aim, stage: f.stage } : null } };
+        return { push, reset, start, stop, sample, stats, interpolating: interpEnabled, fxCounts: () => ({ fx: fx.length, parts: pool.count, oparts: ofx ? ofx.particles.count : 0, sheets: SH ? SH.progress().loaded : 0, density: pool.density, texts: texts.length, banners: banners.length, art: A ? A.loadedCount() : 0, shakes: shake.count, reducedMotion: reducedMotion() }), pickupsShown: () => { const v = sample(performance.now()); return v ? (v.pk || []).length : 0 }, chainOf: i => chains[i] ? chains[i].n : 0, lastAttackFx: name => { const f = [...fx].reverse().find(v => v.kind === 'attack' && (!name || v.name === name)); return f ? { name: f.name, aim: f.aim, stage: f.stage } : null } };
     }
 
     root.WCHArena = { createArena, TICK_MS, INTERP_DELAY_MS };

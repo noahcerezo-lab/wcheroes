@@ -806,9 +806,18 @@
     <script src="js/heroes-render.js"></script>
     <script src="js/combat-art.js"></script>
     <script src="js/fx-pool.js"></script>
+    <script src="js/hero-sheets.js"></script>
     <script src="js/hero-anim.js"></script>
     <script src="js/mp-arena.js"></script>
     <script src="js/mp-client.js"></script>
+    <script type="module">
+        // Oracle's pooled impact particles / hit-stop (fx.js) and synthesized WebAudio cues (sfx.js): ES modules,
+        // exposed on window for the classic-script arena, which picks them up as soon as they load.
+        import { createFX } from './js/fx.js';
+        import sfx from './js/sfx.js';
+        window.WCHOracleFX = { createFX };
+        window.WCHSfx = sfx;
+    </script>
 </body>
 
 </html>

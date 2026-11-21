@@ -52,6 +52,8 @@ const RULES = {
     // Three-hit attack chain (server-timed): a swing within cooldown + chainWindowMs of the previous
     // one continues the chain; the 3rd hit is a finisher, then a short recovery before the next swing.
     chainWindowMs: 450, finisherDamageMul: 1.6, finisherKnockMul: 1.8, finisherRangeMul: 1.15, finisherRecoveryMul: 0.6,
+    // Basic hits push enemies 40% further than V19 so every blow visibly lands (Noah's iPhone notes: 'almost no knockback').
+    basicKnockMul: 1.4,
     knockPerTick: 2.338 / 1.5, knockDecay: Math.pow(0.76, 3), // V19 kx decays x0.76 per frame
     enemyMargin: S(85), // spawn distance outside the arena
     maxEnemies: 24, // cap on enemies alive (bandwidth + readability)
@@ -236,7 +238,7 @@ function performAttack(w, h) {
         let dmg = h.damage;
         if (h.name === 'MARKIE') dmg = Math.round(h.damage * (inArc(h, e, h.range * 1.2, k.front) ? k.frontMul : k.sideMul));
         if (fin) dmg = Math.round(dmg * RULES.finisherDamageMul);
-        damageEnemy(w, h, e, dmg, { knock: k.knock * (fin ? RULES.finisherKnockMul : 1), stun: k.stun, dirVec: h.name === 'MARKIE' ? null : a, finisher: fin });
+        damageEnemy(w, h, e, dmg, { knock: k.knock * RULES.basicKnockMul * (fin ? RULES.finisherKnockMul : 1), stun: k.stun, dirVec: h.name === 'MARKIE' ? null : a, finisher: fin });
     }
     return true;
 }
