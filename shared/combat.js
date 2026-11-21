@@ -71,6 +71,8 @@ const RULES = {
 const ENEMY_TYPES = [
     { key: 'acolyte', kind: 'melee', from: 1, weight: () => 1, hp: w => 30 + 8 * w, speed: w => Math.min(5.2, (1 + 0.1 * w) * 2), dmg: w => 7 + w, reach: S(29) + 3, atkMs: 850, windMs: 150, knockResist: 0, radius: 12, points: 1 },
     { key: 'warden', kind: 'slam', from: 3, weight: w => Math.min(0.54, (0.1 + 0.03 * w) / (0.9 - 0.03 * w)), hp: w => 90 + 22 * w, speed: w => Math.min(3.4, (0.7 + 0.05 * w) * 2), dmg: w => 14 + 2 * w, reach: S(40) + 3, slamR: 55, atkMs: 1600, windMs: 350, knockResist: 0.6, radius: 18, points: 3 },
+    // Boss-only type. Never selected by the normal weighted spawner; one appears every tenth wave.
+    { key: 'voidEmperor', kind: 'slam', from: Infinity, weight: () => 0, hp: w => 650 + 55 * w, speed: w => Math.min(3.6, 2.1 + w * 0.035), dmg: w => 17 + Math.round(w * 0.7), reach: 66, slamR: 90, atkMs: 2300, windMs: 900, knockResist: 0.95, radius: 33, points: 20 },
 ];
 const ENEMY_INDEX = Object.fromEntries(ENEMY_TYPES.map((t, i) => [t.key, i]));
 
@@ -91,7 +93,7 @@ const PICKUP_KINDS = ['heal', 'fury', 'haste', 'ward']; // index = snapshot kind
 const moveSpeed = (w, h) => h.speed * (w.time < (h.hasteUntil || 0) ? RULES.hasteSpeedMul : 1);
 const damageTakenMul = st => clamp(1 - (st.VIT - 5) * 0.04, 0.7, 1.2); // Markie (VIT 9): 0.84
 
-function isBossWave(n) { return n > 0 && n % 15 === 0 } // Phase D: spawn a boss instead of a normal wave
+function isBossWave(n) { return n > 0 && n % RULES.levelEvery === 0 } // Boss encounter precedes each 10-wave level-up
 
 // ---------------- RNG ----------------
 function rng(world) { // mulberry32
@@ -341,8 +343,8 @@ const spawnIntervalTicks = n => Math.max(4, 16 - n);
 function startWave(w) {
     w.wave++;
     w.waveState = 'fighting';
-    w.bossWave = isBossWave(w.wave); // Phase D: replace with a boss encounter
-    w.toSpawn = waveSize(w.wave);
+    w.bossWave = isBossWave(w.wave);
+    w.toSpawn = w.bossWave ? 1 : waveSize(w.wave);
     w.spawnTimer = 0;
     w.zone = Math.floor(Math.max(0, w.wave - 1) / 15) % 4; // V19: battlefield changes every 15 waves
     emit(w, { t: 'wave', n: w.wave, size: w.toSpawn, boss: w.bossWave ? 1 : 0 });
@@ -355,7 +357,7 @@ function stepWaves(w) {
         return;
     }
     if (w.toSpawn > 0 && --w.spawnTimer <= 0 && w.enemies.length < w.maxEnemies) {
-        spawnEnemy(w);
+        spawnEnemy(w, w.bossWave ? ENEMY_INDEX.voidEmperor : pickEnemyType(w));
         w.toSpawn--;
         w.spawnTimer = spawnIntervalTicks(w.wave);
     }
@@ -569,6 +571,7 @@ function snapshot(w) {
         tick: w.tick, time: w.time, zone: w.zone, wave: w.wave, ws: w.waveState === 'fighting' ? 1 : 0,
         next: w.waveState === 'intermission' ? Math.max(0, w.nextWaveAt - w.time) : 0, left: w.toSpawn + w.enemies.length,
         score: w.score, kills: w.kills, combo: w.time < w.comboUntil ? w.combo : 0, over: w.over ? 1 : 0,
+        boss: w.bossWave && w.waveState === 'fighting' ? (() => { const e = w.enemies.find(e => e.type === ENEMY_INDEX.voidEmperor); return e ? { id: e.id, hp: Math.max(0, e.hp), max: e.max, name: 'VOID EMPEROR' } : null })() : null,
         heroes: w.heroes.map(h => ({
             name: h.name, x: h.x, y: h.y, vx: h.vx, vy: h.vy, facing: h.facing, aim: h.aim, moving: h.moving, controller: h.controller, seq: h.seq,
             cs: h.chain, // chain stage of the last swing (2 = finisher)
