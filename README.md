@@ -50,6 +50,8 @@ Bandwidth: ~28 KB/s of JSON per client in a 4-player fight; WebSocket compressio
 - **AI teammates** circle their target at their preferred range instead of standing still, step back when they overlap an enemy, and sidestep if they get stuck. Espirit keeps about 150 units away, lined up on one of her 8 aim lines.
 - **Downed / revive.** At 0 HP a hero is downed (can't move or attack). Stand next to them for 2 s (two helpers = faster) to revive at 40% HP. Everyone downed = game over; after 8 s (`GAME_OVER_RETURN_MS`) the room returns to the lobby, or the host can return earlier.
 - **Waves.** Wave n has 5 + 3n enemies, at most 24 alive (`MAX_ENEMIES`). They spawn off-screen and can't leave the arena once inside. +25 HP to living heroes on a clear, 3 s break. Wardens join from wave 3 and grow to about a third of each wave by wave 10. Every 15th wave is flagged as a boss wave and every 10th calls an upgrade hook (both no-ops until Phase D).
+- **Level up.** Clearing every 10th wave (10, 20, 30…) levels up every living hero, human or AI, and heals them to full (downed heroes miss that one). Stats come from `shared/levelup-table.js`, adopted from Oracle's soft-capped curve (levels 1–15; past 15 stays on row 15): max HP, damage, move speed, attack cooldown, special-damage scale, and crit growth added on top of the 14% base (total capped at 45% before pickups). Level 1 is the V19 base. The level shows on nameplates and in the HUD.
+- **Knockback.** Basic hits push 40% further than V19 (`RULES.basicKnockMul`). Espirit's reach is 2× V19 (`RULES.espiritRangeMul`).
 - **Env knobs.** `FIRST_WAVE_DELAY_MS` (3000), `GAME_OVER_RETURN_MS` (8000), `ENEMY_DAMAGE_MUL` (1, difficulty), `COMBAT_SEED` (fixed fights for testing), `WS_DEFLATE=0` (turn compression off).
 
 ## Art
@@ -57,6 +59,13 @@ Bandwidth: ~28 KB/s of JSON per client in a 4-player fight; WebSocket compressio
 - Combat VFX and enemies: Draper's pack (`/workspace/wcheroes-design/`, README + combat-vfx.md + enemies.md), copied to `public/assets/combat/` and drawn with nearest-neighbor scaling. World radii win over sheet sizes; floor rings aren't flipped. Damage numbers: `#FFF2A0` normal, `#FFD36D` crit, `#ADFFCB` heal.
 - Portraits and stat fills: Oracle's pack (`/workspace/wcheroes-assets/`, README), copied to `public/assets/portraits/*.png` and `public/assets/heroes.json`.
 - Screen shake is small and short, and off when the device asks for reduced motion.
+- **Premium overhaul** (Draper's `m-overhaul` groups 1–7, copied to `public/assets/overhaul/`, nearest-neighbor):
+  - Noah: 8-way attack sheets per combo hit (Crescent Slash, Reverse Arc, Arcane Breaker) with the tapered crescent sheet on hits 1–2 and shards + shockwave on the Breaker's impact frame. Espirit: 8-way bow cycle (raise, draw, nock/hold, release, recoil) and a glowing arrow that leaves the string on the release frame. Markie: axe smash with sparks + ground crack on frame 6. Destiny: gold sweep, and the gold shield + heal ring on RALLY STRIKE. Markie and Destiny only have E/W art, so up/down/diagonal hits add a rotated crescent layer. Idle/run/hurt sheets for everyone. The procedural pose layer (`hero-anim.js`) is the fallback while sheets load.
+  - Impacts show when the weapon connects (or the arrow lands), not when the packet arrives; the enemy holds for a few frames (hit-stop), then recoils away from the hit. Deaths wait for the killing blow and slide back while the die frames play. Damage numbers are smaller and combine per target.
+  - Sounds: synthesized WebAudio cues (`sfx.js`, Oracle) for swings, hits, crits, finishers, the bow, pickups, level-ups and wave clears. They start after the first tap/key (iOS rule); other players' sounds are quieter.
+  - Battlefield: the Moonlit Temple layers composited once per zone (zones are colour-graded: ember red, verdant teal, celestial violet), ambient mist + embers, soft shadows, a light pool under attacking heroes.
+  - Phones: compact HUD, banners in one slim top band, special-move callouts as small tags near the hero, the canvas and controls inside the safe areas (`env(safe-area-inset-*)`), smaller controls that are translucent until touched.
+  - Performance: pooled particles (`fx-pool.js` + Oracle's `fx.js`), cached backgrounds/glows/tints, adaptive particle density from frame times (phones start at 75%). Hit-stop only slows cosmetic particles; the server sim and prediction never pause.
 
 ## Code layout
 
@@ -67,6 +76,7 @@ Bandwidth: ~28 KB/s of JSON per client in a 4-player fight; WebSocket compressio
 - `public/js/heroes-render.js` — V19's hero/enemy sprites and battlefield, extracted so `legacy-v19.html` and the multiplayer client share one renderer. Optional `theme: 'sheet'` recolors heroes to match the official hero sheets (multiplayer only).
 - `public/js/shared-sim.js` — movement rule shared by server and client (acceleration, 8-way aim, prediction).
 - `public/js/mp-client.js` — lobby, sessions/reconnect, input + prediction, V19 joystick and touch buttons.
+- `public/js/hero-sheets.js` / `hero-anim.js` — hero sprite sheets and the attack timelines (contact frame, hit-stop, effects); `env-fx.js` — battlefield; `fx-pool.js`, `fx.js` (Oracle) — particles; `sfx.js` (Oracle) — sound.
 - `public/js/mp-arena.js` — multiplayer canvas: V19 battlefield + heroes, Draper enemies and effects, HUD; interpolates snapshots (`?interp=0` turns smoothing off); larger sprites on small screens.
 - `test/` — `npm test`: combat unit tests (deterministic), server combat checks (forged input, downed, wipe → lobby), and the multiplayer checks (lobby, sync, reconnect-to-slot, grace expiry, host migration, prediction acks, rate limits, cooldowns, play again).
 

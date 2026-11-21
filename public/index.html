@@ -711,45 +711,81 @@
 
             body.in-battle .battle-head {
                 position: fixed;
-                top: 6px;
+                top: max(4px, env(safe-area-inset-top));
                 right: max(8px, env(safe-area-inset-right));
                 z-index: 7;
                 margin: 0
             }
 
+            body.in-battle .battle-head .row {
+                gap: 6px;
+                flex-wrap: nowrap
+            }
+
             body.in-battle .battle-head button {
-                min-height: 30px;
-                padding: 4px 9px;
-                font-size: 11px;
-                opacity: .85
+                min-height: 26px;
+                padding: 3px 8px;
+                font-size: 10px;
+                opacity: .7;
+                background: #120c1fb3
+            }
+
+            /* the canvas stays inside the safe area (notch / Dynamic Island / home bar) */
+            body.in-battle #battle {
+                padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left) !important;
+                box-sizing: border-box
+            }
+
+            body.in-battle .battle {
+                width: min(calc(100vw - env(safe-area-inset-left) - env(safe-area-inset-right)), calc((100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom)) * 16 / 9))
             }
 
             body.in-battle #touch-controls {
                 position: fixed;
-                left: max(10px, env(safe-area-inset-left));
-                right: max(10px, env(safe-area-inset-right));
-                bottom: 8px;
+                left: max(14px, calc(env(safe-area-inset-left) + 6px));
+                right: max(14px, calc(env(safe-area-inset-right) + 6px));
+                bottom: max(10px, calc(env(safe-area-inset-bottom) + 4px));
                 margin: 0;
                 pointer-events: none;
                 z-index: 5
             }
 
+            /* translucent while idle, solid while touched */
             body.in-battle #joystick {
-                width: 118px;
-                height: 118px;
-                opacity: .85
+                width: 104px;
+                height: 104px;
+                opacity: .42;
+                background: radial-gradient(circle, #33294d99, #18132999);
+                transition: opacity .15s
+            }
+
+            body.in-battle #joystick.active {
+                opacity: .9
+            }
+
+            body.in-battle #actions {
+                gap: 10px
+            }
+
+            body.in-battle #actions button {
+                opacity: .55;
+                transition: opacity .12s;
+                font-size: 10px
+            }
+
+            body.in-battle #actions button.pressed {
+                opacity: 1
             }
 
             body.in-battle #attack-touch {
-                width: 82px;
-                height: 82px;
-                opacity: .9
+                width: 70px;
+                height: 70px
             }
 
             body.in-battle #special-touch {
-                width: 64px;
-                height: 64px;
-                opacity: .9
+                width: 54px;
+                height: 54px;
+                margin-bottom: 30px
             }
         }
     </style>
@@ -805,8 +841,20 @@
     <script src="js/shared-sim.js"></script>
     <script src="js/heroes-render.js"></script>
     <script src="js/combat-art.js"></script>
+    <script src="js/fx-pool.js"></script>
+    <script src="js/hero-sheets.js"></script>
+    <script src="js/hero-anim.js"></script>
+    <script src="js/env-fx.js"></script>
     <script src="js/mp-arena.js"></script>
     <script src="js/mp-client.js"></script>
+    <script type="module">
+        // Oracle's pooled impact particles / hit-stop (fx.js) and synthesized WebAudio cues (sfx.js): ES modules,
+        // exposed on window for the classic-script arena, which picks them up as soon as they load.
+        import { createFX } from './js/fx.js';
+        import sfx from './js/sfx.js';
+        window.WCHOracleFX = { createFX };
+        window.WCHSfx = sfx;
+    </script>
 </body>
 
 </html>

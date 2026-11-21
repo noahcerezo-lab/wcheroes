@@ -232,11 +232,12 @@
         const k = Math.min(1, (mag - dead) / (radius - dead)) / mag; // ramp from the dead zone to full speed
         touch.x = dx * k; touch.y = dy * k;
     }
-    function resetJoy() { joyPointer = null; stick.style.transform = 'translate(-50%,-50%)'; touch.x = touch.y = 0 }
+    function resetJoy() { joyPointer = null; joy.classList.remove('active'); stick.style.transform = 'translate(-50%,-50%)'; touch.x = touch.y = 0 }
     joy.addEventListener('pointerdown', e => {
         e.preventDefault();
         if (joyPointer !== null) return;
         joyPointer = e.pointerId;
+        joy.classList.add('active');
         try { joy.setPointerCapture(e.pointerId) } catch {}
         moveStick(e);
     });
