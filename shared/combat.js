@@ -119,7 +119,7 @@ function createBattle(opts = {}) {
             speed: SIM.speedFromV19(cfg.v19.speed), stats: cfg.stats, level: 1,
             base: { hp: cfg.v19.hp, damage: cfg.v19.damage, speed: SIM.speedFromV19(cfg.v19.speed) },
             state: 'alive', reviveMs: 0, attackAt: -1e9, specialAt: -1e9, healAt: 0, attackN: 0, specialN: 0,
-            buffUntil: 0, shieldUntil: 0, furyUntil: 0, hasteUntil: 0, wardUntil: 0, synergyUntil: 0, critChain: 0, wantAttack: false, wantSpecial: false, ai: true, controller: null, seq: 0,
+            buffUntil: 0, shieldUntil: 0, furyUntil: 0, hasteUntil: 0, wardUntil: 0, synergyUntil: 0, awakenUntil: 0, critChain: 0, wantAttack: false, wantSpecial: false, ai: true, controller: null, seq: 0,
         })),
         enemies: [],
         pickups: [], nextPickupId: 1, nextPickupAt: null, // set when the first wave starts
@@ -135,7 +135,7 @@ const emit = (w, e) => { w.events.push(e) };
 // ---------------- damage ----------------
 function damageEnemy(w, hero, e, base, o = {}) {
     if (e.hp <= 0) return;
-    let d = base * (w.time < hero.buffUntil ? KITS.DESTINY.buffMul : 1);
+    let d = base * (w.time < hero.buffUntil ? KITS.DESTINY.buffMul : 1) * (w.time < (hero.awakenUntil || 0) ? 1.25 : 1);
     const crit = rng(w) < critChance(hero, w);
     if (crit) d *= RULES.critMul;
     hero.critChain = crit ? (hero.critChain || 0) + 1 : 0; // consecutive crits; any normal hit breaks it
@@ -251,8 +251,11 @@ function performSpecial(w, h) {
     if (w.time - h.specialAt < cd) return false;
     h.specialAt = w.time;
     h.specialN++;
+    // Every ultimate grants a short anime-style awakening. Damage stays server-authoritative.
+    h.awakenUntil = w.time + 8000;
     const k = KITS[h.name], i = w.heroes.indexOf(h);
     emit(w, { t: 'spc', h: i, k: k.specialName, r: Math.round(k.specialRadius) });
+    emit(w, { t: 'awaken', h: i, until: h.awakenUntil });
     for (const e of [...w.enemies]) {
         if (dist(e, h) < k.specialRadius) damageEnemy(w, h, e, h.damage * k.specialMul * (h.skillScale || 1), { knock: k.specialKnock ?? 12, stun: k.specialStun || 0 });
     }
@@ -602,6 +605,7 @@ function snapshot(w) {
             cc: h.critChain || 0, // Critical Chain: consecutive crits
             lv: h.level || 1, // hero level (LEVEL UP every 10th wave)
             hp: h.hp, maxHp: h.maxHp, state: h.state === 'alive' ? 0 : 1, rv: h.state === 'downed' ? Math.round(h.reviveMs / RULES.reviveMs * 100) : 0,
+            awake: left(w, h.awakenUntil),
             attackN: h.attackN, specialN: h.specialN, buff: w.time < h.buffUntil ? 1 : 0, shield: w.time < h.shieldUntil ? 1 : 0,
             cd: Math.max(0, Math.round((h.specialAt + RULES.specialCooldownMs - w.time) / 100)), // special cooldown, 0.1 s
             spd: moveSpeed(w, h), // effective move speed (HASTE) so client prediction matches the server exactly
