@@ -160,8 +160,9 @@
 
     // ---------- prediction ----------
     function myHeroIndex(w) { return w ? w.heroes.findIndex(h => h.controller && h.controller === myId()) : -1 }
-    // Same per-hero speed the server uses (V19 speed converted to world units per input).
-    const speedOf = i => SIM.speedFromV19(ROSTER[i].v19.speed);
+    // Same speed the server uses: the snapshot's effective speed (spd includes HASTE x1.5), else the
+    // hero's base V19 speed converted to world units per input.
+    const speedOf = i => { const h = world && world.heroes[i]; return h && Number.isFinite(h.spd) && h.spd > 0 ? h.spd : SIM.speedFromV19(ROSTER[i].v19.speed) };
     const canMove = w => { const i = myHeroIndex(w); return i >= 0 && !w.heroes[i].state && !w.over };
     function resetPrediction() { pending = []; predicted = null; predictedFor = null; visualOffset = { x: 0, y: 0 } }
     function reconcile(w) {

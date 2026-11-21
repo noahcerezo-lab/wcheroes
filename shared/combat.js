@@ -33,6 +33,15 @@ const RULES = {
     // Critical hits (rolled on the server for every hit): 14% base, x1.85 damage. FURY and SQUAD
     // SYNERGY add to the chance. Consecutive crits by the same hero build a Critical Chain.
     critBase: 0.14, critMul: 1.85,
+    // Power-ups: one glowing pickup appears every 10-17 s during a run (max 2 on the field, each lasts
+    // 15 s). A living hero collects it by walking over it; the server checks the distance.
+    pickupEveryMs: [10000, 17000], pickupLifeMs: 15000, pickupMax: 2, pickupRadius: 26,
+    healFrac: 0.32, // HEAL: +32% max HP
+    furyMs: 10500, furyCrit: 0.25, // FURY: +25% crit chance (14% -> 39%)
+    hasteMs: 10500, hasteSpeedMul: 1.5, hasteCooldownMul: 0.65, // HASTE: +50% move speed, attacks 35% sooner
+    wardMs: 11000, wardMul: 0.5, // WARD: incoming damage halved
+    // SQUAD SYNERGY: when the squad has AI teammates, any pickup also gives every living hero +12% crit for 6.5 s.
+    synergyMs: 6500, synergyCrit: 0.12,
     // Three-hit attack chain (server-timed): a swing within cooldown + chainWindowMs of the previous
     // one continues the chain; the 3rd hit is a finisher, then a short recovery before the next swing.
     chainWindowMs: 450, finisherDamageMul: 1.6, finisherKnockMul: 1.8, finisherRangeMul: 1.15, finisherRecoveryMul: 0.6,
@@ -68,6 +77,9 @@ const KITS = {
 // Crit chance for a hero right now: 14% base + active boosts (FURY, SQUAD SYNERGY; see power-ups).
 const critChance = (h, w) => Math.min(0.95, RULES.critBase + (w && h ? critBonus(w, h) : 0));
 function critBonus(w, h) { return (w.time < (h.furyUntil || 0) ? RULES.furyCrit : 0) + (w.time < (h.synergyUntil || 0) ? RULES.synergyCrit : 0) }
+const PICKUP_KINDS = ['heal', 'fury', 'haste', 'ward']; // index = snapshot kind
+// Move speed right now (HASTE: x1.5). Server input handling, AI and client prediction all use this.
+const moveSpeed = (w, h) => h.speed * (w.time < (h.hasteUntil || 0) ? RULES.hasteSpeedMul : 1);
 const damageTakenMul = st => clamp(1 - (st.VIT - 5) * 0.04, 0.7, 1.2); // Markie (VIT 9): 0.84
 
 function isBossWave(n) { return n > 0 && n % 15 === 0 } // Phase D: spawn a boss instead of a normal wave
@@ -95,9 +107,10 @@ function createBattle(opts = {}) {
             hp: cfg.v19.hp, maxHp: cfg.v19.hp, damage: cfg.v19.damage, range: S(cfg.v19.range), cool: cfg.v19.cool,
             speed: SIM.speedFromV19(cfg.v19.speed), stats: cfg.stats,
             state: 'alive', reviveMs: 0, attackAt: -1e9, specialAt: -1e9, healAt: 0, attackN: 0, specialN: 0,
-            buffUntil: 0, shieldUntil: 0, wantAttack: false, wantSpecial: false, ai: true, controller: null, seq: 0,
+            buffUntil: 0, shieldUntil: 0, furyUntil: 0, hasteUntil: 0, wardUntil: 0, synergyUntil: 0, critChain: 0, wantAttack: false, wantSpecial: false, ai: true, controller: null, seq: 0,
         })),
         enemies: [],
+        pickups: [], nextPickupId: 1, nextPickupAt: null, // set when the first wave starts
         events: [],
         hooks: opts.hooks || {},
     };
@@ -147,6 +160,7 @@ function damageHero(w, h, amount, by) {
     if (!alive(h) || w.over) return;
     let d = amount * damageTakenMul(h.stats);
     if (w.time < h.shieldUntil) d *= KITS.MARKIE.shieldMul;
+    if (w.time < h.wardUntil) d *= RULES.wardMul;
     d = Math.max(1, Math.round(d));
     h.hp = Math.max(0, h.hp - d);
     const i = w.heroes.indexOf(h);
@@ -198,7 +212,7 @@ function nextChainStage(w, h, cool) {
 
 function performAttack(w, h) {
     if (!alive(h) || w.over) return false;
-    const cool = h.ai ? h.cool * RULES.aiAttackCooldownMul : h.cool;
+    const cool = (h.ai ? h.cool * RULES.aiAttackCooldownMul : h.cool) * (w.time < h.hasteUntil ? RULES.hasteCooldownMul : 1);
     const recovery = h.chain === 2 ? cool * RULES.finisherRecoveryMul : 0; // brief pause after a finisher
     if (w.time - h.attackAt < cool + recovery) return false;
     const stage = nextChainStage(w, h, cool + recovery);
@@ -345,6 +359,44 @@ function stepWaves(w) {
     }
 }
 
+// ---------------- power-ups ----------------
+function stepPickups(w) {
+    if (w.wave < 1) return; // nothing before the first wave
+    const [lo, hi] = RULES.pickupEveryMs;
+    if (w.nextPickupAt === null) w.nextPickupAt = w.time + lo + rng(w) * (hi - lo);
+    for (let j = w.pickups.length - 1; j >= 0; j--) if (w.time >= w.pickups[j].until) w.pickups.splice(j, 1);
+    if (w.time >= w.nextPickupAt) {
+        w.nextPickupAt = w.time + lo + rng(w) * (hi - lo);
+        if (w.pickups.length < RULES.pickupMax) {
+            const kind = Math.floor(rng(w) * PICKUP_KINDS.length);
+            const p = { id: w.nextPickupId++, kind, x: Math.round(ARENA.minX + 60 + rng(w) * (ARENA.maxX - ARENA.minX - 120)), y: Math.round(ARENA.minY + 40 + rng(w) * (ARENA.maxY - ARENA.minY - 70)), at: w.time, until: w.time + RULES.pickupLifeMs };
+            w.pickups.push(p);
+            emit(w, { t: 'pspawn', id: p.id, k: kind, x: p.x, y: p.y });
+        }
+    }
+    for (let j = w.pickups.length - 1; j >= 0; j--) {
+        const p = w.pickups[j];
+        let best = null, bd = RULES.pickupRadius;
+        for (const h of w.heroes) if (alive(h)) { const d = dist(h, p); if (d <= bd) { bd = d; best = h } }
+        if (best) { w.pickups.splice(j, 1); collectPickup(w, best, p) }
+    }
+}
+
+function collectPickup(w, h, p) {
+    const i = w.heroes.indexOf(h), kind = PICKUP_KINDS[p.kind];
+    if (kind === 'heal') healHero(w, h, Math.round(h.maxHp * RULES.healFrac), h);
+    else if (kind === 'fury') h.furyUntil = w.time + RULES.furyMs;
+    else if (kind === 'haste') h.hasteUntil = w.time + RULES.hasteMs;
+    else if (kind === 'ward') h.wardUntil = w.time + RULES.wardMs;
+    emit(w, { t: 'pick', id: p.id, k: p.kind, h: i, x: p.x, y: p.y });
+    // SQUAD SYNERGY: only when playing alongside AI teammates.
+    if (w.heroes.some(u => u.ai)) {
+        const got = [];
+        w.heroes.forEach((u, j) => { if (alive(u)) { u.synergyUntil = w.time + RULES.synergyMs; got.push(j) } });
+        emit(w, { t: 'syn', h: i, all: got });
+    }
+}
+
 // ---------------- heroes: passives, revive, AI ----------------
 function stepPassives(w) {
     for (const h of w.heroes) {
@@ -380,7 +432,7 @@ function moveToward(h, tx, ty, speed) {
 function stepAI(w, h, leader) {
     h.moving = false;
     if (!alive(h)) return;
-    const k = KITS[h.name], speed = h.speed * 0.83;
+    const k = KITS[h.name], speed = moveSpeed(w, h) * 0.83;
     let enemy = null, ed = Infinity;
     for (const e of w.enemies) { if (!e.entered) continue; const d = dist(e, h); if (d < ed) { ed = d; enemy = e } }
     const downed = w.heroes.filter(u => u !== h && u.state === 'downed').sort((a, b) => dist(a, h) - dist(b, h))[0];
@@ -432,6 +484,7 @@ function step(w) {
     stepEnemies(w);
     stepPassives(w);
     stepWaves(w);
+    stepPickups(w);
     if (w.heroes.every(h => h.state === 'downed')) {
         w.over = true;
         emit(w, { t: 'over', wave: w.wave, score: w.score, kills: w.kills });
@@ -445,6 +498,7 @@ function enemyFlags(w, e) {
 }
 
 // Compact per-tick snapshot. Enemies are arrays: [id, type, x, y, hp%, facing, flags].
+const left = (w, until) => Math.max(0, Math.ceil(((until || 0) - w.time) / 100));
 function snapshot(w) {
     return {
         tick: w.tick, time: w.time, zone: w.zone, wave: w.wave, ws: w.waveState === 'fighting' ? 1 : 0,
@@ -456,11 +510,15 @@ function snapshot(w) {
             cc: h.critChain || 0, // Critical Chain: consecutive crits
             hp: h.hp, maxHp: h.maxHp, state: h.state === 'alive' ? 0 : 1, rv: h.state === 'downed' ? Math.round(h.reviveMs / RULES.reviveMs * 100) : 0,
             attackN: h.attackN, specialN: h.specialN, buff: w.time < h.buffUntil ? 1 : 0, shield: w.time < h.shieldUntil ? 1 : 0,
-            cd: Math.max(0, Math.round((h.specialAt + RULES.specialCooldownMs - w.time) / 100)) // special cooldown, 0.1 s
+            cd: Math.max(0, Math.round((h.specialAt + RULES.specialCooldownMs - w.time) / 100)), // special cooldown, 0.1 s
+            spd: moveSpeed(w, h), // effective move speed (HASTE) so client prediction matches the server exactly
+            // power-up time left in 0.1 s (0 = off): FURY, HASTE, WARD, SQUAD SYNERGY
+            pu: [left(w, h.furyUntil), left(w, h.hasteUntil), left(w, h.wardUntil), left(w, h.synergyUntil)],
         })),
+        pk: w.pickups.map(p => [p.id, p.kind, p.x, p.y, Math.ceil((p.until - w.time) / 1000)]),
         enemies: w.enemies.map(e => [e.id, e.type, Math.round(e.x), Math.round(e.y), Math.max(0, Math.round(e.hp / e.max * 100)), e.facing, enemyFlags(w, e)]),
         ev: w.events,
     };
 }
 
-module.exports = { damageEnemy, nextChainStage, aimOf, RULES, ENEMY_TYPES, ENEMY_INDEX, KITS, createBattle, step, snapshot, spawnEnemy, performAttack, performSpecial, damageHero, attackTargets, isBossWave, waveSize, critChance, damageTakenMul, inArc };
+module.exports = { PICKUP_KINDS, moveSpeed, stepPickups, collectPickup, damageEnemy, nextChainStage, aimOf, RULES, ENEMY_TYPES, ENEMY_INDEX, KITS, createBattle, step, snapshot, spawnEnemy, performAttack, performSpecial, damageHero, attackTargets, isBossWave, waveSize, critChance, damageTakenMul, inArc };
