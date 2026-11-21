@@ -1,6 +1,488 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>West Coast Heroes — Co-op Lobby</title><style>
-:root{color-scheme:dark;font-family:system-ui,-apple-system,sans-serif;background:#09141f;color:#f6eddb}*{box-sizing:border-box}body{margin:0;min-height:100dvh;background:radial-gradient(ellipse at 50% -15%,#275467 0%,#09141f 58%)}main{max-width:950px;margin:auto;padding:22px 16px 100px}h1{font-size:clamp(26px,5vw,48px);letter-spacing:2px;text-align:center;margin:20px 0 6px;color:#f5dba3}.sub{text-align:center;color:#adc2cb;margin:0 0 25px}.panel{background:#142535df;border:1px solid #47616b;border-radius:16px;padding:20px;margin:16px 0;box-shadow:0 14px 45px #0004}h2{margin:0 0 14px;font-size:20px}input{width:100%;padding:13px 14px;background:#091925;border:1px solid #69818b;border-radius:10px;color:white;font-size:17px}button{background:#e4bd78;color:#182332;border:0;border-radius:10px;padding:12px 16px;font-weight:800;cursor:pointer;min-height:46px}button.secondary{background:#254252;color:#f7e7c6;border:1px solid #6a8995}button:disabled{opacity:.4;cursor:not-allowed}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.row>*{flex:1}.muted{color:#a9bec6;font-size:14px}.code{font-size:28px;letter-spacing:5px;color:#f6d48d;font-weight:900}.heroes{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.hero{border:2px solid #344d5b;background:#101f2c;border-radius:14px;padding:16px 9px;text-align:center;cursor:pointer;min-height:145px}.hero.mine{border-color:#ffcf83;background:#273846}.hero.taken{opacity:.68}.glyph{font-size:40px;display:block;margin-bottom:8px}.hero b{display:block}.hero small{display:block;color:#b2c4ca;margin-top:6px}.tag{display:inline-block;border-radius:99px;background:#2c4856;padding:5px 10px;font-size:12px;margin-top:8px}.green{color:#8ce5b4}.hidden{display:none!important}#notice{min-height:24px;color:#f7b2a7}.battle{position:relative;max-width:960px;margin:auto}canvas{display:block;width:100%;aspect-ratio:16/9;border:2px solid #6a8a91;border-radius:12px;touch-action:none;background:#152b39}.controls{display:flex;justify-content:space-between;gap:12px;margin-top:12px}.pad{display:grid;grid-template-columns:repeat(3,52px);gap:4px}.pad button{min-height:46px;padding:5px}.pad .empty{visibility:hidden}.key{font-size:12px;color:#b8d0d6;margin-top:9px}#status{font-size:14px;color:#b7cbd2;margin-top:12px}@media(max-width:650px){.heroes{grid-template-columns:repeat(2,1fr)}.panel{padding:14px}.row>*{flex-basis:100%}main{padding:12px 10px 60px}.hero{min-height:126px}.glyph{font-size:32px}}
-</style></head><body><main><h1>⚔ WEST COAST HEROES</h1><p class="sub">ONLINE CO-OP • 1–4 FRIENDS • AI FILLS EMPTY SLOTS</p><div id="notice" role="status"></div><section id="entry" class="panel"><h2>Enter the arena together</h2><label for="name">Your name</label><input id="name" maxlength="20" placeholder="Enter your name" value="Hero"><div class="row" style="margin-top:14px"><button id="create">CREATE PRIVATE ROOM</button><input id="roomCode" maxlength="6" placeholder="6-character room code"><button class="secondary" id="join">JOIN ROOM</button></div><p class="muted">One player creates a room and shares the link. Everyone selects a different hero.</p></section><section id="lobby" class="panel hidden"><div class="row"><div><div class="muted">PRIVATE ROOM</div><div id="code" class="code"></div></div><button class="secondary" id="copy">COPY INVITE LINK</button></div><h2 style="margin-top:22px">Choose your hero</h2><div id="heroes" class="heroes"></div><div class="row" style="margin-top:20px"><button id="ready">I'M READY</button><button id="start" class="secondary" disabled>START CO-OP BATTLE</button></div><p id="lobbyStatus" class="muted"></p><p class="muted">Unclaimed heroes automatically become AI teammates. Everyone must mark ready before the host can start.</p></section><section id="battle" class="panel hidden"><h2>Co-op Arena — Movement Prototype</h2><div class="battle"><canvas id="arena" width="960" height="540"></canvas></div><div class="controls"><div><div class="pad" id="pad"><span class="empty"></span><button data-dir="up">▲</button><span class="empty"></span><button data-dir="left">◀</button><button data-dir="down">▼</button><button data-dir="right">▶</button></div><div class="key">WASD / arrows or touch pad</div></div><div><p class="muted">Your hero has a gold ring.<br>Other human players have blue rings.<br>AI teammates have green rings.</p></div></div><p id="status">Connected to battle</p><p class="muted">This first multiplayer milestone synchronizes the lobby and movement. Combat, enemies, damage, bosses and upgrades are still in development.</p></section><p class="muted" style="text-align:center">Want to play the original single-player game? <a style="color:#e8cb8e" href="/legacy-v19.html">Open V19</a></p></main><script src="/socket.io/socket.io.js"></script><script>
-const socket=io(),HEROES=['NOAH','MARKIE','DESTINY','ESPIRIT'],ROLES=['SPELLBLADE MAGE','ROGUE-TANK','CAPTAIN WARRIOR','HUNTER'],EMOJI=['🗡️','🪓','🛡️','🏹'],COLORS=['#6daaff','#e8a14b','#e8c78c','#6edba0'];let room=null,world=null,keys={},touch=new Set();const $=id=>document.getElementById(id);function show(id){for(const key of ['entry','lobby','battle'])$(key).classList.toggle('hidden',key!==id)}function note(msg){$('notice').textContent=msg;setTimeout(()=>{if($('notice').textContent===msg)$('notice').textContent=''},6500)}function send(event,data,cb){socket.emit(event,data,r=>{if(!r?.ok){note(r?.error||'Request failed');return}cb?.(r)})}function invite(){return location.origin+location.pathname+'?room='+room.code}function render(){if(!room)return;$('code').textContent=room.code;const me=room.players.find(p=>p.id===socket.id);$('heroes').replaceChildren();room.slots.forEach((slot,i)=>{const owner=room.players.find(p=>p.hero===i),b=document.createElement('button');b.className='hero'+(me?.hero===i?' mine':'')+(owner&&owner.id!==socket.id?' taken':'');b.disabled=!!owner&&owner.id!==socket.id;b.innerHTML='<span class="glyph">'+EMOJI[i]+'</span><b>'+slot.hero+'</b><small>'+ROLES[i]+'</small><span class="tag">'+(owner?owner.name+(owner.ready?' ✓ READY':' • NOT READY'):'AI TEAMMATE')+'</span>';b.onclick=()=>send('hero:select',{hero:i});$('heroes').appendChild(b)});$('ready').textContent=me?.ready?'✓ READY — TAP TO UNREADY':"I'M READY";$('start').classList.toggle('hidden',room.host!==socket.id);$('start').disabled=!room.players.length||room.players.some(p=>!p.ready);$('lobbyStatus').textContent=room.players.length+' human player(s) connected • '+(4-room.players.length)+' AI teammate(s) • '+room.players.filter(p=>p.ready).length+'/'+room.players.length+' ready';if(room.phase==='battle')show('battle');else show('lobby')}
-$('create').onclick=()=>send('room:create',{name:$('name').value},r=>{history.replaceState({},'', '?room='+r.code)});$('join').onclick=()=>send('room:join',{code:$('roomCode').value,name:$('name').value},r=>{history.replaceState({},'', '?room='+r.code)});$('ready').onclick=()=>{const me=room?.players.find(p=>p.id===socket.id);send('player:ready',{ready:!me?.ready})};$('start').onclick=()=>send('room:start',{});$('copy').onclick=async()=>{try{await navigator.clipboard.writeText(invite());note('Invite link copied!')}catch{note('Share this link: '+invite())}};socket.on('room:update',r=>{room=r;render()});socket.on('battle:start',w=>{world=w;show('battle')});socket.on('battle:state',w=>{world=w});socket.on('disconnect',()=>note('Disconnected — attempting to reconnect.'));socket.on('connect',()=>{if(room){note('Reconnected. Rejoin the room if needed.');room=null;show('entry')}});const urlRoom=new URLSearchParams(location.search).get('room');if(urlRoom){$('roomCode').value=urlRoom.toUpperCase();note('Enter your name, then tap JOIN ROOM.')}const canvas=$('arena'),ctx=canvas.getContext('2d');function draw(){requestAnimationFrame(draw);if(!world)return;const t=performance.now()/1000;const g=ctx;g.fillStyle='#112a39';g.fillRect(0,0,960,540);g.fillStyle='#1d3d4b';for(let i=0;i<13;i++){g.fillRect(i*80,0,2,540)}for(let i=0;i<8;i++)g.fillRect(0,i*80,960,2);g.fillStyle='#294d55';g.fillRect(0,0,960,50);g.fillStyle='#e5d2a0';g.font='bold 17px monospace';g.fillText('WEST COAST HEROES • CO-OP MOVEMENT TEST',24,30);world.heroes.forEach((h,i)=>{const human=room?.players.find(p=>p.hero===i),me=human?.id===socket.id;g.save();g.translate(h.x,h.y);g.fillStyle='#0006';g.beginPath();g.ellipse(0,15,23,8,0,0,Math.PI*2);g.fill();g.strokeStyle=me?'#ffd279':human?'#80c9ff':'#7ff0b6';g.lineWidth=4;g.beginPath();g.arc(0,0,28+Math.sin(t*3+i)*2,0,Math.PI*2);g.stroke();g.fillStyle=COLORS[i];g.fillRect(-14,-23,28,42);g.fillStyle='#f6d6b0';g.fillRect(-10,-34,20,15);g.fillStyle='#14222d';g.fillRect(-7,-29,4,3);g.fillRect(3,-29,4,3);g.fillStyle='#fff';g.font='bold 12px monospace';g.textAlign='center';g.fillText(h.name,0,-47);g.font='10px monospace';g.fillText(human?.name||'AI',0,34);g.restore()})}requestAnimationFrame(draw);function input(){const up=keys.w||keys.arrowup||touch.has('up'),down=keys.s||keys.arrowdown||touch.has('down'),left=keys.a||keys.arrowleft||touch.has('left'),right=keys.d||keys.arrowright||touch.has('right');socket.emit('player:input',{x:Number(!!right)-Number(!!left),y:Number(!!down)-Number(!!up)})}setInterval(input,50);addEventListener('keydown',e=>{if(['INPUT','TEXTAREA'].includes(document.activeElement?.tagName))return;keys[e.key.toLowerCase()]=true;if(e.key.startsWith('Arrow'))e.preventDefault()});addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);document.querySelectorAll('[data-dir]').forEach(b=>{const d=b.dataset.dir;b.addEventListener('pointerdown',e=>{e.preventDefault();b.setPointerCapture(e.pointerId);touch.add(d)});for(const event of ['pointerup','pointercancel','lostpointercapture'])b.addEventListener(event,()=>touch.delete(d))});
-</script></body></html>
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+    <title>West Coast Heroes — Co-op Lobby</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #09141f;
+            color: #f6eddb
+        }
+
+        * {
+            box-sizing: border-box
+        }
+
+        body {
+            margin: 0;
+            min-height: 100dvh;
+            background: radial-gradient(ellipse at 50% -15%, #275467 0%, #09141f 58%)
+        }
+
+        main {
+            max-width: 950px;
+            margin: auto;
+            padding: 22px 16px 100px
+        }
+
+        h1 {
+            font-size: clamp(26px, 5vw, 48px);
+            letter-spacing: 2px;
+            text-align: center;
+            margin: 20px 0 6px;
+            color: #f5dba3
+        }
+
+        .sub {
+            text-align: center;
+            color: #adc2cb;
+            margin: 0 0 25px
+        }
+
+        .panel {
+            background: #142535df;
+            border: 1px solid #47616b;
+            border-radius: 16px;
+            padding: 20px;
+            margin: 16px 0;
+            box-shadow: 0 14px 45px #0004
+        }
+
+        h2 {
+            margin: 0 0 14px;
+            font-size: 20px
+        }
+
+        input {
+            width: 100%;
+            padding: 13px 14px;
+            background: #091925;
+            border: 1px solid #69818b;
+            border-radius: 10px;
+            color: white;
+            font-size: 17px
+        }
+
+        button {
+            background: #e4bd78;
+            color: #182332;
+            border: 0;
+            border-radius: 10px;
+            padding: 12px 16px;
+            font-weight: 800;
+            cursor: pointer;
+            min-height: 46px
+        }
+
+        button.secondary {
+            background: #254252;
+            color: #f7e7c6;
+            border: 1px solid #6a8995
+        }
+
+        button:disabled {
+            opacity: .4;
+            cursor: not-allowed
+        }
+
+        .row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center
+        }
+
+        .row>* {
+            flex: 1
+        }
+
+        .muted {
+            color: #a9bec6;
+            font-size: 14px
+        }
+
+        .code {
+            font-size: 28px;
+            letter-spacing: 5px;
+            color: #f6d48d;
+            font-weight: 900
+        }
+
+        .heroes {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px
+        }
+
+        .hero {
+            border: 2px solid #344d5b;
+            background: #101f2c;
+            border-radius: 14px;
+            padding: 16px 9px;
+            text-align: center;
+            cursor: pointer;
+            min-height: 145px
+        }
+
+        .hero.mine {
+            border-color: #ffcf83;
+            background: #273846
+        }
+
+        .hero.taken {
+            opacity: .68
+        }
+
+        .glyph {
+            font-size: 40px;
+            display: block;
+            margin-bottom: 8px
+        }
+
+        .hero b {
+            display: block
+        }
+
+        .hero small {
+            display: block;
+            color: #b2c4ca;
+            margin-top: 6px
+        }
+
+        .tag {
+            display: inline-block;
+            border-radius: 99px;
+            background: #2c4856;
+            padding: 5px 10px;
+            font-size: 12px;
+            margin-top: 8px
+        }
+
+        .green {
+            color: #8ce5b4
+        }
+
+        .hidden {
+            display: none !important
+        }
+
+        #notice {
+            min-height: 24px;
+            color: #f7b2a7
+        }
+
+        .battle {
+            position: relative;
+            max-width: 960px;
+            margin: auto
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            aspect-ratio: 16/9;
+            border: 2px solid #6a8a91;
+            border-radius: 12px;
+            touch-action: none;
+            background: #152b39
+        }
+
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            margin-top: 12px
+        }
+
+        .pad {
+            display: grid;
+            grid-template-columns: repeat(3, 52px);
+            gap: 4px
+        }
+
+        .pad button {
+            min-height: 46px;
+            padding: 5px
+        }
+
+        .pad .empty {
+            visibility: hidden
+        }
+
+        .key {
+            font-size: 12px;
+            color: #b8d0d6;
+            margin-top: 9px
+        }
+
+        #status {
+            font-size: 14px;
+            color: #b7cbd2;
+            margin-top: 12px
+        }
+
+        @media(max-width:650px) {
+            .heroes {
+                grid-template-columns: repeat(2, 1fr)
+            }
+
+            .panel {
+                padding: 14px
+            }
+
+            .row>* {
+                flex-basis: 100%
+            }
+
+            main {
+                padding: 12px 10px 60px
+            }
+
+            .hero {
+                min-height: 126px
+            }
+
+            .glyph {
+                font-size: 32px
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <main>
+        <h1>⚔ WEST COAST HEROES</h1>
+        <p class="sub">ONLINE CO-OP • 1–4 FRIENDS • AI FILLS EMPTY SLOTS</p>
+        <div id="notice" role="status"></div>
+        <section id="entry" class="panel">
+            <h2>Enter the arena together</h2><label for="name">Your name</label><input id="name" maxlength="20" placeholder="Enter your name" value="Hero">
+            <div class="row" style="margin-top:14px"><button id="create">CREATE PRIVATE ROOM</button><input id="roomCode" maxlength="6" placeholder="6-character room code"><button class="secondary" id="join">JOIN ROOM</button></div>
+            <p class="muted">One player creates a room and shares the link. Everyone selects a different hero.</p>
+        </section>
+        <section id="lobby" class="panel hidden">
+            <div class="row">
+                <div>
+                    <div class="muted">PRIVATE ROOM</div>
+                    <div id="code" class="code"></div>
+                </div><button class="secondary" id="copy">COPY INVITE LINK</button>
+            </div>
+            <h2 style="margin-top:22px">Choose your hero</h2>
+            <div id="heroes" class="heroes"></div>
+            <div class="row" style="margin-top:20px"><button id="ready">I'M READY</button><button id="start" class="secondary" disabled>START CO-OP BATTLE</button></div>
+            <p id="lobbyStatus" class="muted"></p>
+            <p class="muted">Unclaimed heroes automatically become AI teammates. Everyone must mark ready before the host can start.</p>
+        </section>
+        <section id="battle" class="panel hidden">
+            <h2>Co-op Arena — Movement Prototype</h2>
+            <div class="battle"><canvas id="arena" width="960" height="540"></canvas></div>
+            <div class="controls">
+                <div>
+                    <div class="pad" id="pad"><span class="empty"></span><button data-dir="up">▲</button><span class="empty"></span><button data-dir="left">◀</button><button data-dir="down">▼</button><button data-dir="right">▶</button></div>
+                    <div class="key">WASD / arrows or touch pad</div>
+                </div>
+                <div>
+                    <p class="muted">Your hero has a gold ring.<br>Other human players have blue rings.<br>AI teammates have green rings.</p>
+                </div>
+            </div>
+            <p id="status">Connected to battle</p>
+            <p class="muted">This first multiplayer milestone synchronizes the lobby and movement. Combat, enemies, damage, bosses and upgrades are still in development.</p>
+        </section>
+        <p class="muted" style="text-align:center">Want to play the original single-player game? <a style="color:#e8cb8e" href="/legacy-v19.html">Open V19</a></p>
+    </main>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io(),
+            HEROES = ['NOAH', 'MARKIE', 'DESTINY', 'ESPIRIT'],
+            ROLES = ['SPELLBLADE MAGE', 'ROGUE-TANK', 'CAPTAIN WARRIOR', 'HUNTER'],
+            EMOJI = ['🗡️', '🪓', '🛡️', '🏹'],
+            COLORS = ['#6daaff', '#e8a14b', '#e8c78c', '#6edba0'];
+        let room = null,
+            world = null,
+            keys = {},
+            touch = new Set();
+        const $ = id => document.getElementById(id);
+
+        function show(id) {
+            for (const key of ['entry', 'lobby', 'battle']) $(key).classList.toggle('hidden', key !== id)
+        }
+
+        function note(msg) {
+            $('notice').textContent = msg;
+            setTimeout(() => {
+                if ($('notice').textContent === msg) $('notice').textContent = ''
+            }, 6500)
+        }
+
+        function send(event, data, cb) {
+            socket.emit(event, data, r => {
+                if (!r?.ok) {
+                    note(r?.error || 'Request failed');
+                    return
+                }
+                cb?.(r)
+            })
+        }
+
+        function invite() {
+            return location.origin + location.pathname + '?room=' + room.code
+        }
+
+        function render() {
+            if (!room) return;
+            $('code').textContent = room.code;
+            const me = room.players.find(p => p.id === socket.id);
+            $('heroes').replaceChildren();
+            room.slots.forEach((slot, i) => {
+                const owner = room.players.find(p => p.hero === i),
+                    b = document.createElement('button');
+                b.className = 'hero' + (me?.hero === i ? ' mine' : '') + (owner && owner.id !== socket.id ? ' taken' : '');
+                b.disabled = !!owner && owner.id !== socket.id;
+                b.innerHTML = '<span class="glyph">' + EMOJI[i] + '</span><b>' + slot.hero + '</b><small>' + ROLES[i] + '</small><span class="tag">' + (owner ? owner.name + (owner.ready ? ' ✓ READY' : ' • NOT READY') : 'AI TEAMMATE') + '</span>';
+                b.onclick = () => send('hero:select', {
+                    hero: i
+                });
+                $('heroes').appendChild(b)
+            });
+            $('ready').textContent = me?.ready ? '✓ READY — TAP TO UNREADY' : "I'M READY";
+            $('start').classList.toggle('hidden', room.host !== socket.id);
+            $('start').disabled = !room.players.length || room.players.some(p => !p.ready);
+            $('lobbyStatus').textContent = room.players.length + ' human player(s) connected • ' + (4 - room.players.length) + ' AI teammate(s) • ' + room.players.filter(p => p.ready).length + '/' + room.players.length + ' ready';
+            if (room.phase === 'battle') show('battle');
+            else show('lobby')
+        }
+        $('create').onclick = () => send('room:create', {
+            name: $('name').value
+        }, r => {
+            history.replaceState({}, '', '?room=' + r.code)
+        });
+        $('join').onclick = () => send('room:join', {
+            code: $('roomCode').value,
+            name: $('name').value
+        }, r => {
+            history.replaceState({}, '', '?room=' + r.code)
+        });
+        $('ready').onclick = () => {
+            const me = room?.players.find(p => p.id === socket.id);
+            send('player:ready', {
+                ready: !me?.ready
+            })
+        };
+        $('start').onclick = () => send('room:start', {});
+        $('copy').onclick = async () => {
+            try {
+                await navigator.clipboard.writeText(invite());
+                note('Invite link copied!')
+            } catch {
+                note('Share this link: ' + invite())
+            }
+        };
+        socket.on('room:update', r => {
+            room = r;
+            render()
+        });
+        socket.on('battle:start', w => {
+            world = w;
+            show('battle')
+        });
+        socket.on('battle:state', w => {
+            world = w
+        });
+        socket.on('disconnect', () => note('Disconnected — attempting to reconnect.'));
+        socket.on('connect', () => {
+            if (room) {
+                note('Reconnected. Rejoin the room if needed.');
+                room = null;
+                show('entry')
+            }
+        });
+        const urlRoom = new URLSearchParams(location.search).get('room');
+        if (urlRoom) {
+            $('roomCode').value = urlRoom.toUpperCase();
+            note('Enter your name, then tap JOIN ROOM.')
+        }
+        const canvas = $('arena'),
+            ctx = canvas.getContext('2d');
+
+        function draw() {
+            requestAnimationFrame(draw);
+            if (!world) return;
+            const t = performance.now() / 1000;
+            const g = ctx;
+            g.fillStyle = '#112a39';
+            g.fillRect(0, 0, 960, 540);
+            g.fillStyle = '#1d3d4b';
+            for (let i = 0; i < 13; i++) {
+                g.fillRect(i * 80, 0, 2, 540)
+            }
+            for (let i = 0; i < 8; i++) g.fillRect(0, i * 80, 960, 2);
+            g.fillStyle = '#294d55';
+            g.fillRect(0, 0, 960, 50);
+            g.fillStyle = '#e5d2a0';
+            g.font = 'bold 17px monospace';
+            g.fillText('WEST COAST HEROES • CO-OP MOVEMENT TEST', 24, 30);
+            world.heroes.forEach((h, i) => {
+                const human = room?.players.find(p => p.hero === i),
+                    me = human?.id === socket.id;
+                g.save();
+                g.translate(h.x, h.y);
+                g.fillStyle = '#0006';
+                g.beginPath();
+                g.ellipse(0, 15, 23, 8, 0, 0, Math.PI * 2);
+                g.fill();
+                g.strokeStyle = me ? '#ffd279' : human ? '#80c9ff' : '#7ff0b6';
+                g.lineWidth = 4;
+                g.beginPath();
+                g.arc(0, 0, 28 + Math.sin(t * 3 + i) * 2, 0, Math.PI * 2);
+                g.stroke();
+                g.fillStyle = COLORS[i];
+                g.fillRect(-14, -23, 28, 42);
+                g.fillStyle = '#f6d6b0';
+                g.fillRect(-10, -34, 20, 15);
+                g.fillStyle = '#14222d';
+                g.fillRect(-7, -29, 4, 3);
+                g.fillRect(3, -29, 4, 3);
+                g.fillStyle = '#fff';
+                g.font = 'bold 12px monospace';
+                g.textAlign = 'center';
+                g.fillText(h.name, 0, -47);
+                g.font = '10px monospace';
+                g.fillText(human?.name || 'AI', 0, 34);
+                g.restore()
+            })
+        }
+        requestAnimationFrame(draw);
+
+        function input() {
+            const up = keys.w || keys.arrowup || touch.has('up'),
+                down = keys.s || keys.arrowdown || touch.has('down'),
+                left = keys.a || keys.arrowleft || touch.has('left'),
+                right = keys.d || keys.arrowright || touch.has('right');
+            socket.emit('player:input', {
+                x: Number(!!right) - Number(!!left),
+                y: Number(!!down) - Number(!!up)
+            })
+        }
+        setInterval(input, 50);
+        addEventListener('keydown', e => {
+            if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+            keys[e.key.toLowerCase()] = true;
+            if (e.key.startsWith('Arrow')) e.preventDefault()
+        });
+        addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+        document.querySelectorAll('[data-dir]').forEach(b => {
+            const d = b.dataset.dir;
+            b.addEventListener('pointerdown', e => {
+                e.preventDefault();
+                b.setPointerCapture(e.pointerId);
+                touch.add(d)
+            });
+            for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(event, () => touch.delete(d))
+        });
+    </script>
+</body>
+
+</html>
