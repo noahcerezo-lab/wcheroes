@@ -408,6 +408,17 @@
                     floatText(h.x * S, h.y * S - 112, e.k, heroCfg(h.name).color, isMine(e.h) ? 14 : 11, 1100); // small tag at the hero, not a banner
                     break;
                 }
+                case 'boss:enter': {
+                    banners.push({ str: 'THE VOID EMPEROR AWAKENS', color: '#e6a8ff', born: now, life: 2300 });
+                    fx.push({ kind: 'ring', x: e.x * S, y: e.y * S, r0: 8, r1: 170, color: '#bd71ef', width: 7, start: now, life: 1200 });
+                    burst(e.x * S, e.y * S - 75, '#d89aff', 24, 5);
+                    addShake(5, 380, now);
+                    break;
+                }
+                case 'boss:target': {
+                    fx.push({ kind: 'bossTarget', x: e.x * S, y: e.y * S, r: e.r * S, start: now, life: e.ms });
+                    break;
+                }
                 case 'slam': addShake(5, 170, now); fx.push({ kind: 'floor', key: 'impact', x: e.x * S, y: e.y * S, r: (e.r || SLAM_R) * S, start: now, life: A ? A.duration('impact') : 420 }); break;
                 case 'down': { const h = latestHero(e.h); if (h) banners.push({ str: h.name + ' DOWN • STAND CLOSE TO REVIVE', color: '#ff8a8a', born: now, life: 2200, small: true }); break }
                 case 'revive': {
@@ -725,7 +736,18 @@
             for (const f of fx) {
                 const el = now - f.start;
                 if (el < 0) continue; // delayed effect (e.g. the crit's second ring) not started yet
-                if (f.kind === 'special') {
+                if (f.kind === 'bossTarget') {
+                    const p = Math.max(0, Math.min(1, el / f.life));
+                    g.save();
+                    g.globalAlpha = 0.35 + p * 0.5;
+                    g.fillStyle = 'rgba(180,66,230,.18)';
+                    g.strokeStyle = p > .72 ? '#ffe5ff' : '#d278fa';
+                    g.lineWidth = 3 + p * 3;
+                    g.beginPath(); g.ellipse(f.x, f.y, f.r, f.r * .55, 0, 0, Math.PI * 2); g.fill(); g.stroke();
+                    g.beginPath(); g.moveTo(f.x - 13, f.y); g.lineTo(f.x + 13, f.y);
+                    g.moveTo(f.x, f.y - 13); g.lineTo(f.x, f.y + 13); g.stroke();
+                    g.restore();
+                } else if (f.kind === 'special') {
                     const key = KIT[f.name] && KIT[f.name].spc;
                     const w = f.r * 2; // world radius wins over the 64px motif
                     const sq = f.name === 'NOAH' ? .5 : 1; // nova is drawn as a round rune; lay it on the floor
@@ -1218,6 +1240,7 @@
             const has = k2 => A && k2 && A.ready(k2);
             if (dieAt !== undefined && has(art.die)) { key = art.die; mode = 'once'; t0 = dieAt }
             else if (struck && has(art.strike) && now - m.strikeAt < A.duration(art.strike)) { key = art.strike; mode = 'once'; t0 = m.strikeAt }
+            else if (wind && art.key === 'voidEmperor' && snaps[snaps.length - 1]?.hud?.boss?.mode === 'target' && has('bossTargetWind')) { key = 'bossTargetWind'; mode = 'hold'; t0 = m.windAt }
             else if (wind && has(art.wind)) { key = art.wind; mode = 'hold'; t0 = m.windAt }
             else if (walking && has(art.walk)) { key = art.walk; flip = false }
             else if (struck) ox = dir * 7; // procedural lunge fallback
@@ -1229,7 +1252,7 @@
             if (tilt) { g.translate(0, -4); g.rotate(tilt); g.translate(0, 4) }
             if (fade !== undefined) g.globalAlpha = Math.max(0, fade);
             // World-scale telegraph (sheets only hint at it): warden plant ring at the slam radius.
-            if (wind && (art.key === 'warden' || art.key === 'voidEmperor') && A) {
+            if (wind && (art.key === 'warden' || (art.key === 'voidEmperor' && ((snaps[snaps.length - 1]?.hud?.boss?.mode !== 'target')))) && A) {
                 const radius = art.key === 'voidEmperor' ? 90 : SLAM_R;
                 A.loop(g, 'warning', now, 0, 0, radius * S * 2 / k, radius * S / k);
             }
