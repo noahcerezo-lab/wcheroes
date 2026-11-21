@@ -38,11 +38,16 @@ const RULES = {
     downedHp: 0,
 };
 
-// Enemy types. Grunt = V19's armored swordsman (hp 30+8w, speed 1+0.1w per frame, 7+w damage every 850 ms).
+// Enemy types (art: Draper's /workspace/wcheroes-design/enemies.md). The acolyte is V19's armored
+// swordsman (hp 30+8w, speed 1+0.1w per frame, 7+w damage every 850 ms). The others are new for co-op.
+//   kind 'melee': walks to `reach`, telegraphs for `windMs`, then strikes if the hero is still in reach.
+//   kind 'ranged': holds at ~`range`, telegraphs, then fires a dodgeable projectile at where the hero was.
+//   kind 'slam': heavy, telegraphs longest, then hits every hero within `slamR` (shockwave).
 const ENEMY_TYPES = [
-    { key: 'grunt', from: 1, weight: 1, hp: w => 30 + 8 * w, speed: w => Math.min(5.2, (1 + 0.1 * w) * 2), dmg: w => 7 + w, reach: S(29) + 3, atkMs: 850, knockResist: 0, radius: 12, scale: 1 },
-    { key: 'runner', from: 3, weight: 0.35, hp: w => 16 + 5 * w, speed: w => Math.min(6.4, (1.5 + 0.1 * w) * 2), dmg: w => 4 + 0.7 * w, reach: S(26) + 3, atkMs: 600, knockResist: 0, radius: 10, scale: 0.85 },
-    { key: 'brute', from: 5, weight: 0.2, hp: w => 90 + 22 * w, speed: w => Math.min(3.4, (0.7 + 0.05 * w) * 2), dmg: w => 14 + 2 * w, reach: S(40) + 3, atkMs: 1300, knockResist: 0.6, radius: 18, scale: 1.3 },
+    { key: 'acolyte', kind: 'melee', from: 1, weight: 1, hp: w => 30 + 8 * w, speed: w => Math.min(5.2, (1 + 0.1 * w) * 2), dmg: w => 7 + w, reach: S(29) + 3, atkMs: 850, windMs: 150, knockResist: 0, radius: 12, points: 1 },
+    { key: 'wisp', kind: 'ranged', from: 3, weight: 0.3, hp: w => 14 + 4 * w, speed: w => Math.min(5.6, (1.2 + 0.08 * w) * 2), dmg: w => 5 + 0.6 * w, range: 190, atkMs: 2200, windMs: 250, shot: { speed: 4.5, r: 14 }, knockResist: 0, radius: 10, points: 1 },
+    { key: 'archer', kind: 'ranged', from: 4, weight: 0.3, hp: w => 22 + 6 * w, speed: w => Math.min(5, (1 + 0.08 * w) * 2), dmg: w => 6 + 0.8 * w, range: 165, atkMs: 1700, windMs: 220, shot: { speed: 9, r: 12 }, knockResist: 0, radius: 12, points: 1.5 },
+    { key: 'warden', kind: 'slam', from: 5, weight: 0.16, hp: w => 90 + 22 * w, speed: w => Math.min(3.4, (0.7 + 0.05 * w) * 2), dmg: w => 14 + 2 * w, reach: S(40) + 3, slamR: 55, atkMs: 1600, windMs: 350, knockResist: 0.6, radius: 18, points: 3 },
 ];
 const ENEMY_INDEX = Object.fromEntries(ENEMY_TYPES.map((t, i) => [t.key, i]));
 
@@ -77,6 +82,7 @@ function createBattle(opts = {}) {
         toSpawn: 0, spawnTimer: 0, nextEnemyId: 1,
         score: 0, kills: 0, combo: 0, comboUntil: 0, over: false,
         maxEnemies: opts.maxEnemies || RULES.maxEnemies,
+        enemyDamageMul: opts.enemyDamageMul || 1, // difficulty knob (server env ENEMY_DAMAGE_MUL)
         heroes: ROSTER.HEROES.map((cfg, i) => ({
             name: cfg.name, x: spawn[i][0], y: spawn[i][1], facing: i % 2 ? -1 : 1, moving: false,
             hp: cfg.v19.hp, maxHp: cfg.v19.hp, damage: cfg.v19.damage, range: S(cfg.v19.range), cool: cfg.v19.cool,
@@ -85,6 +91,7 @@ function createBattle(opts = {}) {
             buffUntil: 0, shieldUntil: 0, wantAttack: false, wantSpecial: false, ai: true, controller: null, seq: 0,
         })),
         enemies: [],
+        shots: [], nextShotId: 1, // enemy projectiles
         events: [],
         hooks: opts.hooks || {},
     };
@@ -114,10 +121,11 @@ function damageEnemy(w, hero, e, base, o = {}) {
 
 function killEnemy(w, hero, e) {
     w.enemies.splice(w.enemies.indexOf(e), 1);
+    e.dead = true;
     w.combo = w.time < w.comboUntil ? Math.min(20, w.combo + 1) : 1;
     w.comboUntil = w.time + RULES.comboWindowMs;
     const mult = Math.min(5, 1 + Math.floor(w.combo / 4));
-    const pts = 10 * Math.max(1, w.wave) * mult * (e.type === ENEMY_INDEX.brute ? 3 : 1);
+    const pts = 10 * Math.max(1, w.wave) * mult * ENEMY_TYPES[e.type].points;
     w.score += pts;
     w.kills++;
     emit(w, { t: 'kill', id: e.id, h: w.heroes.indexOf(hero), x: Math.round(e.x), y: Math.round(e.y), combo: w.combo, mult, pts });
@@ -174,7 +182,7 @@ function performAttack(w, h) {
     h.attackN++;
     const k = KITS[h.name], i = w.heroes.indexOf(h);
     const targets = attackTargets(w, h);
-    emit(w, { t: 'atk', h: i, k: k.attack, f: h.facing, n: targets.length });
+    // No 'atk' event: clients animate swings from the hero's attackN counter (saves bandwidth).
     for (const e of [...targets]) {
         let dmg = h.damage;
         if (h.name === 'MARKIE') dmg = Math.round(h.damage * (inArc(h, e, h.range, k.front) ? k.frontMul : k.sideMul));
@@ -214,10 +222,12 @@ function pickEnemyType(w) {
 }
 
 function spawnEnemy(w, typeIndex = pickEnemyType(w)) {
-    const t = ENEMY_TYPES[typeIndex], m = RULES.enemyMargin, side = Math.floor(rng(w) * 4);
+    // Off-screen entry: mostly the left/right edges, sometimes from below. Not from the top: the top of
+    // the 960x540 scene is the temple backdrop, so enemies there would appear to walk out of the sky.
+    const t = ENEMY_TYPES[typeIndex], m = RULES.enemyMargin, r = rng(w), side = r < 0.4 ? 0 : r < 0.8 ? 1 : 3;
     const x = side === 0 ? -m : side === 1 ? ARENA.width + m : ARENA.minX + rng(w) * (ARENA.maxX - ARENA.minX);
-    const y = side === 2 ? -m : side === 3 ? ARENA.height + m : ARENA.minY + rng(w) * (ARENA.maxY - ARENA.minY);
-    const e = { id: w.nextEnemyId++, type: typeIndex, x, y, hp: t.hp(w.wave), max: t.hp(w.wave), speed: t.speed(w.wave), dmg: Math.round(t.dmg(w.wave)), at: -1e9, kx: 0, ky: 0, stunUntil: 0, facing: -1, entered: false, tauntBy: -1, tauntUntil: 0 };
+    const y = side === 3 ? ARENA.height + m : ARENA.minY + 20 + rng(w) * (ARENA.maxY - ARENA.minY - 20);
+    const e = { id: w.nextEnemyId++, type: typeIndex, x, y, hp: t.hp(w.wave), max: t.hp(w.wave), speed: t.speed(w.wave), dmg: Math.round(t.dmg(w.wave) * w.enemyDamageMul), at: -1e9, windUntil: 0, strikeAt: -1e9, aim: null, kx: 0, ky: 0, stunUntil: 0, facing: -1, entered: false, tauntBy: -1, tauntUntil: 0 };
     w.enemies.push(e);
     return e;
 }
@@ -226,6 +236,23 @@ const insideArena = e => e.x >= ARENA.minX && e.x <= ARENA.maxX && e.y >= ARENA.
 function keepInside(e) {
     if (!e.entered && insideArena(e)) e.entered = true;
     if (e.entered) { e.x = clamp(e.x, ARENA.minX, ARENA.maxX); e.y = clamp(e.y, ARENA.minY, ARENA.maxY) }
+    else { const m = RULES.enemyMargin + 10; e.x = clamp(e.x, -m, ARENA.width + m); e.y = clamp(e.y, -m, ARENA.height + m) } // still walking in: never knocked far away
+}
+
+function fireShot(w, e, t, target) {
+    const dx = target.x - e.x, dy = target.y - e.y, d = Math.hypot(dx, dy) || 1;
+    w.shots.push({ id: w.nextShotId++, kind: e.type, x: e.x, y: e.y - 0, vx: dx / d * t.shot.speed, vy: dy / d * t.shot.speed, r: t.shot.r, dmg: e.dmg, left: Math.ceil((t.range * 1.35) / t.shot.speed), from: e.id });
+}
+
+function strike(w, e, t, target) {
+    e.strikeAt = w.time;
+    if (t.kind === 'ranged') return fireShot(w, e, t, target);
+    if (t.kind === 'slam') {
+        emit(w, { t: 'slam', id: e.id, x: Math.round(e.x), y: Math.round(e.y), r: t.slamR });
+        for (const h of w.heroes) if (alive(h) && dist(h, e) <= t.slamR) damageHero(w, h, e.dmg, e);
+        return;
+    }
+    if (alive(target) && dist(target, e) <= t.reach * 1.35) damageHero(w, target, e.dmg, e); // stepped away during the windup = dodged
 }
 
 function stepEnemies(w) {
@@ -235,20 +262,34 @@ function stepEnemies(w) {
         e.x += e.kx; e.y += e.ky;
         e.kx *= RULES.knockDecay; e.ky *= RULES.knockDecay;
         keepInside(e);
-        if (w.time < e.stunUntil || !living.length) continue;
+        if (w.time < e.stunUntil) { e.windUntil = 0; continue } // stuns cancel a windup
+        if (!living.length) continue;
         let target = e.tauntUntil > w.time && alive(w.heroes[e.tauntBy]) ? w.heroes[e.tauntBy] : null;
         if (!target) { let best = Infinity; for (const h of living) { const d = dist(h, e); if (d < best) { best = d; target = h } } }
+        if (e.windUntil) { // telegraphing: hold still, then resolve
+            if (w.time >= e.windUntil) { e.windUntil = 0; strike(w, e, t, target) }
+            continue;
+        }
         const d = dist(target, e) || 1;
         e.facing = Math.sign(target.x - e.x) || -1;
-        if (d > t.reach) {
-            e.x += (target.x - e.x) / d * Math.min(e.speed, d - t.reach + 0.5);
-            e.y += (target.y - e.y) / d * Math.min(e.speed, d - t.reach + 0.5);
+        const want = t.kind === 'ranged' ? (e.entered ? t.range * 0.85 : 0) : t.reach; // ranged units walk in before holding range
+        const inRange = t.kind === 'ranged' ? d <= t.range && e.entered : d <= t.reach;
+        if (t.kind === 'ranged' && e.entered && d < want * 0.55) { // too close: back off a little
+            e.x -= (target.x - e.x) / d * e.speed * 0.6; e.y -= (target.y - e.y) / d * e.speed * 0.6; keepInside(e);
+        } else if (d > want) {
+            e.x += (target.x - e.x) / d * Math.min(e.speed, d - want + 0.5);
+            e.y += (target.y - e.y) / d * Math.min(e.speed, d - want + 0.5);
             keepInside(e);
-        } else if (w.time - e.at >= t.atkMs) {
-            e.at = w.time;
-            emit(w, { t: 'eatk', id: e.id, f: e.facing });
-            damageHero(w, target, e.dmg, e);
         }
+        if (inRange && w.time - e.at >= t.atkMs) { e.at = w.time; e.windUntil = w.time + t.windMs }
+    }
+    // Projectiles: straight lines, hit the first living hero they touch, vanish at the arena edge.
+    for (let j = w.shots.length - 1; j >= 0; j--) {
+        const p = w.shots[j];
+        p.x += p.vx; p.y += p.vy; p.left--;
+        const hitHero = w.heroes.find(h => alive(h) && Math.hypot(h.x - p.x, (h.y - p.y) * 1.2) <= p.r);
+        if (hitHero) damageHero(w, hitHero, p.dmg, { id: p.from });
+        if (hitHero || p.left <= 0 || p.x < ARENA.minX - 30 || p.x > ARENA.maxX + 30 || p.y < ARENA.minY - 30 || p.y > ARENA.maxY + 30) w.shots.splice(j, 1);
     }
     // Light separation so a crowd doesn't collapse into one sprite.
     const es = w.enemies;
@@ -345,6 +386,10 @@ function stepAI(w, h, leader) {
         if (crowd >= 3 || (hurtAlly && crowd >= 1)) performSpecial(w, h);
         return;
     }
+    if (enemy && (!leader || leader === h || leader.ai)) { // no human to follow: go find the fight
+        h.moving = moveToward(h, enemy.x, enemy.y, speed);
+        return;
+    }
     if (leader && leader !== h) {
         const i = w.heroes.indexOf(h), tx = leader.x + (i % 2 ? 55 : -55), ty = leader.y + ((i % 3) - 1) * 50;
         if (Math.hypot(tx - h.x, ty - h.y) > 20 && dist(leader, h) > 65) h.moving = moveToward(h, tx, ty, AI_FOLLOW_SPEED);
@@ -379,7 +424,13 @@ function step(w) {
     return w;
 }
 
-// Compact per-tick snapshot. Enemies are arrays: [id, type, x, y, hp%, facing, stunned].
+// Enemy flag bits in snapshots: 1 stunned, 2 taunted, 4 winding up (telegraph), 8 just struck (< 250 ms).
+function enemyFlags(w, e) {
+    return (w.time < e.stunUntil ? 1 : 0) | (w.time < e.tauntUntil ? 2 : 0) | (e.windUntil ? 4 : 0) | (w.time - e.strikeAt < 250 ? 8 : 0);
+}
+
+// Compact per-tick snapshot. Enemies are arrays: [id, type, x, y, hp%, facing, flags];
+// enemy shots are [id, enemyType, x, y, vx*10, vy*10].
 function snapshot(w) {
     return {
         tick: w.tick, time: w.time, zone: w.zone, wave: w.wave, ws: w.waveState === 'fighting' ? 1 : 0,
@@ -391,7 +442,8 @@ function snapshot(w) {
             attackN: h.attackN, specialN: h.specialN, buff: w.time < h.buffUntil ? 1 : 0, shield: w.time < h.shieldUntil ? 1 : 0,
             cd: Math.max(0, Math.round((h.specialAt + RULES.specialCooldownMs - w.time) / 100)) // special cooldown, 0.1 s
         })),
-        enemies: w.enemies.map(e => [e.id, e.type, Math.round(e.x), Math.round(e.y), Math.max(0, Math.round(e.hp / e.max * 100)), e.facing, w.time < e.stunUntil ? 1 : 0]),
+        enemies: w.enemies.map(e => [e.id, e.type, Math.round(e.x), Math.round(e.y), Math.max(0, Math.round(e.hp / e.max * 100)), e.facing, enemyFlags(w, e)]),
+        shots: w.shots.map(p => [p.id, p.kind, Math.round(p.x), Math.round(p.y), Math.round(p.vx * 10), Math.round(p.vy * 10)]),
         ev: w.events,
     };
 }

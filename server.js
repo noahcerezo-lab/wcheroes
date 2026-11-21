@@ -37,12 +37,15 @@ const EVENT_RATE = 5; // lobby/room events per second
 const EVENT_BURST = 15;
 const FIRST_WAVE_DELAY_MS = Number(process.env.FIRST_WAVE_DELAY_MS ?? 3000); // calm start before wave 1
 const GAME_OVER_RETURN_MS = Number(process.env.GAME_OVER_RETURN_MS || 8000); // team wipe -> lobby
+const ENEMY_DAMAGE_MUL = Number(process.env.ENEMY_DAMAGE_MUL || 1); // difficulty: scales enemy hits
 const COMBAT_SEED = process.env.COMBAT_SEED ? Number(process.env.COMBAT_SEED) : null; // fixed fights for tests
 
 const app = express();
 const server = http.createServer(app);
 // Faster dead-connection detection than the defaults (25s + 20s) so AI takes over sooner.
-const io = new Server(server, { cors: { origin: false }, pingInterval: 10000, pingTimeout: 8000, maxHttpBufferSize: 16e3 });
+// perMessageDeflate: battle snapshots are repetitive JSON, so WebSocket compression cuts them several-fold.
+// Small messages (inputs, acks) are below the threshold and are sent as-is.
+const io = new Server(server, { cors: { origin: false }, pingInterval: 10000, pingTimeout: 8000, maxHttpBufferSize: 16e3, perMessageDeflate: process.env.WS_DEFLATE === '0' ? false : { threshold: 512 } });
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/health', (_req, res) => res.json({ ok: true, rooms: rooms.size }));
 
@@ -165,7 +168,7 @@ function join(socket, r, name, ack) {
 }
 
 function initialWorld(r) {
-    r.world = COMBAT.createBattle({ seed: COMBAT_SEED ?? crypto.randomBytes(4).readUInt32LE(0), firstWaveDelayMs: FIRST_WAVE_DELAY_MS });
+    r.world = COMBAT.createBattle({ seed: COMBAT_SEED ?? crypto.randomBytes(4).readUInt32LE(0), firstWaveDelayMs: FIRST_WAVE_DELAY_MS, enemyDamageMul: ENEMY_DAMAGE_MUL });
     r.world.round = r.round;
     r.overAt = 0;
     syncControllers(r);

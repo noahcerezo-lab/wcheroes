@@ -15,7 +15,7 @@ test.after(() => srv?.stop());
 test('health endpoint and static pages are served', async () => {
     const h = await (await fetch(srv.url + '/health')).json();
     assert.equal(h.ok, true);
-    for (const p of ['/', '/legacy-v19.html', '/js/heroes-render.js', '/js/mp-arena.js', '/js/heroes-config.js', '/js/shared-sim.js', '/js/mp-client.js', '/assets/portraits/noah.jpg']) {
+    for (const p of ['/', '/legacy-v19.html', '/js/heroes-render.js', '/js/mp-arena.js', '/js/heroes-config.js', '/js/shared-sim.js', '/js/mp-client.js', '/assets/portraits/noah.png', '/js/combat-art.js', '/assets/combat/enemy_horned_acolyte_48x64_4f.png']) {
         assert.equal((await fetch(srv.url + p)).status, 200, p);
     }
 });
@@ -23,8 +23,15 @@ test('health endpoint and static pages are served', async () => {
 test('shared hero config matches the hero sheets', () => {
     const R = require('../public/js/heroes-config.js');
     assert.deepEqual(R.HEROES.map(h => [h.slot, h.name, h.cls]), [
-        ['1P', 'NOAH', 'SPELLBLADE MAGE'], ['2P', 'DESTINY', 'CAPTAIN WARRIOR'], ['3P', 'MARKIE', 'ROGUE-TANK'], ['4P', 'ESPIRIT', 'HUNTER']]);
+        ['1P', 'NOAH', 'SPELLBLADE-MAGE'], ['2P', 'DESTINY', 'CAPTAIN WARRIOR'], ['3P', 'MARKIE', 'ROGUE-TANK'], ['4P', 'ESPIRIT', 'HUNTER']]);
     for (const h of R.HEROES) for (const k of R.STAT_KEYS) assert.ok(h.stats[k] >= 1 && h.stats[k] <= 10, h.name + ' ' + k);
+    // Bar fills come from Oracle's measured pack (public/assets/heroes.json, copied from /workspace/wcheroes-assets).
+    const pack = require('../public/assets/heroes.json');
+    R.HEROES.forEach((h, i) => {
+        assert.equal(pack[i].name.toUpperCase(), h.name, 'slot order');
+        assert.equal(pack[i].className.toUpperCase(), h.cls, 'class name');
+        for (const k of R.STAT_KEYS) assert.equal(h.fill[k], pack[i].stats[k], h.name + ' ' + k + ' fill');
+    });
 });
 
 test('shared movement rule rejects NaN/Infinity and clamps to the arena', () => {
