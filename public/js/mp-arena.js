@@ -1143,6 +1143,132 @@
         // their effects are dimmed (other players 80%, AI 60%) so a clumped squad doesn't turn into soup.
         const LOOKS = { me: { fx: 1, outline: '#ffd279' }, human: { fx: .8, outline: '#0b0914' }, ai: { fx: .6, outline: '#0b0914' } };
         function lookFor(role, color) { const l = LOOKS[role]; l.color = color; return l }
+        // Signature looks: each hero has a readable silhouette accent and distinct energy language.
+        // All effects are cosmetic, deterministic and capped to a handful of canvas paths per hero.
+        const HERO_FINISH = {
+            NOAH: { primary: '#a58bff', light: '#e7ddff', shape: 'runes' },
+            DESTINY: { primary: '#ffd47c', light: '#fff5ce', shape: 'crown' },
+            MARKIE: { primary: '#ff9c58', light: '#ffe2a1', shape: 'embers' },
+            ESPIRIT: { primary: '#74e6a8', light: '#dcffe8', shape: 'leaves' },
+        };
+        // Anime-fantasy power silhouettes sit BEHIND the existing character artwork.
+        // Their strength responds to real buffs and special-attack animation, never to random gameplay state.
+        function drawAnimeMantle(h, i, now) {
+            if (h.state) return;
+            const skin = HERO_FINISH[h.name];
+            if (!skin) return;
+            const action = anim && anim.stateOf(i);
+            const sp = action && action.spc;
+            const specialAge = sp ? now - sp.start : Infinity;
+            const surge = specialAge >= 0 && specialAge < 750 ? Math.sin(Math.PI * specialAge / 750) : 0;
+            const empowered = !!(h.buff || h.shield || (h.pu && h.pu.some(Boolean)));
+            const intensity = empowered ? .72 : .30;
+            const wave = Math.sin(now / 280 + i);
+            g.save();
+            g.globalCompositeOperation = 'lighter';
+            g.globalAlpha = Math.min(.88, intensity + surge * .40);
+            const grad = g.createLinearGradient(0, -105, 0, 12);
+            grad.addColorStop(0, skin.primary + '00');
+            grad.addColorStop(.52, skin.primary + '77');
+            grad.addColorStop(1, skin.primary + '00');
+            g.fillStyle = grad;
+            // Flowing energy cloak / twin anime aura flames, anchored behind the sprite.
+            for (const side of [-1, 1]) {
+                g.beginPath();
+                g.moveTo(side * 11, -68);
+                g.bezierCurveTo(side * (37 + surge * 18), -105 - wave * 8, side * (51 + surge * 20), -54, side * (27 + surge * 14), -15);
+                g.quadraticCurveTo(side * 34, -55, side * 11, -68);
+                g.fill();
+            }
+            g.strokeStyle = skin.light;
+            g.lineWidth = 1.8 + surge * 2;
+            g.globalAlpha = .35 + surge * .48;
+            for (const side of [-1, 1]) {
+                g.beginPath();
+                g.moveTo(side * 17, -76);
+                g.quadraticCurveTo(side * (40 + surge * 12), -99 - wave * 8, side * (37 + surge * 15), -34);
+                g.stroke();
+            }
+            // Special attacks briefly bloom into a circular power-up halo.
+            if (surge > .03) {
+                g.globalAlpha = surge * .65;
+                g.strokeStyle = skin.light; g.lineWidth = 3;
+                g.beginPath(); g.ellipse(0, -44, 35 + surge * 16, 51 + surge * 14, 0, 0, Math.PI * 2); g.stroke();
+            }
+            g.restore();
+        }
+
+        function drawHeroFinish(h, i, now, role, k) {
+            if (h.state) return;
+            const skin = HERO_FINISH[h.name];
+            if (!skin) return;
+            const phase = now / 950 + i * 1.7, pulse = (Math.sin(phase * 2) + 1) / 2;
+            const active = h.buff || h.shield || (h.pu && h.pu.some(Boolean));
+            g.save();
+            // A soft colored floor aura, kept beneath the combat silhouette.
+            g.globalAlpha = (active ? .22 : .10) + pulse * .055;
+            g.fillStyle = skin.primary;
+            g.beginPath(); g.ellipse(0, 2, 28 + pulse * 4, 9 + pulse * 2, 0, 0, Math.PI * 2); g.fill();
+            g.globalAlpha = active ? .92 : .66;
+            g.strokeStyle = skin.primary;
+            g.lineWidth = role === 'me' ? 2.5 : 1.7;
+            // Distinct floating insignias beside the shoulders, not over the face.
+            if (skin.shape === 'runes') {
+                for (const side of [-1, 1]) {
+                    const x = side * 37, y = -54 + Math.sin(phase * 2 + side) * 3;
+                    g.save(); g.translate(x, y); g.rotate(phase * .45 * side);
+                    g.strokeRect(-5, -5, 10, 10);
+                    g.beginPath(); g.moveTo(0, -9); g.lineTo(0, 9); g.moveTo(-9, 0); g.lineTo(9, 0); g.stroke();
+                    g.restore();
+                }
+            } else if (skin.shape === 'crown') {
+                // Gold shoulder epaulettes avoid the HP/nameplate above the head.
+                for (const side of [-1, 1]) {
+                    g.beginPath(); g.moveTo(side * 20, -67); g.lineTo(side * 29, -75);
+                    g.lineTo(side * 35, -66); g.lineTo(side * 27, -61); g.stroke();
+                    g.fillStyle = skin.light; g.fillRect(side * 31 - 2, -73, 4, 4);
+                }
+            } else if (skin.shape === 'embers') {
+                for (let j = 0; j < 3; j++) {
+                    const x = (j - 1) * 31, y = -39 - ((now / (13 + j * 3) + j * 19) % 42);
+                    g.fillStyle = j === 1 ? skin.light : skin.primary;
+                    g.fillRect(Math.round(x), Math.round(y), 4 + (j === 1 ? 2 : 0), 5);
+                }
+            } else {
+                for (const side of [-1, 1]) {
+                    const x = side * 35, y = -55 + Math.sin(phase * 2 + side) * 6;
+                    g.save(); g.translate(x, y); g.rotate(side * .6 + Math.sin(phase) * .2);
+                    g.beginPath(); g.ellipse(0, 0, 4, 9, .4, 0, Math.PI * 2); g.stroke();
+                    g.beginPath(); g.moveTo(0, -7); g.lineTo(0, 7); g.stroke(); g.restore();
+                }
+            }
+            // Enhanced finishers: a brief personal energy flare after the third combo strike.
+            // Uses snapshot combo stage, never modifies hit detection or authoritative combat.
+            if (h.cs === 2 && h.attackN && !h.state) {
+                const action = anim && anim.stateOf(i);
+                const atk = action && action.atk;
+                const age = atk ? now - atk.start : Infinity;
+                if (age >= 0 && age < 300) {
+                    const p = age / 300;
+                    g.globalAlpha = (1 - p) * .8;
+                    g.strokeStyle = skin.light; g.lineWidth = 3 * (1 - p) + 1;
+                    g.beginPath(); g.ellipse(0, -41, 25 + p * 30, 35 + p * 20, 0, 0, Math.PI * 2); g.stroke();
+                    for (let j = 0; j < 4; j++) {
+                        const an = j * Math.PI / 2 + phase * .3, r = 32 + p * 30;
+                        g.fillStyle = skin.primary;
+                        g.fillRect(Math.round(Math.cos(an) * r - 3), Math.round(-41 + Math.sin(an) * r * .7 - 3), 6, 6);
+                    }
+                }
+            }
+            // A bright, restrained shoulder glint while empowered.
+            if (active) {
+                g.globalAlpha = .65 + pulse * .3; g.strokeStyle = skin.light; g.lineWidth = 2;
+                g.beginPath(); g.moveTo(-27, -65); g.lineTo(-20, -72);
+                g.moveTo(27, -65); g.lineTo(20, -72); g.stroke();
+            }
+            g.restore();
+        }
+
         function drawHero(h, i, now, room, myId, k) {
             const px = h.x * S, py = h.y * S;
             const human = controllerOf(room, i), waiting = reservedOf(room, i);
@@ -1171,6 +1297,7 @@
                 g.beginPath(); g.moveTo(8, 0); g.lineTo(-5, -6); g.lineTo(-2, 0); g.lineTo(-5, 6); g.closePath(); g.fill();
                 g.restore();
             }
+            drawAnimeMantle(h, i, now);
             const entity = Object.assign({ name: h.name, facing: h.facing === -1 ? -1 : 1, moving: !!h.moving && !h.state, color, upgradeTier: h.upgradeTier || 0, theme: ART_THEME }, poseFor(i, now));
             if (h.state) { // downed: lying on the ground, greyed, with a revive progress ring
                 g.save();
@@ -1189,7 +1316,8 @@
                 g.restore();
             } else if (anim && anim.hasPose(h.name)) { if (env) env.shadow(g, 1, 46); anim.drawHero(g, h, i, now, k, lookFor(role, color)) }
             else R.drawSprite(g, 0, 0, color, false, h.name, now, entity);
-            if (!h.state && (h.buff || h.shield) && A) A.loop(g, 'buffAura', now, 0, -34, 58, null, false, .85, i * 90); // rally buff / Markie shield
+            if (!h.state && (h.buff || h.shield) && A) A.loop(g, 'buffAura', now, 0, -34, 58, null, false, .85, i * 90);
+            drawHeroFinish(h, i, now, role, k); // rally buff / Markie shield
             // Name + controller label and HP bar above the head (V19 ally style).
             g.fillStyle = '#292035';
             g.fillRect(-22, -86, 44, 5);
