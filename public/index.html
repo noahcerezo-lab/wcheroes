@@ -324,18 +324,364 @@
                 font-size: 32px
             }
         }
-        /* Landscape phones: give the arena the whole screen while a battle is running. */
+        /* ---- Phase A: battle header, connection banner, squad list ---- */
+        .battle-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 10px
+        }
+
+        .battle-head h2 {
+            margin: 0
+        }
+
+        .battle-head .row {
+            flex: 0 0 auto
+        }
+
+        .battle-head button {
+            min-height: 38px;
+            padding: 8px 12px;
+            font-size: 13px
+        }
+
+        #conn {
+            position: absolute;
+            left: 50%;
+            top: 12%;
+            transform: translateX(-50%);
+            background: #2a1530ee;
+            border: 1px solid #f3b77a;
+            color: #ffe2b0;
+            padding: 10px 16px;
+            border-radius: 10px;
+            font-weight: 800;
+            z-index: 6;
+            text-align: center
+        }
+
+        #squad {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+            padding: 0;
+            list-style: none
+        }
+
+        #squad li {
+            background: #1a1230;
+            border: 1px solid #4a3a5e;
+            border-left: 5px solid var(--hero);
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: 13px
+        }
+
+        #squad li.ai {
+            opacity: .85
+        }
+
+        #squad li b {
+            margin-right: 6px
+        }
+
+        .badge {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 800;
+            border-radius: 99px;
+            padding: 1px 7px;
+            margin-left: 4px;
+            background: #2c4856
+        }
+
+        .badge.ai {
+            background: #22553f;
+            color: #b9ffd9
+        }
+
+        .badge.wait {
+            background: #6a3f1d;
+            color: #ffd9a8
+        }
+
+        .badge.you {
+            background: #6b5320;
+            color: #ffe7a6
+        }
+
+        /* ---- V19 virtual joystick + action buttons (touch devices only) ---- */
+        #touch-controls {
+            display: none;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 12px;
+            margin-top: 10px;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none
+        }
+
+        body.touch #touch-controls {
+            display: flex
+        }
+
+        body.touch .key-hint {
+            display: none
+        }
+
+        #joystick {
+            position: relative;
+            width: 136px;
+            height: 136px;
+            flex: none;
+            border: 3px solid #b99164;
+            border-radius: 50%;
+            background: radial-gradient(circle, #33294d, #181329);
+            box-shadow: inset 0 0 20px #000a, 0 4px 15px #0008;
+            touch-action: none;
+            pointer-events: auto
+        }
+
+        #joystick:before,
+        #joystick:after {
+            content: '';
+            position: absolute;
+            background: #ffffff22;
+            pointer-events: none
+        }
+
+        #joystick:before {
+            width: 2px;
+            height: 76%;
+            left: calc(50% - 1px);
+            top: 12%
+        }
+
+        #joystick:after {
+            height: 2px;
+            width: 76%;
+            top: calc(50% - 1px);
+            left: 12%
+        }
+
+        #stick {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 44%;
+            height: 44%;
+            border: 3px solid #ffe4a1;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 25%, #9173ad, #45305e 70%);
+            box-shadow: 0 3px 10px #000b;
+            transform: translate(-50%, -50%);
+            pointer-events: none
+        }
+
+        #actions {
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+            pointer-events: auto
+        }
+
+        #actions button {
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            border: 3px solid #fff3;
+            border-radius: 50%;
+            font: bold 12px monospace;
+            color: white;
+            box-shadow: 0 5px 0 #0008, 0 0 18px #0006;
+            padding: 0
+        }
+
+        #attack-touch {
+            background: linear-gradient(140deg, #eea249, #ad4e45);
+            width: 92px;
+            height: 92px
+        }
+
+        #special-touch {
+            background: linear-gradient(140deg, #8b78ff, #4932a0);
+            width: 74px;
+            height: 74px
+        }
+
+        #actions button.pressed {
+            filter: brightness(1.4);
+            transform: scale(.95)
+        }
+
+        #rotate {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 20;
+            background: #120c1ff2;
+            color: #ffe4ac;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            font-weight: 800;
+            font-size: 20px;
+            padding: 30px
+        }
+
+        #rotate .icon {
+            font-size: 64px;
+            display: block;
+            margin-bottom: 14px;
+            animation: tilt 1.8s ease-in-out infinite
+        }
+
+        @keyframes tilt {
+            0%, 30% { transform: rotate(0) }
+            60%, 100% { transform: rotate(90deg) }
+        }
+
+        @media (orientation: portrait) {
+            body.touch.in-battle #rotate {
+                display: flex
+            }
+        }
+
+        /* Landscape phones: no page scrolling. Lobby is compact; the arena fills the screen in battle. */
         @media (orientation: landscape) and (max-height: 520px) {
+            html, body {
+                overflow: hidden;
+                height: 100dvh
+            }
+
+            h1 {
+                font-size: 18px;
+                margin: 4px 0 0
+            }
+
+            .sub,
+            main>p.muted,
+            #lobby>p.muted:last-of-type,
+            #entry>p.muted {
+                display: none
+            }
+
+            main {
+                max-width: none;
+                padding: 2px 12px 0;
+                height: 100dvh
+            }
+
+            #notice {
+                position: fixed;
+                top: 4px;
+                left: 50%;
+                transform: translateX(-50%);
+                z-index: 30;
+                min-height: 0;
+                pointer-events: none;
+                background: #120c1fcc;
+                border-radius: 6px;
+                padding: 0 8px;
+                font-size: 12px
+            }
+
+            .panel {
+                padding: 8px 12px;
+                margin: 4px 0
+            }
+
+            #entry h2 {
+                font-size: 16px;
+                margin-bottom: 6px
+            }
+
+            #lobby>.row:first-child {
+                flex-wrap: nowrap
+            }
+
+            #lobby .code {
+                font-size: 18px;
+                letter-spacing: 3px
+            }
+
+            #lobby h2 {
+                display: none
+            }
+
+            #lobby button {
+                min-height: 34px;
+                padding: 6px 10px;
+                font-size: 12px
+            }
+
+            #lobby .row {
+                margin-top: 6px !important;
+                gap: 8px
+            }
+
+            .heroes {
+                grid-template-columns: repeat(4, 1fr);
+                gap: 8px;
+                margin-top: 6px
+            }
+
+            .hero {
+                min-height: 0;
+                padding: 6px 6px 5px
+            }
+
+            .hero .portrait {
+                max-width: none;
+                width: auto;
+                height: 74px;
+                aspect-ratio: 150/180;
+                margin-bottom: 3px
+            }
+
+            .hero small {
+                margin-top: 1px;
+                font-size: 10px
+            }
+
+            .stats {
+                margin-top: 3px;
+                gap: 1px
+            }
+
+            .stat {
+                font-size: 9px
+            }
+
+            .stat .bar {
+                height: 4px
+            }
+
+            .hero .tag {
+                margin-top: 4px;
+                padding: 2px 6px;
+                font-size: 10px
+            }
+
+            #lobbyStatus {
+                margin: 4px 0 0;
+                font-size: 12px
+            }
+
             body.in-battle h1,
-            body.in-battle .sub,
-            body.in-battle #battle>h2,
-            body.in-battle #battle>.muted,
-            body.in-battle main>p.muted {
+            body.in-battle .battle-head h2,
+            body.in-battle #squad,
+            body.in-battle #battle>p {
                 display: none
             }
 
             body.in-battle main {
-                max-width: none;
                 padding: 0
             }
 
@@ -345,9 +691,9 @@
                 border: 0;
                 background: none;
                 box-shadow: none;
-                position: relative;
                 height: 100dvh;
                 display: flex;
+                flex-direction: column;
                 align-items: center;
                 justify-content: center
             }
@@ -363,41 +709,47 @@
                 border: 0
             }
 
-            body.in-battle .controls {
-                position: fixed;
-                left: max(10px, env(safe-area-inset-left));
-                bottom: 10px;
-                margin: 0;
-                pointer-events: none
-            }
-
-            body.in-battle .controls>div:last-child,
-            body.in-battle .key {
-                display: none
-            }
-
-            body.in-battle .pad {
-                pointer-events: auto;
-                opacity: .82
-            }
-
-            body.in-battle #notice {
+            body.in-battle .battle-head {
                 position: fixed;
                 top: 6px;
-                left: 50%;
-                transform: translateX(-50%);
-                z-index: 5;
-                min-height: 0;
-                pointer-events: none
+                right: max(8px, env(safe-area-inset-right));
+                z-index: 7;
+                margin: 0
             }
 
-            body.in-battle #status {
-                position: fixed;
-                right: 12px;
-                bottom: 6px;
-                margin: 0;
+            body.in-battle .battle-head button {
+                min-height: 30px;
+                padding: 4px 9px;
                 font-size: 11px;
-                opacity: .7
+                opacity: .85
+            }
+
+            body.in-battle #touch-controls {
+                position: fixed;
+                left: max(10px, env(safe-area-inset-left));
+                right: max(10px, env(safe-area-inset-right));
+                bottom: 8px;
+                margin: 0;
+                pointer-events: none;
+                z-index: 5
+            }
+
+            body.in-battle #joystick {
+                width: 118px;
+                height: 118px;
+                opacity: .85
+            }
+
+            body.in-battle #attack-touch {
+                width: 82px;
+                height: 82px;
+                opacity: .9
+            }
+
+            body.in-battle #special-touch {
+                width: 64px;
+                height: 64px;
+                opacity: .9
             }
         }
     </style>
@@ -418,191 +770,42 @@
                 <div>
                     <div class="muted">PRIVATE ROOM</div>
                     <div id="code" class="code"></div>
-                </div><button class="secondary" id="copy">COPY INVITE LINK</button>
+                </div><button class="secondary" id="copy">COPY INVITE LINK</button><button class="secondary" id="leaveLobby">LEAVE ROOM</button>
             </div>
             <h2 style="margin-top:22px">Choose your hero</h2>
             <div id="heroes" class="heroes"></div>
             <div class="row" style="margin-top:20px"><button id="ready">I'M READY</button><button id="start" class="secondary" disabled>START CO-OP BATTLE</button></div>
             <p id="lobbyStatus" class="muted"></p>
-            <p class="muted">Unclaimed heroes automatically become AI teammates. Everyone must mark ready before the host can start.</p>
+            <p class="muted">Unclaimed heroes automatically become AI teammates. If someone drops, AI plays their hero until they reconnect. Everyone connected must be ready before the host can start.</p>
         </section>
         <section id="battle" class="panel hidden">
-            <h2>Co-op Arena — Movement Prototype</h2>
-            <div class="battle"><canvas id="arena" width="1440" height="810"></canvas></div>
-            <div class="controls">
-                <div>
-                    <div class="pad" id="pad"><span class="empty"></span><button data-dir="up">▲</button><span class="empty"></span><button data-dir="left">◀</button><button data-dir="down">▼</button><button data-dir="right">▶</button></div>
-                    <div class="key">WASD / arrows or touch pad</div>
-                </div>
-                <div>
-                    <p class="muted">Your hero has a gold ring.<br>Other human players have blue rings.<br>AI teammates have green rings.</p>
-                </div>
+            <div class="battle-head">
+                <h2>Co-op Arena — Movement Prototype</h2>
+                <div class="row"><button class="secondary hidden" id="toLobby">↩ RETURN TO LOBBY</button><button class="secondary" id="leaveBattle">LEAVE</button></div>
             </div>
-            <p id="status">Connected to battle</p>
-            <p class="muted">This first multiplayer milestone synchronizes the lobby and movement. Combat, enemies, damage, bosses and upgrades are still in development.</p>
+            <div class="battle" style="position:relative"><canvas id="arena" width="1440" height="810"></canvas>
+                <div id="conn" class="hidden">Connection lost — reconnecting…<br><small>AI is playing your hero meanwhile</small></div>
+            </div>
+            <div id="touch-controls">
+                <div id="joystick" aria-label="Movement joystick">
+                    <div id="stick"></div>
+                </div>
+                <div id="actions"><button id="special-touch" type="button">✦<br>SPECIAL</button><button id="attack-touch" type="button">⚔<br>ATTACK</button></div>
+            </div>
+            <ul id="squad"></ul>
+            <p class="muted key-hint">Move: WASD / arrows • Attack: SPACE • Special: Q. Gold ring = you, blue = other players, green = AI.</p>
+            <p id="status" class="muted">Connected to battle</p>
+            <p class="muted">Combat, enemies, damage, bosses and upgrades are still in development. Attack/special play an animation only.</p>
         </section>
         <p class="muted" style="text-align:center">Want to play the original single-player game? <a style="color:#e8cb8e" href="/legacy-v19.html">Open V19</a></p>
     </main>
+    <div id="rotate"><span class="icon">📱</span>Rotate your phone to landscape<br><small style="font-weight:400;font-size:14px;margin-top:8px">The arena plays sideways.</small></div>
     <script src="/socket.io/socket.io.js"></script>
     <script src="js/heroes-config.js"></script>
+    <script src="js/shared-sim.js"></script>
     <script src="js/heroes-render.js"></script>
     <script src="js/mp-arena.js"></script>
-    <script>
-        const socket = io(),
-            ROSTER = WCHHeroes.HEROES, // shared with the server: js/heroes-config.js
-            HEROES = WCHHeroes.NAMES,
-            ROLES = ROSTER.map(h => h.cls),
-            COLORS = ROSTER.map(h => h.color);
-        let room = null,
-            world = null,
-            keys = {},
-            touch = new Set();
-        const $ = id => document.getElementById(id);
-
-        function show(id) {
-            for (const key of ['entry', 'lobby', 'battle']) $(key).classList.toggle('hidden', key !== id);
-            document.body.classList.toggle('in-battle', id === 'battle');
-            if (id === 'battle') $('notice').textContent = ''
-        }
-
-        function note(msg) {
-            $('notice').textContent = msg;
-            setTimeout(() => {
-                if ($('notice').textContent === msg) $('notice').textContent = ''
-            }, 6500)
-        }
-
-        function send(event, data, cb) {
-            socket.emit(event, data, r => {
-                if (!r?.ok) {
-                    note(r?.error || 'Request failed');
-                    return
-                }
-                cb?.(r)
-            })
-        }
-
-        function invite() {
-            return location.origin + location.pathname + '?room=' + room.code
-        }
-
-        function render() {
-            if (!room) return;
-            $('code').textContent = room.code;
-            const me = room.players.find(p => p.id === socket.id);
-            $('heroes').replaceChildren();
-            room.slots.forEach((slot, i) => {
-                const owner = room.players.find(p => p.hero === i),
-                    b = document.createElement('button');
-                b.className = 'hero' + (me?.hero === i ? ' mine' : '') + (owner && owner.id !== socket.id ? ' taken' : '');
-                b.disabled = !!owner && owner.id !== socket.id;
-                const cfg = ROSTER[i];
-                b.style.setProperty('--hero', cfg.color);
-                const bars = WCHHeroes.STAT_KEYS.map(k => '<span class="stat"><i>' + k + '</i><span class="bar"><span style="width:' + (cfg.stats[k] * 10) + '%"></span></span></span>').join('');
-                b.innerHTML = '<span class="slot">' + cfg.slot + '</span><img class="portrait" src="assets/portraits/' + slot.hero.toLowerCase() + '.jpg" alt="' + slot.hero + ' portrait"><b>' + slot.hero + '</b><small>' + ROLES[i] + '</small><span class="stats">' + bars + '</span><span class="tag">' + (owner ? owner.name + (owner.ready ? ' ✓ READY' : ' • NOT READY') : 'AI TEAMMATE') + '</span>';
-                b.onclick = () => send('hero:select', {
-                    hero: i
-                });
-                $('heroes').appendChild(b)
-            });
-            $('ready').textContent = me?.ready ? '✓ READY — TAP TO UNREADY' : "I'M READY";
-            $('start').classList.toggle('hidden', room.host !== socket.id);
-            $('start').disabled = !room.players.length || room.players.some(p => !p.ready);
-            $('lobbyStatus').textContent = room.players.length + ' human player(s) connected • ' + (4 - room.players.length) + ' AI teammate(s) • ' + room.players.filter(p => p.ready).length + '/' + room.players.length + ' ready';
-            if (room.phase === 'battle') show('battle');
-            else show('lobby')
-        }
-        $('create').onclick = () => send('room:create', {
-            name: $('name').value
-        }, r => {
-            history.replaceState({}, '', '?room=' + r.code)
-        });
-        $('join').onclick = () => send('room:join', {
-            code: $('roomCode').value,
-            name: $('name').value
-        }, r => {
-            history.replaceState({}, '', '?room=' + r.code)
-        });
-        $('ready').onclick = () => {
-            const me = room?.players.find(p => p.id === socket.id);
-            send('player:ready', {
-                ready: !me?.ready
-            })
-        };
-        $('start').onclick = () => send('room:start', {});
-        $('copy').onclick = async () => {
-            try {
-                await navigator.clipboard.writeText(invite());
-                note('Invite link copied!')
-            } catch {
-                note('Share this link: ' + invite())
-            }
-        };
-        socket.on('room:update', r => {
-            room = r;
-            render()
-        });
-        socket.on('battle:start', w => {
-            world = w;
-            arena.reset();
-            arena.push(w);
-            show('battle')
-        });
-        socket.on('battle:state', w => {
-            world = w;
-            arena.push(w)
-        });
-        socket.on('disconnect', () => note('Disconnected — attempting to reconnect.'));
-        socket.on('connect', () => {
-            if (room) {
-                note('Reconnected. Rejoin the room if needed.');
-                room = null;
-                world = null;
-                arena.reset();
-                show('entry')
-            }
-        });
-        const urlRoom = new URLSearchParams(location.search).get('room');
-        if (urlRoom) {
-            $('roomCode').value = urlRoom.toUpperCase();
-            note('Enter your name, then tap JOIN ROOM.')
-        }
-        // V19 artwork + smoothed server snapshots (see js/mp-arena.js). ?interp=0 disables smoothing.
-        const arena = WCHArena.createArena($('arena'), {
-            getRoom: () => room,
-            getMyId: () => socket.id,
-            interpolate: new URLSearchParams(location.search).get('interp') !== '0'
-        });
-        arena.start();
-        window.__wch = { arena, getWorld: () => world, getRoom: () => room }; // debug/test hook (read-only views)
-
-        function input() {
-            const up = keys.w || keys.arrowup || touch.has('up'),
-                down = keys.s || keys.arrowdown || touch.has('down'),
-                left = keys.a || keys.arrowleft || touch.has('left'),
-                right = keys.d || keys.arrowright || touch.has('right');
-            socket.emit('player:input', {
-                x: Number(!!right) - Number(!!left),
-                y: Number(!!down) - Number(!!up)
-            })
-        }
-        setInterval(input, 50);
-        addEventListener('keydown', e => {
-            if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
-            keys[e.key.toLowerCase()] = true;
-            if (e.key.startsWith('Arrow')) e.preventDefault()
-        });
-        addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
-        document.querySelectorAll('[data-dir]').forEach(b => {
-            const d = b.dataset.dir;
-            b.addEventListener('pointerdown', e => {
-                e.preventDefault();
-                try { b.setPointerCapture(e.pointerId) } catch {} // can fail for synthetic/cancelled pointers
-                touch.add(d)
-            });
-            for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(event, () => touch.delete(d))
-        });
-    </script>
+    <script src="js/mp-client.js"></script>
 </body>
 
 </html>
