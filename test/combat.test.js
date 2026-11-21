@@ -150,7 +150,7 @@ test('enemies spawn off-screen, walk in, and never leave the arena once inside',
     assert.ok(entered > 0);
 });
 
-test('waves advance after a clear, harder enemy types unlock, every 15th wave is flagged for a Phase D boss', () => {
+test('waves advance after a clear, harder enemy types unlock, every 10th wave is a boss encounter', () => {
     const w = C.createBattle({ seed: 11, firstWaveDelayMs: 0 });
     const waves = [], clears = [], types = new Set();
     for (let i = 0; i < 20 * 600 && w.wave < 6 && !w.over; i++) {
@@ -162,7 +162,9 @@ test('waves advance after a clear, harder enemy types unlock, every 15th wave is
     assert.deepEqual(clears.slice(0, 4), [1, 2, 3, 4]);
     assert.ok(types.has('acolyte') && types.has('warden') && types.size === 2, [...types].join());
     assert.equal(C.waveSize(1), 8);
-    assert.equal(C.isBossWave(15), true);
+    assert.equal(C.isBossWave(10), true);
+    assert.equal(C.isBossWave(20), true);
+    assert.equal(C.isBossWave(15), false);
     assert.equal(C.isBossWave(14), false);
 });
 
@@ -175,7 +177,7 @@ test('AI teammates fight on their own and the same seed replays the same battle'
 });
 
 test('no projectile enemies: only acolytes and wardens spawn, no shots in the sim or snapshots; melee strikes can be dodged', () => {
-    assert.deepEqual(C.ENEMY_TYPES.map(t => t.key), ['acolyte', 'warden']);
+    assert.deepEqual(C.ENEMY_TYPES.map(t => t.key), ['acolyte', 'warden', 'voidEmperor']);
     assert.ok(C.ENEMY_TYPES.every(t => t.kind !== 'ranged' && !t.shot));
     for (const seed of [1, 2, 3]) {
         const w = C.createBattle({ seed, firstWaveDelayMs: 0 });
