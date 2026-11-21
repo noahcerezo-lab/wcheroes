@@ -21,7 +21,7 @@ const once = (c, ev, pred = () => true, ms = 4000) => new Promise((res, rej) => 
 async function startServer(env = {}) {
     const port = await freePort();
     const url = 'http://127.0.0.1:' + port;
-    const proc = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, ...env, PORT: String(port) }, stdio: ['ignore', 'pipe', 'inherit'] });
+    const proc = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, FIRST_WAVE_DELAY_MS: '600000', ...env, PORT: String(port) }, stdio: ['ignore', 'pipe', 'inherit'] });
     await new Promise((res, rej) => {
         const t = setTimeout(() => rej(new Error('server did not start')), 8000);
         proc.stdout.on('data', d => { if (String(d).includes('port ' + port)) { clearTimeout(t); res() } });

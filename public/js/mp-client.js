@@ -17,6 +17,7 @@
     let room = null, world = null, me = null; // me = {playerId, token, code}
     let seq = 0, pending = [], predicted = null, predictedFor = null, visualOffset = { x: 0, y: 0 }, lastLocalMove = 0;
     const keys = {}, touch = { x: 0, y: 0, attack: false, special: false };
+    const tapped = { attack: false, special: false }; // a quick tap between two input ticks still counts
     const predictionOn = params.get('predict') !== '0';
 
     if (window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0) document.body.classList.add('touch');
@@ -87,9 +88,9 @@
             b.className = 'hero' + (mine?.hero === i ? ' mine' : '') + (owner && owner.id !== myId() ? ' taken' : '');
             b.disabled = !!owner && owner.id !== myId();
             b.style.setProperty('--hero', cfg.color);
-            const bars = WCHHeroes.STAT_KEYS.map(k => '<span class="stat"><i>' + k + '</i><span class="bar"><span style="width:' + (cfg.stats[k] * 10) + '%"></span></span></span>').join('');
+            const bars = WCHHeroes.STAT_KEYS.map(k => '<span class="stat"><i>' + k + '</i><span class="bar"><span style="width:' + Math.round(cfg.fill[k] * 100) + '%"></span></span></span>').join('');
             const tag = !owner ? 'AI TEAMMATE' : !owner.connected ? '⟳ ' + esc(owner.name) + ' reconnecting…' : esc(owner.name) + (owner.ready ? ' ✓ READY' : ' • NOT READY');
-            b.innerHTML = '<span class="slot">' + cfg.slot + '</span><img class="portrait" src="assets/portraits/' + slot.hero.toLowerCase() + '.jpg" alt="' + slot.hero + ' portrait"><b>' + slot.hero + '</b><small>' + cfg.cls + '</small><span class="stats">' + bars + '</span><span class="tag">' + tag + '</span>';
+            b.innerHTML = '<span class="slot">' + cfg.slot + '</span><img class="portrait" src="assets/portraits/' + slot.hero.toLowerCase() + '.png" alt="' + slot.hero + ' portrait"><b>' + slot.hero + '</b><small>' + cfg.cls + '</small><span class="stats">' + bars + '</span><span class="tag">' + tag + '</span>';
             b.onclick = () => send('hero:select', { hero: i });
             $('heroes').appendChild(b);
         });
@@ -137,7 +138,11 @@
     socket.on('room:update', r => { room = r; render() });
     socket.on('battle:start', w => { world = w; arena.reset(); arena.push(w); resetPrediction(); reconcile(w); show('battle') });
     socket.on('battle:state', w => { world = w; reconcile(w); arena.push(w) });
-    socket.on('battle:end', e => { world = null; arena.reset(); resetPrediction(); note('Back in the lobby' + (e?.by ? ' — ' + e.by + ' started a new round.' : '.')) });
+    socket.on('battle:end', e => {
+        world = null; arena.reset(); resetPrediction();
+        if (e?.reason === 'wipe') note('Squad defeated on wave ' + e.wave + ' — score ' + e.score + ', ' + e.kills + ' KOs. Ready up to play again!', 12000);
+        else note('Back in the lobby' + (e?.by ? ' — ' + e.by + ' ended the round.' : '.'));
+    });
     socket.on('session:replaced', () => { me = null; room = null; world = null; arena.reset(); show('entry'); note('This game was opened in another tab or window.') });
     socket.on('disconnect', () => {
         $('status').textContent = 'Disconnected — reconnecting…';
@@ -155,14 +160,17 @@
 
     // ---------- prediction ----------
     function myHeroIndex(w) { return w ? w.heroes.findIndex(h => h.controller && h.controller === myId()) : -1 }
+    // Same per-hero speed the server uses (V19 speed converted to world units per input).
+    const speedOf = i => SIM.speedFromV19(ROSTER[i].v19.speed);
+    const canMove = w => { const i = myHeroIndex(w); return i >= 0 && !w.heroes[i].state && !w.over };
     function resetPrediction() { pending = []; predicted = null; predictedFor = null; visualOffset = { x: 0, y: 0 } }
     function reconcile(w) {
         const i = myHeroIndex(w);
         if (i < 0 || !predictionOn) { if (predicted) resetPrediction(); return }
         const h = w.heroes[i];
         pending = pending.filter(p => p.seq > h.seq);
-        const next = { x: h.x, y: h.y, facing: h.facing };
-        for (const p of pending) SIM.stepHero(next, p.move);
+        const next = { x: h.x, y: h.y, facing: h.facing, vx: h.vx, vy: h.vy, aim: h.aim }; // velocity + aim too, so acceleration replays exactly
+        if (!h.state && !w.over) for (const p of pending) SIM.stepHero(next, p.move, speedOf(i)); // downed: no movement to replay
         if (predicted && predictedFor === i) {
             // Keep what's on screen continuous: the correction fades out over a few frames.
             visualOffset.x += predicted.x - next.x;
@@ -175,7 +183,7 @@
     function localHero() {
         if (!predicted || !predictionOn) return null;
         visualOffset.x *= 0.8; visualOffset.y *= 0.8;
-        return { index: predictedFor, x: predicted.x + visualOffset.x, y: predicted.y + visualOffset.y, facing: predicted.facing, moving: performance.now() - lastLocalMove < 120 };
+        return { index: predictedFor, x: predicted.x + visualOffset.x, y: predicted.y + visualOffset.y, facing: predicted.facing, aim: predicted.aim, moving: performance.now() - lastLocalMove < 120 };
     }
 
     // ---------- input ----------
@@ -188,19 +196,22 @@
     function tickInput() {
         if (!socket.connected || !room || room.phase !== 'battle' || !world || myHeroIndex(world) < 0) return;
         const move = readMove();
-        const attack = !!(keys[' '] || touch.attack), special = !!(keys.q || touch.special);
+        const attack = !!(keys[' '] || touch.attack || tapped.attack), special = !!(keys.q || touch.special || tapped.special);
+        tapped.attack = tapped.special = false;
         seq++;
         socket.emit('player:input', { seq, x: move.x, y: move.y, attack, special });
         if (predictionOn && predicted) {
             pending.push({ seq, move });
             if (pending.length > 120) pending.shift();
-            if (SIM.stepHero(predicted, move)) lastLocalMove = performance.now();
+            if (canMove(world) && SIM.stepHero(predicted, move, speedOf(predictedFor))) lastLocalMove = performance.now();
         }
     }
     setInterval(tickInput, SIM.TICK_MS);
     addEventListener('keydown', e => {
         if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
         keys[e.key.toLowerCase()] = true;
+        if (e.key === ' ') tapped.attack = true;
+        if (e.key.toLowerCase() === 'q') tapped.special = true;
         if (e.key.startsWith('Arrow') || (e.key === ' ' && document.body.classList.contains('in-battle'))) e.preventDefault();
     });
     addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false });
@@ -239,6 +250,7 @@
             pointer = e.pointerId;
             try { b.setPointerCapture(e.pointerId) } catch {}
             touch[field] = true;
+            tapped[field] = true;
             b.classList.add('pressed');
         });
         for (const evt of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(evt, e => {

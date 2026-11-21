@@ -1,6 +1,6 @@
-# West Coast Heroes — Multiplayer Starter (Lobby + Movement)
+# West Coast Heroes — Online Co-op
 
-This is the first **real online co-op milestone** built alongside the existing V19 game. It is **not yet multiplayer combat**. The lobby, unique hero claims, 1–4 human players, AI filling empty slots, room links, ready checks, host-controlled start, and synchronized movement are implemented.
+Online co-op for 1–4 players, built alongside the original V19 game (`/legacy-v19.html`, unchanged). Lobby, unique hero claims, AI filling empty slots, room links, reconnects, and **server-authoritative shared combat**: enemies, waves, hits, damage, specials, downed/revive, AI teammates that fight, and a game-over screen that returns to the lobby. Bosses and upgrades come next (Phase D).
 
 ## Run locally
 
@@ -23,7 +23,15 @@ Client -> server: `room:create {name}`, `room:join {code,name}` (ack includes `p
 
 Server -> client: `room:update`, `battle:start`, `battle:state`, `battle:end`, `session:replaced`.
 
-`battle:state` (20 Hz) = `{tick, serverTime, arena:{minX,maxX,minY,maxY}, zone, heroes:[{name, x, y, hp, maxHp, facing, moving, controller, seq, attackN, specialN}]}` — `seq` is the last input the server applied for that hero (prediction ack); `attackN`/`specialN` count cooldown-validated presses (animation only for now)` in hero-sheet slot order (1P NOAH, 2P DESTINY, 3P MARKIE, 4P ESPIRIT).
+`player:input` is **intent only**: movement plus `attack`/`special` booleans. The server checks cooldowns and resolves every hit; any other field (damage, hp, targets…) is ignored.
+
+`battle:state` (20 Hz, compact) = `{tick, wave, ws (1 = fighting), next (ms to next wave), left, score, kills, combo, over, zone, heroes:[…], enemies:[[id, type, x, y, hp%, facing, flags]…], shots:[[id, type, x, y, vx×10, vy×10]…], ev:[…]}`.
+- heroes (slot order 1P NOAH, 2P DESTINY, 3P MARKIE, 4P ESPIRIT): `name, x, y, vx, vy, facing, aim (0–7, 0 = right, 2 = down, 4 = left, 6 = up), moving, controller, seq (prediction ack), hp, maxHp, state (0 alive, 1 downed), rv (revive %), attackN, specialN, cs (chain stage of last swing, 2 = finisher), buff, shield, cd (special cooldown, 0.1 s)`.
+- enemy types: 0 Horned Acolyte (melee), 1 Lantern Wisp (slow ember bolt), 2 Tomoe Archer (arrows), 3 Temple Warden (ground slam). Flags: 1 stunned, 2 taunted, 4 winding up (telegraph), 8 just struck.
+- events `ev`: `hit {id,d,c (crit),f (finisher),h,x,y}`, `kill`, `hurt`, `heal`, `buff`, `spc`, `slam`, `down`, `revive`, `wave`, `clear`, `over`.
+- `battle:start` and `session:resume` add `arena` and `enemyTypes`. `battle:end {reason: 'host'|'wipe', wave, score, kills}`.
+
+Bandwidth: ~21 KB/s of JSON per client in a 4-player fight; WebSocket compression (`perMessageDeflate`) brings it to ~2.6 KB/s on the wire (measured, see the PR).
 
 ## Reconnects, prediction, limits
 
@@ -31,18 +39,35 @@ Server -> client: `room:update`, `battle:start`, `battle:state`, `battle:end`, `
 - **Prediction.** Your own hero moves locally the moment you press a key, using the same rule as the server (`public/js/shared-sim.js`), then reconciles with each snapshot's `seq`. Other heroes are interpolated. URL flags for comparison: `?predict=0`, `?interp=0`.
 - **Limits.** Inputs: token bucket (22/s, burst 8); extra inputs are acknowledged but not applied. Room/lobby events: 5/s, burst 15 (`Slow down.`). Non-numeric/infinite values are zeroed, stale or duplicate `seq` ignored. `MAX_ROOMS` (default 500). Socket.IO ping 10 s / timeout 8 s so dead connections hand over to AI quickly.
 
+## Combat rules (shared/combat.js)
+
+- **World size.** The server simulates in 960×540 units; V19 drew a 1440×810 world. V19 distances ÷ 1.5; V19 per-frame speeds × 2 per 50 ms tick (Noah 3.7 → 7.4). The canvas is still 1440×810 (×1.5).
+- **Heroes** (V19 numbers): NOAH crescent arc + ARCANE NOVA blast; DESTINY spear strike with stun, RALLY STRIKE (team heal 35, +25% damage 5 s, stun) and a healing aura; MARKIE 360° axe cleave (front ×1.5), EARTHSHATTER (×4, taunt 4 s, damage shield 3 s); ESPIRIT long-range single arrow, ARROW STORM. LUK → crit chance, VIT → damage taken (stats from the hero sheets, `public/assets/heroes.json`).
+- **Feel.** Attacks aim in 8 directions (the way you last moved; AI aims at its target). Swings chain 1-2-3; the 3rd is a finisher (×1.6 damage, ×1.8 knockback, longer reach, then a short recovery). The chain resets if you pause longer than the cooldown + 450 ms. Movement accelerates and decelerates (full speed in ~200 ms), diagonals are normalized, walls stop velocity. All of it is in the shared modules, so client prediction matches the server exactly.
+- **Downed / revive.** At 0 HP a hero is downed (can't move or attack). Stand next to them for 2 s (two helpers = faster) to revive at 40% HP. Everyone downed = game over; after 8 s (`GAME_OVER_RETURN_MS`) the room returns to the lobby, or the host can return earlier.
+- **Waves.** Wave n has 5 + 3n enemies, at most 24 alive (`MAX_ENEMIES`). They spawn off-screen and can't leave the arena once inside. +25 HP to living heroes on a clear, 3 s break. Wisps from wave 3, archers from 4, wardens from 5. Every 15th wave is flagged as a boss wave and every 10th calls an upgrade hook (both no-ops until Phase D).
+- **Env knobs.** `FIRST_WAVE_DELAY_MS` (3000), `GAME_OVER_RETURN_MS` (8000), `ENEMY_DAMAGE_MUL` (1, difficulty), `COMBAT_SEED` (fixed fights for testing), `WS_DEFLATE=0` (turn compression off).
+
+## Art
+
+- Combat VFX and enemies: Draper's pack (`/workspace/wcheroes-design/`, README + combat-vfx.md + enemies.md), copied to `public/assets/combat/` and drawn with nearest-neighbor scaling. World radii win over sheet sizes; floor rings aren't flipped. Damage numbers: `#FFF2A0` normal, `#FFD36D` crit, `#ADFFCB` heal.
+- Portraits and stat fills: Oracle's pack (`/workspace/wcheroes-assets/`, README), copied to `public/assets/portraits/*.png` and `public/assets/heroes.json`.
+- Screen shake is small and short, and off when the device asks for reduced motion.
+
 ## Code layout
 
-- `server.js` — rooms, lobby, authoritative 20 Hz movement + AI followers.
+- `server.js` — rooms, lobby, sessions; runs `shared/combat.js` in the authoritative 20 Hz tick and broadcasts compact snapshots.
+- `shared/combat.js` — DOM-free, seeded combat simulation (enemies, hero kits, chains, downed/revive, AI teammates, waves).
+- `public/js/combat-art.js` — loads and plays Draper's sprite sheets.
 - `public/js/heroes-config.js` — shared hero roster (slot order, class, colors, STR/AGI/INT/VIT/LUK, V19 combat numbers). Loaded by the server and the browser.
 - `public/js/heroes-render.js` — V19's hero/enemy sprites and battlefield, extracted so `legacy-v19.html` and the multiplayer client share one renderer. Optional `theme: 'sheet'` recolors heroes to match the official hero sheets (multiplayer only).
-- `public/js/shared-sim.js` — movement rule shared by server and client (prediction).
+- `public/js/shared-sim.js` — movement rule shared by server and client (acceleration, 8-way aim, prediction).
 - `public/js/mp-client.js` — lobby, sessions/reconnect, input + prediction, V19 joystick and touch buttons.
-- `public/js/mp-arena.js` — multiplayer canvas: draws snapshots with V19 art and interpolates between them (`?interp=0` turns smoothing off); larger sprites on small screens.
-- `test/` — `npm test` headless multiplayer checks (lobby, sync, reconnect-to-slot, grace expiry, host migration, prediction acks, rate limits, cooldowns, play again).
+- `public/js/mp-arena.js` — multiplayer canvas: V19 battlefield + heroes, Draper enemies and effects, HUD; interpolates snapshots (`?interp=0` turns smoothing off); larger sprites on small screens.
+- `test/` — `npm test`: combat unit tests (deterministic), server combat checks (forged input, downed, wipe → lobby), and the multiplayer checks (lobby, sync, reconnect-to-slot, grace expiry, host migration, prediction acks, rate limits, cooldowns, play again).
 
-Server owns room membership, unique hero selection, authoritative movement, and AI following. The state is held in memory; restarting the server ends rooms. Disconnects release hero slots, allowing AI to take over mid-battle.
+Server owns room membership, hero selection, movement, combat and AI. The state is held in memory; restarting the server ends rooms. Disconnects release hero slots, allowing AI to take over mid-battle.
 
-## Next milestone
+## Next milestone (Phase D)
 
-Port V19 combat to the server-authoritative simulation: enemies, hitboxes, damage, waves, boss battles, cooldowns, abilities, pickups, and state reconciliation. Do not treat the current movement prototype as the completed co-op game.
+Bosses (The Void Emperor; sheets are already in `public/assets/combat/`), hero upgrades every 10 waves, pickups, difficulty tuning from real playtests.

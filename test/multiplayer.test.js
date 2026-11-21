@@ -4,6 +4,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const SIM = require('../public/js/shared-sim.js');
+const ROSTER = require('../public/js/heroes-config.js');
+const SPEED = ROSTER.HEROES.map(h => SIM.speedFromV19(h.v19.speed)); // per-hero units per input
 const { startServer, battleWith, wait, emit, once } = require('./helpers');
 
 let srv;
@@ -13,7 +15,7 @@ test.after(() => srv?.stop());
 test('health endpoint and static pages are served', async () => {
     const h = await (await fetch(srv.url + '/health')).json();
     assert.equal(h.ok, true);
-    for (const p of ['/', '/legacy-v19.html', '/js/heroes-render.js', '/js/mp-arena.js', '/js/heroes-config.js', '/js/shared-sim.js', '/js/mp-client.js', '/assets/portraits/noah.jpg']) {
+    for (const p of ['/', '/legacy-v19.html', '/js/heroes-render.js', '/js/mp-arena.js', '/js/heroes-config.js', '/js/shared-sim.js', '/js/mp-client.js', '/assets/portraits/noah.png', '/js/combat-art.js', '/assets/combat/enemy_horned_acolyte_48x64_4f.png']) {
         assert.equal((await fetch(srv.url + p)).status, 200, p);
     }
 });
@@ -21,8 +23,15 @@ test('health endpoint and static pages are served', async () => {
 test('shared hero config matches the hero sheets', () => {
     const R = require('../public/js/heroes-config.js');
     assert.deepEqual(R.HEROES.map(h => [h.slot, h.name, h.cls]), [
-        ['1P', 'NOAH', 'SPELLBLADE MAGE'], ['2P', 'DESTINY', 'CAPTAIN WARRIOR'], ['3P', 'MARKIE', 'ROGUE-TANK'], ['4P', 'ESPIRIT', 'HUNTER']]);
+        ['1P', 'NOAH', 'SPELLBLADE-MAGE'], ['2P', 'DESTINY', 'CAPTAIN WARRIOR'], ['3P', 'MARKIE', 'ROGUE-TANK'], ['4P', 'ESPIRIT', 'HUNTER']]);
     for (const h of R.HEROES) for (const k of R.STAT_KEYS) assert.ok(h.stats[k] >= 1 && h.stats[k] <= 10, h.name + ' ' + k);
+    // Bar fills come from Oracle's measured pack (public/assets/heroes.json, copied from /workspace/wcheroes-assets).
+    const pack = require('../public/assets/heroes.json');
+    R.HEROES.forEach((h, i) => {
+        assert.equal(pack[i].name.toUpperCase(), h.name, 'slot order');
+        assert.equal(pack[i].className.toUpperCase(), h.cls, 'class name');
+        for (const k of R.STAT_KEYS) assert.equal(h.fill[k], pack[i].stats[k], h.name + ' ' + k + ' fill');
+    });
 });
 
 test('shared movement rule rejects NaN/Infinity and clamps to the arena', () => {
@@ -81,19 +90,19 @@ test('4-player lobby -> battle -> synchronized movement, AI takeover', async () 
     assert.ok(ticks >= 40 && ticks <= 58, '~20 Hz state (' + ticks + ' ticks in 2.5s)');
     const noah = sA.heroes[0];
     assert.ok(noah.x > startX + 100, 'NOAH moved right ' + (noah.x - startX));
-    assert.ok(noah.x - startX <= sent * SIM.HERO_SPEED + 1e-9, 'one step per input at most');
+    assert.ok(noah.x - startX <= sent * SPEED[0] + 1e-9, 'one step per input at most');
     assert.equal(noah.seq, A.seq, 'last input acknowledged');
     assert.equal(noah.facing, 1);
     assert.equal(noah.moving, false, 'stopped after inputs stop');
-    assert.equal(sA.heroes[1].y, sA.arena.minY, 'DESTINY clamped at top boundary');
+    assert.equal(sA.heroes[1].y, SIM.ARENA.minY, 'DESTINY clamped at top boundary');
     const esp = sA.heroes[3];
-    assert.ok(esp.x - w0.heroes[3].x <= sent * SIM.HERO_SPEED + 1e-9, 'garbage input cannot exceed max speed');
+    assert.ok(esp.x - w0.heroes[3].x <= sent * SPEED[3] + 1e-9, 'garbage input cannot exceed max speed');
     assert.equal(esp.y, w0.heroes[3].y, 'non-numeric axis ignored, seq-less input ignored');
     const snapsAt = await Promise.all([A, B, C].map(c => once(c, 'battle:state', w => w.tick === sA.tick + 10)));
     for (const s of snapsAt) assert.deepEqual(s.heroes.map(h => [h.x, h.y]), snapsAt[0].heroes.map(h => [h.x, h.y]));
     const ai = snapsAt[0].heroes[2], lead = snapsAt[0].heroes[0];
     assert.ok(Math.hypot(ai.x - lead.x, ai.y - lead.y) < Math.hypot(w0.heroes[2].x - lead.x, w0.heroes[2].y - lead.y) + 1, 'AI closed in on leader');
-    for (const h of snapsAt[0].heroes) assert.ok(h.x >= sA.arena.minX && h.x <= sA.arena.maxX && h.y >= sA.arena.minY && h.y <= sA.arena.maxY, h.name + ' in bounds');
+    for (const h of snapsAt[0].heroes) assert.ok(h.x >= SIM.ARENA.minX && h.x <= SIM.ARENA.maxX && h.y >= SIM.ARENA.minY && h.y <= SIM.ARENA.maxY, h.name + ' in bounds');
     // Bob drops: DESTINY goes to AI while his slot stays reserved.
     const upd = once(A, 'room:update', r => r.players.some(p => p.id === ids.B && !p.connected));
     B.close();
@@ -164,7 +173,7 @@ test('prediction acks: hero.seq echoes the last applied input, replay reproduces
     for (const [x, y] of moves) { A.input(x, y); await wait(50) }
     const s = await once(A, 'battle:state', w => w.heroes[0].seq === 10);
     const pred = { x: start.x, y: start.y, facing: start.facing };
-    for (const [x, y] of moves) SIM.stepHero(pred, SIM.normalizeMove(x, y));
+    for (const [x, y] of moves) SIM.stepHero(pred, SIM.normalizeMove(x, y), SPEED[0]);
     assert.equal(s.heroes[0].x, pred.x, 'client replay == server x');
     assert.equal(s.heroes[0].y, pred.y, 'client replay == server y');
     // Stale / duplicate / absurd sequence numbers do nothing.
@@ -187,7 +196,7 @@ test('rate limiting: input floods are acked but only a burst is applied; lobby e
     const s = await once(A, 'battle:state', w => w.heroes[0].seq === 100);
     const moved = s.heroes[0].x - x0;
     assert.ok(moved > 0, 'some inputs applied');
-    assert.ok(moved <= 15 * SIM.HERO_SPEED, 'flood capped (moved ' + moved + ', unlimited would be 500)');
+    assert.ok(moved <= 15 * SPEED[0], 'flood capped (moved ' + moved + ', unlimited would be 500)');
     // Lobby/room events: burst of 40 -> some refused.
     const acks = await Promise.all(Array.from({ length: 40 }, () => emit(A, 'player:ready', { ready: false })));
     assert.ok(acks.some(a => a.error === 'Slow down.'), 'event spam rate-limited');
@@ -195,7 +204,7 @@ test('rate limiting: input floods are acked but only a burst is applied; lobby e
     A.close();
 });
 
-test('attack/special: server enforces cooldowns (animation counters only)', async () => {
+test('attack/special: server enforces cooldowns (sim time)', async () => {
     const { cs: [A] } = await battleWith(srv, 1);
     const t = Date.now();
     for (let i = 0; i < 12; i++) { A.input(0, 0, { attack: true, special: true }); await wait(50) }

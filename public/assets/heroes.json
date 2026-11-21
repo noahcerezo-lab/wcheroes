@@ -1,0 +1,106 @@
+[
+  {
+    "id": "noah",
+    "name": "Noah",
+    "slot": 1,
+    "className": "Spellblade-Mage",
+    "colors": {
+      "primary": "#1733C8",
+      "secondary": "#FFC401",
+      "accent": "#0A0941"
+    },
+    "stats": {
+      "STR": 0.61,
+      "AGI": 0.25,
+      "INT": 0.79,
+      "VIT": 0.51,
+      "LUK": 0.41
+    },
+    "statScale": 1.00,
+    "statSegments": 5,
+    "strengths": [
+      "Arcane Magic & Elemental Control",
+      "Weapon Mastery (Sword + Magic)",
+      "Tactical Strategy & Team Buffs",
+      "High Burst Damage"
+    ]
+  },
+  {
+    "id": "destiny",
+    "name": "Destiny",
+    "slot": 2,
+    "className": "Captain Warrior",
+    "colors": {
+      "primary": "#C40C2D",
+      "secondary": "#F9F4EE",
+      "accent": "#FEC200"
+    },
+    "stats": {
+      "STR": 1.00,
+      "AGI": 0.61,
+      "INT": 0.41,
+      "VIT": 0.61,
+      "LUK": 0.41
+    },
+    "statScale": 1.00,
+    "statSegments": 5,
+    "strengths": [
+      "Leadership & Team Morale",
+      "Balanced Offense & Defense",
+      "Battlefield Control & Precision",
+      "Inspires Team Buffs"
+    ]
+  },
+  {
+    "id": "markie",
+    "name": "Markie",
+    "slot": 3,
+    "className": "Rogue-Tank",
+    "colors": {
+      "primary": "#3C2721",
+      "secondary": "#F6F1E7",
+      "accent": "#4B63E6"
+    },
+    "stats": {
+      "STR": 1.00,
+      "AGI": 0.41,
+      "INT": 0.25,
+      "VIT": 0.91,
+      "LUK": 0.40
+    },
+    "statScale": 1.00,
+    "statSegments": 5,
+    "strengths": [
+      "Frontline Defense & Crowd Control",
+      "High Durability & Damage Soak",
+      "Disruption & Area Attacks",
+      "Team Protection"
+    ]
+  },
+  {
+    "id": "espirit",
+    "name": "Espirit",
+    "slot": 4,
+    "className": "Hunter",
+    "colors": {
+      "primary": "#A17B22",
+      "secondary": "#623522",
+      "accent": "#D4B339"
+    },
+    "stats": {
+      "STR": 0.62,
+      "AGI": 0.92,
+      "INT": 0.42,
+      "VIT": 0.42,
+      "LUK": 0.91
+    },
+    "statScale": 1.00,
+    "statSegments": 5,
+    "strengths": [
+      "Long-Range Precision & High Crit",
+      "Mobility & Evasion",
+      "Tracking & Enemy Weaknesses",
+      "Consistent, High-Impact Damage"
+    ]
+  }
+]
