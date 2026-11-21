@@ -595,7 +595,7 @@
                 const y = y0 + 4 + i * rowH + rowH / 2, human = controllerOf(room, i), me = human && human.id === myId;
                 g.fillStyle = heroCfg(h.name).color; g.fillRect(x0 + 6, y - 4, 7, 7);
                 g.fillStyle = me ? '#ffd279' : human ? '#fff2c9' : '#a8f0c6';
-                g.fillText(h.name + (me ? ' ★' : human ? '' : ' AI'), x0 + 17, y);
+                g.fillText(h.name + ' ' + (h.lv || 1) + (me ? '★' : human ? '' : ' AI'), x0 + 17, y);
                 g.fillStyle = '#292035'; g.fillRect(x0 + 92, y - 3, 50, 6);
                 g.fillStyle = h.state ? '#8a3a4a' : (h.hp / (h.maxHp || 100) < .3 ? '#f0a05a' : '#72dba3');
                 g.fillRect(x0 + 92, y - 3, 50 * Math.max(0, (h.hp || 0) / (h.maxHp || 100)), 6);
