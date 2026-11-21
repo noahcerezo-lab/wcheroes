@@ -17,13 +17,72 @@
         x.fillRect(Math.round(a), Math.round(b), w, h)
     }
     const HERO_NAMES = ['NOAH', 'MARKIE', 'DESTINY', 'ESPIRIT'];
-    const HERO_COLORS = ['#637bff', '#e8a14b', '#e45d76', '#5cce8a'];
+    const HERO_COLORS = ['#637bff', '#e8a14b', '#e45d76', '#5cce8a']; // V19 order (NOAH, MARKIE, DESTINY, ESPIRIT)
     const ARENA_NAMES = ['MOONLIT TEMPLE', 'EMBER FORTRESS', 'SPIRIT SANCTUARY', 'CELESTIAL VOID'];
     const art = {};
 
     function ensureArt() {
         if (art.NOAH) return;
         for (const n of HERO_NAMES) art[n] = [makeHDArt(n, 0), makeHDArt(n, 1)]
+    }
+
+    // ---- Art themes (multiplayer only; V19 never passes entity.theme, so legacy output is unchanged) ----
+    // 'sheet' matches Noah's official hero sheets: Noah purple/blue robes, Destiny gold armor + red cape,
+    // Markie fur mantle + headband, Espirit unchanged (green leather + bow already match).
+    // Recolors swap exact V19 palette entries; overlays add small details in HD-art pixels (96x128).
+    const THEMES = {
+        sheet: {
+            recolor: {
+                NOAH: { '#3b58ba': '#4b3aa8', '#273d91': '#35277e', '#213a8b': '#2f2373', '#597ce2': '#7a5fe0', '#5577d8': '#6a52d0' },
+                DESTINY: { '#d9d5df': '#e2b54c', '#e6e4e4': '#f0cd68', '#b6aab5': '#b98a35', '#8f2c48': '#b3243a', '#e15465': '#e8404e' },
+                MARKIE: { '#bcb5a8': '#8b6a48', '#e4d5bd': '#b8946a' },
+                ESPIRIT: {}
+            },
+            overlay: {
+                MARKIE(g) { // red headband with knot tails
+                    g.fillStyle = '#c23b32';
+                    g.fillRect(30, 30, 40, 4);
+                    g.fillRect(68, 32, 8, 3);
+                    g.fillRect(72, 35, 4, 7);
+                    g.fillStyle = '#ff6a5a';
+                    g.fillRect(30, 30, 40, 1)
+                }
+            },
+            gear: { markiePauldron: '#8b6a48', destinyBanner: true }
+        }
+    };
+    const themedArt = {};
+    const hex = (r, g, b) => '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+
+    function makeThemedArt(name, frame, themeName) {
+        const theme = THEMES[themeName];
+        const c = makeHDArt(name, frame);
+        if (!theme) return c;
+        const g = c.getContext('2d');
+        const map = (theme.recolor && theme.recolor[name]) || {};
+        if (Object.keys(map).length) {
+            const img = g.getImageData(0, 0, c.width, c.height), d = img.data;
+            const parsed = {};
+            for (const k in map) parsed[k] = [parseInt(map[k].slice(1, 3), 16), parseInt(map[k].slice(3, 5), 16), parseInt(map[k].slice(5, 7), 16)];
+            for (let i = 0; i < d.length; i += 4) {
+                if (!d[i + 3]) continue;
+                const to = parsed[hex(d[i], d[i + 1], d[i + 2])];
+                if (to) { d[i] = to[0]; d[i + 1] = to[1]; d[i + 2] = to[2] }
+            }
+            g.putImageData(img, 0, 0);
+        }
+        if (theme.overlay && theme.overlay[name]) theme.overlay[name](g);
+        return c;
+    }
+
+    function artSetFor(entity) {
+        const th = entity && entity.theme;
+        if (!th || !THEMES[th]) return art;
+        if (!themedArt[th]) {
+            themedArt[th] = {};
+            for (const n of HERO_NAMES) themedArt[th][n] = [makeThemedArt(n, 0, th), makeThemedArt(n, 1, th)];
+        }
+        return themedArt[th];
     }
 
     function makeArt(name, frame = 0) {
@@ -522,6 +581,7 @@
         }
 
         const tier = (entity?.upgradeTier || 0);
+        const gear = (entity && entity.theme && THEMES[entity.theme] && THEMES[entity.theme].gear) || {};
         if (tier > 0) {
             x.save();
             x.globalAlpha = .13 + Math.min(.20, tier * .06);
@@ -538,7 +598,8 @@
         const moving = (entity?.moving || false),
             attacking = now < (entity?.attackPoseUntil || 0),
             casting = now < (entity?.castPoseUntil || 0);
-        let s = art[name]?.[moving ? Math.floor(now / 110) % 2 : 0] || art.NOAH[0];
+        const A = artSetFor(entity); // theme-aware art (V19: no theme -> original art)
+        let s = A[name]?.[moving ? Math.floor(now / 110) % 2 : 0] || A.NOAH[0];
         // Hero sprites are now close to enemy scale (64px tall vs ~60px enemies).
         const scale = 1.05,
             w = 48 * scale,
@@ -592,8 +653,9 @@
                     rect(8, -39, 7, 4, '#8fdfff')
                 }
             } else if (name === 'MARKIE') {
-                rect(-24, -25, 15, 10, t >= 1 ? '#edb965' : '#9b8a81');
-                rect(9, -25, 15, 10, t >= 1 ? '#edb965' : '#9b8a81');
+                const pauldron = t >= 1 ? '#edb965' : (gear.markiePauldron || '#9b8a81');
+                rect(-24, -25, 15, 10, pauldron);
+                rect(9, -25, 15, 10, pauldron);
                 rect(19, -8, 5, 31, '#66483c');
                 rect(13, -30, 19, 18, t >= 2 ? '#ffba55' : '#d2d6dc');
                 rect(19, -32, 14, 4, '#fff0b2');
@@ -605,6 +667,12 @@
                 rect(-20, -24, 10, 7, t >= 1 ? '#ffda79' : '#f5f1e4');
                 rect(10, -24, 10, 7, t >= 1 ? '#ffda79' : '#f5f1e4');
                 rect(19, -20, 3, 35, '#f2e9ce');
+                if (gear.destinyBanner) { // captain's banner with a gold emblem (hero sheet)
+                    rect(22, -19, 15, 11, '#b3243a');
+                    rect(22, -8, 5, 4, '#b3243a');
+                    rect(32, -8, 5, 4, '#b3243a');
+                    rect(27, -16, 5, 5, '#f5c65d')
+                }
                 rect(16, -25, 9, 9, '#ffe19a');
                 rect(-7, -32, 14, 4, '#ffda80');
                 if (t >= 2) {
@@ -792,6 +860,8 @@
         makeArt,
         makeHDArt,
         ensureArt,
+        THEMES,
+        makeThemedArt,
         drawSprite,
         drawArena: drawArenaOn,
         WORLD_SCALE: 1.5, // V19 art is tuned for a 1440x810 canvas; arena() draws a 960x540 scene scaled x1.5

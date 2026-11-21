@@ -4,12 +4,13 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+    <link rel="icon" href="data:,">
     <title>West Coast Heroes — Co-op Lobby</title>
     <style>
         :root {
             color-scheme: dark;
             font-family: system-ui, -apple-system, sans-serif;
-            background: #09141f;
+            background: #120c1f;
             color: #f6eddb
         }
 
@@ -20,7 +21,8 @@
         body {
             margin: 0;
             min-height: 100dvh;
-            background: radial-gradient(ellipse at 50% -15%, #275467 0%, #09141f 58%)
+            /* purple-sunset temple palette from the hero sheets */
+            background: linear-gradient(180deg, #3a1f4f 0%, #6b2f5a 18%, #2a1a3f 42%, #120c1f 75%) fixed
         }
 
         main {
@@ -44,8 +46,8 @@
         }
 
         .panel {
-            background: #142535df;
-            border: 1px solid #47616b;
+            background: #20163adf;
+            border: 1px solid #6b5478;
             border-radius: 16px;
             padding: 20px;
             margin: 16px 0;
@@ -120,7 +122,7 @@
 
         .hero {
             border: 2px solid #344d5b;
-            background: #101f2c;
+            background: #1a1230;
             border-radius: 14px;
             padding: 16px 9px;
             text-align: center;
@@ -143,8 +145,80 @@
             margin-bottom: 8px
         }
 
+        .hero {
+            position: relative;
+            border-top: 4px solid var(--hero, #344d5b)
+        }
+
+        .slot {
+            position: absolute;
+            top: 6px;
+            left: 8px;
+            font: 900 13px monospace;
+            color: #1c1530;
+            background: var(--hero, #e4bd78);
+            border-radius: 6px;
+            padding: 2px 6px
+        }
+
+        .stats {
+            display: grid;
+            gap: 3px;
+            margin-top: 8px;
+            text-align: left
+        }
+
+        .stat {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font: 700 10px monospace;
+            color: #e8d9b8
+        }
+
+        .stat i {
+            font-style: normal;
+            width: 26px
+        }
+
+        .stat .bar {
+            flex: 1;
+            height: 6px;
+            background: #1b1430;
+            border-radius: 3px;
+            overflow: hidden
+        }
+
+        .stat .bar span {
+            display: block;
+            height: 100%;
+            background: linear-gradient(90deg, var(--hero, #e4bd78), #f5c65d)
+        }
+
+        .portrait {
+            display: block;
+            width: 100%;
+            max-width: 120px;
+            aspect-ratio: 150/180;
+            object-fit: cover;
+            margin: 0 auto 8px;
+            border-radius: 10px;
+            border: 2px solid #3e5866;
+            image-rendering: pixelated
+        }
+
+        .hero.mine .portrait {
+            border-color: #ffcf83
+        }
+
         .hero b {
-            display: block
+            display: block;
+            color: #f5dba3;
+            letter-spacing: 1px
+        }
+
+        .hero .tag {
+            color: #f6eddb
         }
 
         .hero small {
@@ -250,6 +324,82 @@
                 font-size: 32px
             }
         }
+        /* Landscape phones: give the arena the whole screen while a battle is running. */
+        @media (orientation: landscape) and (max-height: 520px) {
+            body.in-battle h1,
+            body.in-battle .sub,
+            body.in-battle #battle>h2,
+            body.in-battle #battle>.muted,
+            body.in-battle main>p.muted {
+                display: none
+            }
+
+            body.in-battle main {
+                max-width: none;
+                padding: 0
+            }
+
+            body.in-battle #battle {
+                margin: 0;
+                padding: 0;
+                border: 0;
+                background: none;
+                box-shadow: none;
+                position: relative;
+                height: 100dvh;
+                display: flex;
+                align-items: center;
+                justify-content: center
+            }
+
+            body.in-battle .battle {
+                max-width: none;
+                width: min(100vw, calc(100dvh * 16 / 9));
+                margin: 0
+            }
+
+            body.in-battle canvas {
+                border-radius: 0;
+                border: 0
+            }
+
+            body.in-battle .controls {
+                position: fixed;
+                left: max(10px, env(safe-area-inset-left));
+                bottom: 10px;
+                margin: 0;
+                pointer-events: none
+            }
+
+            body.in-battle .controls>div:last-child,
+            body.in-battle .key {
+                display: none
+            }
+
+            body.in-battle .pad {
+                pointer-events: auto;
+                opacity: .82
+            }
+
+            body.in-battle #notice {
+                position: fixed;
+                top: 6px;
+                left: 50%;
+                transform: translateX(-50%);
+                z-index: 5;
+                min-height: 0;
+                pointer-events: none
+            }
+
+            body.in-battle #status {
+                position: fixed;
+                right: 12px;
+                bottom: 6px;
+                margin: 0;
+                font-size: 11px;
+                opacity: .7
+            }
+        }
     </style>
 </head>
 
@@ -278,7 +428,7 @@
         </section>
         <section id="battle" class="panel hidden">
             <h2>Co-op Arena — Movement Prototype</h2>
-            <div class="battle"><canvas id="arena" width="960" height="540"></canvas></div>
+            <div class="battle"><canvas id="arena" width="1440" height="810"></canvas></div>
             <div class="controls">
                 <div>
                     <div class="pad" id="pad"><span class="empty"></span><button data-dir="up">▲</button><span class="empty"></span><button data-dir="left">◀</button><button data-dir="down">▼</button><button data-dir="right">▶</button></div>
@@ -294,12 +444,15 @@
         <p class="muted" style="text-align:center">Want to play the original single-player game? <a style="color:#e8cb8e" href="/legacy-v19.html">Open V19</a></p>
     </main>
     <script src="/socket.io/socket.io.js"></script>
+    <script src="js/heroes-config.js"></script>
+    <script src="js/heroes-render.js"></script>
+    <script src="js/mp-arena.js"></script>
     <script>
         const socket = io(),
-            HEROES = ['NOAH', 'MARKIE', 'DESTINY', 'ESPIRIT'],
-            ROLES = ['SPELLBLADE MAGE', 'ROGUE-TANK', 'CAPTAIN WARRIOR', 'HUNTER'],
-            EMOJI = ['🗡️', '🪓', '🛡️', '🏹'],
-            COLORS = ['#6daaff', '#e8a14b', '#e8c78c', '#6edba0'];
+            ROSTER = WCHHeroes.HEROES, // shared with the server: js/heroes-config.js
+            HEROES = WCHHeroes.NAMES,
+            ROLES = ROSTER.map(h => h.cls),
+            COLORS = ROSTER.map(h => h.color);
         let room = null,
             world = null,
             keys = {},
@@ -307,7 +460,9 @@
         const $ = id => document.getElementById(id);
 
         function show(id) {
-            for (const key of ['entry', 'lobby', 'battle']) $(key).classList.toggle('hidden', key !== id)
+            for (const key of ['entry', 'lobby', 'battle']) $(key).classList.toggle('hidden', key !== id);
+            document.body.classList.toggle('in-battle', id === 'battle');
+            if (id === 'battle') $('notice').textContent = ''
         }
 
         function note(msg) {
@@ -341,7 +496,10 @@
                     b = document.createElement('button');
                 b.className = 'hero' + (me?.hero === i ? ' mine' : '') + (owner && owner.id !== socket.id ? ' taken' : '');
                 b.disabled = !!owner && owner.id !== socket.id;
-                b.innerHTML = '<span class="glyph">' + EMOJI[i] + '</span><b>' + slot.hero + '</b><small>' + ROLES[i] + '</small><span class="tag">' + (owner ? owner.name + (owner.ready ? ' ✓ READY' : ' • NOT READY') : 'AI TEAMMATE') + '</span>';
+                const cfg = ROSTER[i];
+                b.style.setProperty('--hero', cfg.color);
+                const bars = WCHHeroes.STAT_KEYS.map(k => '<span class="stat"><i>' + k + '</i><span class="bar"><span style="width:' + (cfg.stats[k] * 10) + '%"></span></span></span>').join('');
+                b.innerHTML = '<span class="slot">' + cfg.slot + '</span><img class="portrait" src="assets/portraits/' + slot.hero.toLowerCase() + '.jpg" alt="' + slot.hero + ' portrait"><b>' + slot.hero + '</b><small>' + ROLES[i] + '</small><span class="stats">' + bars + '</span><span class="tag">' + (owner ? owner.name + (owner.ready ? ' ✓ READY' : ' • NOT READY') : 'AI TEAMMATE') + '</span>';
                 b.onclick = () => send('hero:select', {
                     hero: i
                 });
@@ -386,16 +544,21 @@
         });
         socket.on('battle:start', w => {
             world = w;
+            arena.reset();
+            arena.push(w);
             show('battle')
         });
         socket.on('battle:state', w => {
-            world = w
+            world = w;
+            arena.push(w)
         });
         socket.on('disconnect', () => note('Disconnected — attempting to reconnect.'));
         socket.on('connect', () => {
             if (room) {
                 note('Reconnected. Rejoin the room if needed.');
                 room = null;
+                world = null;
+                arena.reset();
                 show('entry')
             }
         });
@@ -404,57 +567,14 @@
             $('roomCode').value = urlRoom.toUpperCase();
             note('Enter your name, then tap JOIN ROOM.')
         }
-        const canvas = $('arena'),
-            ctx = canvas.getContext('2d');
-
-        function draw() {
-            requestAnimationFrame(draw);
-            if (!world) return;
-            const t = performance.now() / 1000;
-            const g = ctx;
-            g.fillStyle = '#112a39';
-            g.fillRect(0, 0, 960, 540);
-            g.fillStyle = '#1d3d4b';
-            for (let i = 0; i < 13; i++) {
-                g.fillRect(i * 80, 0, 2, 540)
-            }
-            for (let i = 0; i < 8; i++) g.fillRect(0, i * 80, 960, 2);
-            g.fillStyle = '#294d55';
-            g.fillRect(0, 0, 960, 50);
-            g.fillStyle = '#e5d2a0';
-            g.font = 'bold 17px monospace';
-            g.fillText('WEST COAST HEROES • CO-OP MOVEMENT TEST', 24, 30);
-            world.heroes.forEach((h, i) => {
-                const human = room?.players.find(p => p.hero === i),
-                    me = human?.id === socket.id;
-                g.save();
-                g.translate(h.x, h.y);
-                g.fillStyle = '#0006';
-                g.beginPath();
-                g.ellipse(0, 15, 23, 8, 0, 0, Math.PI * 2);
-                g.fill();
-                g.strokeStyle = me ? '#ffd279' : human ? '#80c9ff' : '#7ff0b6';
-                g.lineWidth = 4;
-                g.beginPath();
-                g.arc(0, 0, 28 + Math.sin(t * 3 + i) * 2, 0, Math.PI * 2);
-                g.stroke();
-                g.fillStyle = COLORS[i];
-                g.fillRect(-14, -23, 28, 42);
-                g.fillStyle = '#f6d6b0';
-                g.fillRect(-10, -34, 20, 15);
-                g.fillStyle = '#14222d';
-                g.fillRect(-7, -29, 4, 3);
-                g.fillRect(3, -29, 4, 3);
-                g.fillStyle = '#fff';
-                g.font = 'bold 12px monospace';
-                g.textAlign = 'center';
-                g.fillText(h.name, 0, -47);
-                g.font = '10px monospace';
-                g.fillText(human?.name || 'AI', 0, 34);
-                g.restore()
-            })
-        }
-        requestAnimationFrame(draw);
+        // V19 artwork + smoothed server snapshots (see js/mp-arena.js). ?interp=0 disables smoothing.
+        const arena = WCHArena.createArena($('arena'), {
+            getRoom: () => room,
+            getMyId: () => socket.id,
+            interpolate: new URLSearchParams(location.search).get('interp') !== '0'
+        });
+        arena.start();
+        window.__wch = { arena, getWorld: () => world, getRoom: () => room }; // debug/test hook (read-only views)
 
         function input() {
             const up = keys.w || keys.arrowup || touch.has('up'),
@@ -477,7 +597,7 @@
             const d = b.dataset.dir;
             b.addEventListener('pointerdown', e => {
                 e.preventDefault();
-                b.setPointerCapture(e.pointerId);
+                try { b.setPointerCapture(e.pointerId) } catch {} // can fail for synthetic/cancelled pointers
                 touch.add(d)
             });
             for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(event, () => touch.delete(d))

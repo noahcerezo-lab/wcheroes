@@ -19,8 +19,22 @@ app.get('/health', (_req, res) => res.json({
     rooms: rooms.size
 }));
 const PORT = Number(process.env.PORT || 3000);
-const HEROES = ['NOAH', 'MARKIE', 'DESTINY', 'ESPIRIT'];
-const COLORS = ['#6daaff', '#e8a14b', '#e8c78c', '#6edba0'];
+// Roster (slot order, names, colors) is shared with the browser: public/js/heroes-config.js
+const ROSTER = require('./public/js/heroes-config.js');
+const HEROES = ROSTER.NAMES; // ['NOAH', 'DESTINY', 'MARKIE', 'ESPIRIT']
+const COLORS = ROSTER.HEROES.map(h => h.color);
+// Playable area in world units (960x540). Matches V19's walkable bounds (V19 used a 1440x810 world, i.e. x1.5).
+const ARENA = {
+    width: 960,
+    height: 540,
+    minX: 28,
+    maxX: 932,
+    minY: 80,
+    maxY: 520
+};
+const HERO_SPEED = 5; // world units per 50 ms tick
+const AI_SPEED = 2.6;
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const rooms = new Map();
 const safeAck = (ack, data) => {
     if (typeof ack === 'function') ack(data)
@@ -107,12 +121,18 @@ function initialWorld(r) {
     ];
     r.world = {
         tick: 0,
+        serverTime: Date.now(),
+        arena: ARENA,
+        zone: 0,
         heroes: HEROES.map((name, i) => ({
             name,
             color: COLORS[i],
             x: spawn[i][0],
             y: spawn[i][1],
             hp: 100,
+            maxHp: 100,
+            facing: i % 2 ? -1 : 1,
+            moving: false,
             controller: [...r.players.values()].find(p => p.hero === i)?.id || null
         }))
     }
@@ -217,30 +237,41 @@ io.on('connection', socket => {
     socket.on('room:leave', () => leave(socket));
 });
 // Authoritative 20 Hz movement prototype. Combat, enemy AI, damage and waves are not networked yet.
+// Each tick the server moves every hero (human input or AI follow), clamps it to the arena,
+// records facing/moving for the client's walk animation, and broadcasts one snapshot.
+function stepWorld(r) {
+    r.world.tick++;
+    r.world.serverTime = Date.now();
+    const humans = [...r.players.values()];
+    for (let i = 0; i < 4; i++) {
+        const h = r.world.heroes[i];
+        const p = humans.find(p => p.hero === i);
+        const ox = h.x,
+            oy = h.y;
+        if (p) {
+            h.controller = p.id;
+            h.x = clamp(h.x + p.input.x * HERO_SPEED, ARENA.minX, ARENA.maxX);
+            h.y = clamp(h.y + p.input.y * HERO_SPEED, ARENA.minY, ARENA.maxY)
+        } else {
+            h.controller = null;
+            const leader = r.world.heroes.find(v => humans.some(p => p.hero === HEROES.indexOf(v.name))) || r.world.heroes[0];
+            const dx = leader.x - h.x + (i % 2 ? 55 : -55),
+                dy = leader.y - h.y + ((i % 3) - 1) * 50,
+                d = Math.hypot(dx, dy);
+            if (d > 65) {
+                h.x = clamp(h.x + dx / d * AI_SPEED, ARENA.minX, ARENA.maxX);
+                h.y = clamp(h.y + dy / d * AI_SPEED, ARENA.minY, ARENA.maxY)
+            }
+        }
+        const mx = h.x - ox;
+        h.moving = Math.abs(mx) + Math.abs(h.y - oy) > 0.01;
+        if (Math.abs(mx) > 0.01) h.facing = mx > 0 ? 1 : -1;
+    }
+}
 setInterval(() => {
     for (const r of rooms.values()) {
         if (r.phase !== 'battle' || !r.world) continue;
-        r.world.tick++;
-        const humans = [...r.players.values()];
-        for (let i = 0; i < 4; i++) {
-            const h = r.world.heroes[i];
-            const p = humans.find(p => p.hero === i);
-            if (p) {
-                h.controller = p.id;
-                h.x = Math.max(28, Math.min(932, h.x + p.input.x * 5));
-                h.y = Math.max(28, Math.min(512, h.y + p.input.y * 5))
-            } else {
-                h.controller = null;
-                const leader = r.world.heroes.find(v => humans.some(p => p.hero === HEROES.indexOf(v.name))) || r.world.heroes[0];
-                const dx = leader.x - h.x + (i % 2 ? 55 : -55),
-                    dy = leader.y - h.y + ((i % 3) - 1) * 50,
-                    d = Math.hypot(dx, dy);
-                if (d > 65) {
-                    h.x += dx / d * 2.6;
-                    h.y += dy / d * 2.6
-                }
-            }
-        }
+        stepWorld(r);
         io.to(r.code).emit('battle:state', r.world)
     }
 }, 50);
