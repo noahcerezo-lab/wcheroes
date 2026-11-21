@@ -15,6 +15,7 @@
  */
 const SIM = require('../public/js/shared-sim.js');
 const ROSTER = require('../public/js/heroes-config.js');
+const LEVELS = require('./levelup-table.js');
 
 const ARENA = SIM.ARENA;
 const TICK = SIM.TICK_MS;
@@ -33,10 +34,11 @@ const RULES = {
     // Critical hits (rolled on the server for every hit): 14% base, x1.85 damage. FURY and SQUAD
     // SYNERGY add to the chance. Consecutive crits by the same hero build a Critical Chain.
     critBase: 0.14, critMul: 1.85,
-    // LEVEL UP: clearing every 10th wave (10, 20, 30...) levels up every living hero (human and AI):
-    // +12% base max HP, +10% base damage, +2% crit chance, +3% move speed per level, and a full heal.
+    // LEVEL UP: clearing every 10th wave (10, 20, 30...) levels up every living hero (human and AI) and fully
+    // heals them. Stats per level come from shared/levelup-table.js (Oracle's soft-capped curve: HP, damage,
+    // move speed, attack cooldown, special-damage scale, crit growth on top of the 14% base, capped at 45%).
     // Downed heroes miss that level-up (they are not "living"); they keep their current level.
-    levelEvery: 10, levelHpFrac: 0.12, levelDmgFrac: 0.10, levelCrit: 0.02, levelSpeedFrac: 0.03,
+    levelEvery: 10,
     espiritRangeMul: 2, // Espirit's arrow reach: about double V19's (Noah's brief, milestone 2)
     // Power-ups: one glowing pickup appears every 10-17 s during a run (max 2 on the field, each lasts
     // 15 s). A living hero collects it by walking over it; the server checks the distance.
@@ -80,7 +82,7 @@ const KITS = {
 
 // Sheet stats -> small modifiers. LUK = crit chance, VIT = damage taken.
 // Crit chance for a hero right now: 14% base + active boosts (FURY, SQUAD SYNERGY; see power-ups).
-const critChance = (h, w) => Math.min(0.95, RULES.critBase + (h ? ((h.level || 1) - 1) * RULES.levelCrit : 0) + (w && h ? critBonus(w, h) : 0));
+const critChance = (h, w) => Math.min(0.95, Math.min(LEVELS.CRIT_CAP, RULES.critBase + (h && h.levelCrit || 0)) + (w && h ? critBonus(w, h) : 0));
 function critBonus(w, h) { return (w.time < (h.furyUntil || 0) ? RULES.furyCrit : 0) + (w.time < (h.synergyUntil || 0) ? RULES.synergyCrit : 0) }
 const PICKUP_KINDS = ['heal', 'fury', 'haste', 'ward']; // index = snapshot kind
 // Move speed right now (HASTE: x1.5). Server input handling, AI and client prediction all use this.
@@ -248,7 +250,7 @@ function performSpecial(w, h) {
     const k = KITS[h.name], i = w.heroes.indexOf(h);
     emit(w, { t: 'spc', h: i, k: k.specialName, r: Math.round(k.specialRadius) });
     for (const e of [...w.enemies]) {
-        if (dist(e, h) < k.specialRadius) damageEnemy(w, h, e, h.damage * k.specialMul, { knock: k.specialKnock ?? 12, stun: k.specialStun || 0 });
+        if (dist(e, h) < k.specialRadius) damageEnemy(w, h, e, h.damage * k.specialMul * (h.skillScale || 1), { knock: k.specialKnock ?? 12, stun: k.specialStun || 0 });
     }
     if (h.name === 'DESTINY') { // team heal + damage buff (leadership)
         for (const u of w.heroes) if (alive(u) && dist(u, h) < k.rallyRadius) { healHero(w, u, k.rallyHeal, h); u.buffUntil = w.time + k.buffMs; emit(w, { t: 'buff', h: w.heroes.indexOf(u) }) }
@@ -371,10 +373,9 @@ function levelUp(w) {
     w.heroes.forEach((h, i) => {
         if (!alive(h)) return;
         h.level = (h.level || 1) + 1;
-        const n = h.level - 1, b = h.base;
-        h.maxHp = Math.round(b.hp * (1 + RULES.levelHpFrac * n));
-        h.damage = Math.round(b.damage * (1 + RULES.levelDmgFrac * n));
-        h.speed = b.speed * (1 + RULES.levelSpeedFrac * n);
+        const L = LEVELS.levelStats(h.name, h.level);
+        h.maxHp = L.hp; h.damage = L.damage; h.speed = L.speed; h.cool = L.cool;
+        h.skillScale = L.skill; h.levelCrit = L.crit;
         h.hp = h.maxHp;
         got.push(i);
     });

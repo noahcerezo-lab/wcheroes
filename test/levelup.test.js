@@ -19,12 +19,17 @@ test('clearing wave 10 levels up every living hero (human and AI), applies stats
     const lvl = ev.find(e => e.t === 'lvl');
     assert.ok(lvl, 'lvl event');
     assert.deepEqual(lvl.all, [0, 1, 2, 3]);
+    const L = require('../shared/levelup-table.js');
     w.heroes.forEach((h, i) => {
+        const row = L.levelStats(h.name, 2);
         assert.equal(h.level, 2, h.name);
-        assert.equal(h.maxHp, Math.round(before[i].maxHp * 1.12));
-        assert.equal(h.damage, Math.round(before[i].damage * 1.10));
-        assert.ok(Math.abs(h.speed - before[i].speed * 1.03) < 1e-9);
-        assert.ok(Math.abs(C.critChance(h, w) - (before[i].crit + 0.02)) < 1e-9);
+        assert.equal(before[i].maxHp, L.levelStats(h.name, 1).hp, 'level-1 row = V19 base');
+        assert.equal(h.maxHp, row.hp); assert.ok(h.maxHp > before[i].maxHp);
+        assert.equal(h.damage, row.damage); assert.ok(h.damage > before[i].damage);
+        assert.equal(h.speed, row.speed); assert.ok(h.speed >= before[i].speed);
+        assert.equal(h.cool, row.cool); assert.equal(h.skillScale, row.skill);
+        assert.equal(before[i].crit, 0.14, 'level 1: 14% base for every hero');
+        assert.ok(Math.abs(C.critChance(h, w) - Math.min(0.45, 0.14 + row.crit)) < 1e-9);
         assert.equal(h.hp, h.maxHp, 'full heal');
         assert.equal(C.snapshot(w).heroes[i].lv, 2);
     });
@@ -40,11 +45,15 @@ test('wave 20 levels up again (Lv 3); downed heroes miss it; levels are not re-a
     const ev = clearWave(w, 20);
     assert.deepEqual(ev.find(e => e.t === 'lvl').all, [0, 1, 3]);
     assert.equal(w.heroes[0].level, 3); assert.equal(d.level, 2, 'downed hero missed it');
-    assert.equal(w.heroes[0].maxHp, Math.round(w.heroes[0].base.hp * (1 + 0.12 * 2)));
-    assert.equal(C.moveSpeed(w, w.heroes[0]), w.heroes[0].base.speed * 1.06, 'snapshot speed carries the level bonus (prediction parity)');
+    const L = require('../shared/levelup-table.js');
+    assert.equal(w.heroes[0].maxHp, L.levelStats('NOAH', 3).hp);
+    assert.equal(C.moveSpeed(w, w.heroes[0]), L.levelStats('NOAH', 3).speed, 'snapshot speed carries the level bonus (prediction parity)');
     assert.equal(C.snapshot(w).heroes[0].spd, C.moveSpeed(w, w.heroes[0]));
     const ev30 = clearWave(w, 30); assert.ok(ev30.some(e => e.t === 'lvl'));
     assert.equal(w.heroes[0].level, 4);
+    for (let n = 40; n <= 300; n += 10) clearWave(w, n);
+    assert.ok(w.heroes.every(h => C.critChance(h, w) <= 0.45 + 1e-9), 'crit cap 45% before pickups');
+    assert.equal(w.heroes[3].maxHp, L.levelStats('ESPIRIT', 15).hp, 'past 15 stays on the level-15 row');
 });
 
 test('Espirit reaches about twice as far as V19 (546 units)', () => {
