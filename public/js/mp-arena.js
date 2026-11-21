@@ -1222,36 +1222,8 @@
             g.globalAlpha = active ? .92 : .66;
             g.strokeStyle = skin.primary;
             g.lineWidth = role === 'me' ? 2.5 : 1.7;
-            // Distinct floating insignias beside the shoulders, not over the face.
-            if (skin.shape === 'runes') {
-                for (const side of [-1, 1]) {
-                    const x = side * 37, y = -54 + Math.sin(phase * 2 + side) * 3;
-                    g.save(); g.translate(x, y); g.rotate(phase * .45 * side);
-                    g.strokeRect(-5, -5, 10, 10);
-                    g.beginPath(); g.moveTo(0, -9); g.lineTo(0, 9); g.moveTo(-9, 0); g.lineTo(9, 0); g.stroke();
-                    g.restore();
-                }
-            } else if (skin.shape === 'crown') {
-                // Gold shoulder epaulettes avoid the HP/nameplate above the head.
-                for (const side of [-1, 1]) {
-                    g.beginPath(); g.moveTo(side * 20, -67); g.lineTo(side * 29, -75);
-                    g.lineTo(side * 35, -66); g.lineTo(side * 27, -61); g.stroke();
-                    g.fillStyle = skin.light; g.fillRect(side * 31 - 2, -73, 4, 4);
-                }
-            } else if (skin.shape === 'embers') {
-                for (let j = 0; j < 3; j++) {
-                    const x = (j - 1) * 31, y = -39 - ((now / (13 + j * 3) + j * 19) % 42);
-                    g.fillStyle = j === 1 ? skin.light : skin.primary;
-                    g.fillRect(Math.round(x), Math.round(y), 4 + (j === 1 ? 2 : 0), 5);
-                }
-            } else {
-                for (const side of [-1, 1]) {
-                    const x = side * 35, y = -55 + Math.sin(phase * 2 + side) * 6;
-                    g.save(); g.translate(x, y); g.rotate(side * .6 + Math.sin(phase) * .2);
-                    g.beginPath(); g.ellipse(0, 0, 4, 9, .4, 0, Math.PI * 2); g.stroke();
-                    g.beginPath(); g.moveTo(0, -7); g.lineTo(0, 7); g.stroke(); g.restore();
-                }
-            }
+            // No floating symbols near faces: the character sprite, HP and name must remain clear.
+            // Identity is conveyed by floor aura, weapon animation and brief attack effects.
             // Enhanced finishers: a brief personal energy flare after the third combo strike.
             // Uses snapshot combo stage, never modifies hit detection or authoritative combat.
             if (h.cs === 2 && h.attackN && !h.state) {
@@ -1263,11 +1235,7 @@
                     g.globalAlpha = (1 - p) * .8;
                     g.strokeStyle = skin.light; g.lineWidth = 3 * (1 - p) + 1;
                     g.beginPath(); g.ellipse(0, -41, 25 + p * 30, 35 + p * 20, 0, 0, Math.PI * 2); g.stroke();
-                    for (let j = 0; j < 4; j++) {
-                        const an = j * Math.PI / 2 + phase * .3, r = 32 + p * 30;
-                        g.fillStyle = skin.primary;
-                        g.fillRect(Math.round(Math.cos(an) * r - 3), Math.round(-41 + Math.sin(an) * r * .7 - 3), 6, 6);
-                    }
+
                 }
             }
             // A bright, restrained shoulder glint while empowered.
