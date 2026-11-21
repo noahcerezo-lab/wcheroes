@@ -69,17 +69,39 @@ test('specials: 6.5 s cooldown, area damage, Destiny heals + buffs allies, Marki
     assert.ok(hp - m.hp <= Math.round(20 * 0.45 * C.damageTakenMul(m.stats)) + 1, 'shield soaks damage');
 });
 
-test('crits come from LUK and are deterministic for a seed', () => {
-    const run = () => {
-        const w = C.createBattle({ seed: 7, firstWaveDelayMs: 1e9 }); for (const h of w.heroes) h.ai = false;
-        spread(w); const es = place(w, 3, 300, 300, 1); const e = enemyAt(w, 400, 300);
-        let crits = 0;
-        for (let i = 0; i < 400; i++) { es.wantAttack = true; C.step(w); crits += w.events.filter(v => v.t === 'hit' && v.c).length; e.hp = 1000; e.x = 400; e.y = 300; e.kx = e.ky = 0 }
-        return crits;
+test('crits: 14% base chance, x1.85 damage, server-rolled and deterministic per seed', () => {
+    assert.equal(C.RULES.critBase, 0.14); assert.equal(C.RULES.critMul, 1.85);
+    const run = seed => {
+        const w = C.createBattle({ seed, firstWaveDelayMs: 1e9 }); w.events = [];
+        const h = w.heroes[0], e = C.spawnEnemy(w, 0);
+        const ds = [];
+        for (let i = 0; i < 20000; i++) { e.hp = 1e6; C.damageEnemy(w, h, e, 20); const ev = w.events.pop(); ds.push(ev.c ? ev.d : -ev.d) }
+        return ds;
     };
-    const a = run(), b = run();
-    assert.equal(a, b, 'same seed, same crits');
-    assert.ok(a > 20 && a < 100, 'Espirit crits ~36% of ' + 400 * 50 / 180 + ' shots (' + a + ')');
+    const a = run(11), b = run(11);
+    assert.deepEqual(a, b, 'same seed, same crits');
+    const crits = a.filter(d => d > 0);
+    const rate = crits.length / a.length;
+    assert.ok(Math.abs(rate - 0.14) < 0.01, 'crit rate ' + rate);
+    assert.ok(crits.every(d => d === Math.round(20 * 1.85)), 'crit damage = round(20 x 1.85) = 37');
+    assert.ok(a.filter(d => d < 0).every(d => d === -20), 'normal hits deal 20');
+    // every hero has the same 14% base (no class bonus)
+    const w = C.createBattle({ seed: 1, firstWaveDelayMs: 1e9 });
+    for (const h of w.heroes) assert.equal(C.critChance(h, w), 0.14);
+});
+
+test('Critical Chain: consecutive crits count up per hero and a normal hit resets it', () => {
+    const w = C.createBattle({ seed: 5, firstWaveDelayMs: 1e9 }); w.events = [];
+    const h = w.heroes[0], e = C.spawnEnemy(w, 0);
+    let streak = 0, best = 0;
+    for (let i = 0; i < 5000; i++) {
+        e.hp = 1e6; C.damageEnemy(w, h, e, 10); const ev = w.events.pop();
+        streak = ev.c ? streak + 1 : 0; best = Math.max(best, streak);
+        assert.equal(h.critChain, streak);
+        if (ev.c) assert.equal(ev.cc, streak, 'hit event carries the chain count'); else assert.equal(ev.cc, undefined);
+    }
+    assert.ok(best >= 3, 'chains of 3+ happen (' + best + ')');
+    assert.equal(C.snapshot(w).heroes[0].cc, h.critChain, 'snapshot carries the chain');
 });
 
 test('downed: hp 0 downs a hero, downed heroes cannot act, a nearby teammate revives them', () => {

@@ -60,6 +60,7 @@
         const ghosts = []; // dying enemies fading out
         const lastActs = []; // per hero {a, s} counters from the previous snapshot
         const enemyMotion = new Map(); // id -> {x, y, moveAt}
+        const chains = []; // per hero: {n, at} latest Critical Chain (2+ crits in a row)
         // Screen shake: small (<= 7 px) and short (<= 180 ms); disabled under prefers-reduced-motion.
         const shake = { amp: 0, start: 0, life: 1, count: 0 };
         function addShake(amp, life, now) {
@@ -98,7 +99,7 @@
 
         function reset() {
             snaps.length = 0; clockOffset = null; lastActs.length = 0; fx.length = 0; parts.length = 0; texts.length = 0;
-            banners.length = 0; flashes.clear(); ghosts.length = 0; enemyMotion.clear(); overInfo = null;
+            banners.length = 0; chains.length = 0; flashes.clear(); ghosts.length = 0; enemyMotion.clear(); overInfo = null;
         }
 
         function burst(x, y, color, n, speed = 4) {
@@ -139,10 +140,18 @@
                     fx.push({ kind: 'sheet', key: sheet, x: px + (Math.random() - .5) * 10, y: py + (Math.random() - .5) * 10, w: big ? 64 : 34, start: now, life: A ? A.duration(sheet) : 220 });
                     // Expanding impact ring on the floor under the target.
                     fx.push({ kind: 'ring', x: e.x * S, y: e.y * S, r0: 8, r1: e.f ? 62 : big ? 44 : 30, color: e.c ? '#FFD36D' : e.f ? '#FFF1C5' : '#FFF2B5', width: e.f ? 5 : 3, start: now, life: e.f ? 320 : 230 });
-                    burst(px, py, e.c ? '#FFD36D' : '#FFF2B5', e.f ? 16 : e.c ? 9 : 5, e.f ? 6 : 4);
+                    burst(px, py, e.c ? '#FFD36D' : '#FFF2B5', e.f ? 16 : e.c ? 12 : 5, e.f ? 6 : e.c ? 5 : 4);
                     if (e.f) burst(px, py, heroCfg(latestHero(e.h)?.name).color, 8, 6);
-                    floatText(px, py - 30, String(e.d) + (e.c ? '!' : ''), e.c ? NUM.crit : NUM.normal, e.f ? 26 : e.c ? 24 : 18);
-                    if (e.f) addShake(4, 140, now); else if (e.c) addShake(2, 100, now);
+                    if (e.c) { // critical hit: extra impact (white-gold flash particles + a second gold ring)
+                        burst(px, py, '#FFF1C5', 8, 7); burst(px, py, '#E6AD57', 6, 3);
+                        fx.push({ kind: 'ring', x: e.x * S, y: e.y * S, r0: 14, r1: 70, color: '#E6AD57', width: 2, start: now + 40, life: 300 });
+                        stats.crits = (stats.crits || 0) + 1;
+                        if (e.cc >= 2) { chains[e.h] = { n: e.cc, at: now }; stats.maxChain = Math.max(stats.maxChain || 0, e.cc) }
+                    }
+                    floatText(px, py - 30, String(e.d) + (e.c ? '!' : ''), e.c ? NUM.crit : NUM.normal, e.f ? 26 : e.c ? 28 : 18);
+                    // Crits shake harder than normal hits (still capped at 7 px / 180 ms; off with reduced motion).
+                    if (e.c) addShake(Math.min(7, 3.5 + 0.5 * Math.min(6, e.cc || 1) + (e.f ? 1 : 0)), 160, now);
+                    else if (e.f) addShake(4, 140, now);
                     break;
                 }
                 case 'kill': {
@@ -428,6 +437,24 @@
             }
             g.globalAlpha = 1;
         }
+        // Critical Chain counter over a hero who landed 2+ crits in a row (fades 1.4 s after the last one).
+        function drawChains(view, now, k) {
+            g.save(); g.textAlign = 'center';
+            chains.forEach((c, i) => {
+                const h = view.heroes[i];
+                if (!c || !h) return;
+                const age = now - c.at;
+                if (age > 1400) { chains[i] = null; return }
+                const pop = age < 120 ? 1.35 - age / 400 : 1, sz = Math.round(Math.min(k, 1.3) * 19 * pop);
+                g.globalAlpha = age > 1000 ? (1400 - age) / 400 : 1;
+                g.font = 'bold ' + sz + 'px monospace';
+                const x = h.x * S, y = h.y * S - 128 * Math.min(k, 1.3);
+                g.lineWidth = 5; g.strokeStyle = '#2a1606';
+                const str = 'CRITICAL CHAIN x' + c.n;
+                g.strokeText(str, x, y); g.fillStyle = '#FFD36D'; g.fillText(str, x, y);
+            });
+            g.restore();
+        }
         function drawNumbers(now) {
             g.textAlign = 'center';
             for (let j = texts.length - 1; j >= 0; j--) {
@@ -602,6 +629,7 @@
             drawActionFx(view, now, k);
             drawParticles(now);
             drawNumbers(now);
+            drawChains(view, now, k);
             g.setTransform(1, 0, 0, 1, 0, 0);
             drawHud(view, room, myId, k, now);
             drawBanners(now, k);
@@ -612,7 +640,7 @@
         function start() { if (!running) { running = true; requestAnimationFrame(frame) } }
         function stop() { running = false }
 
-        return { push, reset, start, stop, sample, stats, interpolating: interpEnabled, fxCounts: () => ({ fx: fx.length, parts: parts.length, texts: texts.length, banners: banners.length, art: A ? A.loadedCount() : 0, shakes: shake.count, reducedMotion: reducedMotion() }), lastAttackFx: () => { const f = [...fx].reverse().find(v => v.kind === 'attack'); return f ? { name: f.name, aim: f.aim, stage: f.stage } : null } };
+        return { push, reset, start, stop, sample, stats, interpolating: interpEnabled, fxCounts: () => ({ fx: fx.length, parts: parts.length, texts: texts.length, banners: banners.length, art: A ? A.loadedCount() : 0, shakes: shake.count, reducedMotion: reducedMotion() }), chainOf: i => chains[i] ? chains[i].n : 0, lastAttackFx: () => { const f = [...fx].reverse().find(v => v.kind === 'attack'); return f ? { name: f.name, aim: f.aim, stage: f.stage } : null } };
     }
 
     root.WCHArena = { createArena, TICK_MS, INTERP_DELAY_MS };

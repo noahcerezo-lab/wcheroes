@@ -30,6 +30,9 @@ const RULES = {
     destinyAuraMs: 1500, destinyAuraHeal: 3, destinyAuraRadius: S(145),
     reviveRadius: 38, reviveMs: 2000, reviveHpFrac: 0.4,
     comboWindowMs: 4300,
+    // Critical hits (rolled on the server for every hit): 14% base, x1.85 damage. FURY and SQUAD
+    // SYNERGY add to the chance. Consecutive crits by the same hero build a Critical Chain.
+    critBase: 0.14, critMul: 1.85,
     // Three-hit attack chain (server-timed): a swing within cooldown + chainWindowMs of the previous
     // one continues the chain; the 3rd hit is a finisher, then a short recovery before the next swing.
     chainWindowMs: 450, finisherDamageMul: 1.6, finisherKnockMul: 1.8, finisherRangeMul: 1.15, finisherRecoveryMul: 0.6,
@@ -58,11 +61,13 @@ const KITS = {
     NOAH: { attack: 'crescent', arc: 1.12, knock: 15, stun: 0, specialName: 'ARCANE NOVA', specialRadius: S(210), specialMul: 3, specialKnock: 15, aiIdeal: S(100) },
     DESTINY: { attack: 'captain', arc: 0.95, knock: 10, stun: 650, specialName: 'RALLY STRIKE', specialRadius: S(180), specialMul: 3, specialStun: 1000, rallyHeal: 35, rallyRadius: S(190), buffMs: 5000, buffMul: 1.25, aiIdeal: S(58) },
     MARKIE: { attack: 'cleave', front: 0.55, frontMul: 1.5, sideMul: 0.7, knock: 19, stun: 140, specialName: 'EARTHSHATTER', specialRadius: S(160), specialMul: 4, specialStun: 600, tauntMs: 4000, shieldMs: 3000, shieldMul: 0.45, aiIdeal: S(48) },
-    ESPIRIT: { attack: 'arrow', arc: 0.24, knock: 10, stun: 0, specialName: 'ARROW STORM', specialRadius: S(340), specialMul: 3, aiIdeal: S(185), critMul: 2 },
+    ESPIRIT: { attack: 'arrow', arc: 0.24, knock: 10, stun: 0, specialName: 'ARROW STORM', specialRadius: S(340), specialMul: 3, aiIdeal: 150 },
 };
 
 // Sheet stats -> small modifiers. LUK = crit chance, VIT = damage taken.
-const critChance = (name, st) => st.LUK * (name === 'ESPIRIT' ? 0.04 : 0.015); // Espirit: 36%
+// Crit chance for a hero right now: 14% base + active boosts (FURY, SQUAD SYNERGY; see power-ups).
+const critChance = (h, w) => Math.min(0.95, RULES.critBase + (w && h ? critBonus(w, h) : 0));
+function critBonus(w, h) { return (w.time < (h.furyUntil || 0) ? RULES.furyCrit : 0) + (w.time < (h.synergyUntil || 0) ? RULES.synergyCrit : 0) }
 const damageTakenMul = st => clamp(1 - (st.VIT - 5) * 0.04, 0.7, 1.2); // Markie (VIT 9): 0.84
 
 function isBossWave(n) { return n > 0 && n % 15 === 0 } // Phase D: spawn a boss instead of a normal wave
@@ -106,8 +111,9 @@ const emit = (w, e) => { w.events.push(e) };
 function damageEnemy(w, hero, e, base, o = {}) {
     if (e.hp <= 0) return;
     let d = base * (w.time < hero.buffUntil ? KITS.DESTINY.buffMul : 1);
-    const crit = rng(w) < critChance(hero.name, hero.stats);
-    if (crit) d *= KITS[hero.name].critMul || 1.75;
+    const crit = rng(w) < critChance(hero, w);
+    if (crit) d *= RULES.critMul;
+    hero.critChain = crit ? (hero.critChain || 0) + 1 : 0; // consecutive crits; any normal hit breaks it
     d = Math.max(1, Math.round(d));
     e.hp -= d;
     const t = ENEMY_TYPES[e.type];
@@ -120,6 +126,7 @@ function damageEnemy(w, hero, e, base, o = {}) {
     if (o.stun) e.stunUntil = Math.max(e.stunUntil, w.time + o.stun);
     const ev = { t: 'hit', id: e.id, d, c: crit ? 1 : 0, h: w.heroes.indexOf(hero), x: Math.round(e.x), y: Math.round(e.y) };
     if (o.finisher) ev.f = 1;
+    if (crit) ev.cc = hero.critChain;
     emit(w, ev);
     if (e.hp <= 0) killEnemy(w, hero, e);
 }
@@ -446,6 +453,7 @@ function snapshot(w) {
         heroes: w.heroes.map(h => ({
             name: h.name, x: h.x, y: h.y, vx: h.vx, vy: h.vy, facing: h.facing, aim: h.aim, moving: h.moving, controller: h.controller, seq: h.seq,
             cs: h.chain, // chain stage of the last swing (2 = finisher)
+            cc: h.critChain || 0, // Critical Chain: consecutive crits
             hp: h.hp, maxHp: h.maxHp, state: h.state === 'alive' ? 0 : 1, rv: h.state === 'downed' ? Math.round(h.reviveMs / RULES.reviveMs * 100) : 0,
             attackN: h.attackN, specialN: h.specialN, buff: w.time < h.buffUntil ? 1 : 0, shield: w.time < h.shieldUntil ? 1 : 0,
             cd: Math.max(0, Math.round((h.specialAt + RULES.specialCooldownMs - w.time) / 100)) // special cooldown, 0.1 s
@@ -455,4 +463,4 @@ function snapshot(w) {
     };
 }
 
-module.exports = { nextChainStage, aimOf, RULES, ENEMY_TYPES, ENEMY_INDEX, KITS, createBattle, step, snapshot, spawnEnemy, performAttack, performSpecial, damageHero, attackTargets, isBossWave, waveSize, critChance, damageTakenMul, inArc };
+module.exports = { damageEnemy, nextChainStage, aimOf, RULES, ENEMY_TYPES, ENEMY_INDEX, KITS, createBattle, step, snapshot, spawnEnemy, performAttack, performSpecial, damageHero, attackTargets, isBossWave, waveSize, critChance, damageTakenMul, inArc };
