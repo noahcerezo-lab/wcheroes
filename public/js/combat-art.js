@@ -35,22 +35,12 @@
         warning: ['fx_boss_warning_64x32_6f.png', 64, 32, 6, 90, .5],
         impact: ['fx_boss_impact_64x32_6f.png', 64, 32, 6, 70, .5],
         acolyte: ['enemy_horned_acolyte_48x64_4f.png', 48, 64, 4, 180, 1],
-        wisp: ['enemy_lantern_wisp_32x48_4f.png', 32, 48, 4, 150, 1],
-        archer: ['enemy_tomoe_archer_48x64_4f.png', 48, 64, 4, 190, 1],
         warden: ['enemy_temple_warden_64x80_4f.png', 64, 80, 4, 230, 1],
         // Action frames (Draper, second pass). Walk/dart loops are front-facing: never flipped.
         acolyteWalk: ['enemy_horned_acolyte_walk_48x64_4f.png', 48, 64, 4, 130, 1],
         acolyteWind: ['enemy_horned_acolyte_windup_48x64_3f.png', 48, 64, 3, 50, 1],
         acolyteStrike: ['enemy_horned_acolyte_slash_48x64_4f.png', 48, 64, 4, 60, 1],
         acolyteDie: ['enemy_horned_acolyte_die_48x64_4f.png', 48, 64, 4, 95, 1],
-        wispWalk: ['enemy_lantern_wisp_dart_32x48_4f.png', 32, 48, 4, 110, 1],
-        wispWind: ['enemy_lantern_wisp_charge_32x48_3f.png', 32, 48, 3, 85, 1],
-        wispStrike: ['enemy_lantern_wisp_fire_32x48_3f.png', 32, 48, 3, 80, 1],
-        wispDie: ['enemy_lantern_wisp_die_32x48_4f.png', 32, 48, 4, 95, 1],
-        archerWalk: ['enemy_tomoe_archer_walk_48x64_4f.png', 48, 64, 4, 140, 1],
-        archerWind: ['enemy_tomoe_archer_draw_48x64_3f.png', 48, 64, 3, 75, 1],
-        archerStrike: ['enemy_tomoe_archer_fire_48x64_3f.png', 48, 64, 3, 80, 1],
-        archerDie: ['enemy_tomoe_archer_die_48x64_4f.png', 48, 64, 4, 95, 1],
         wardenWalk: ['enemy_temple_warden_walk_64x80_4f.png', 64, 80, 4, 180, 1],
         wardenWind: ['enemy_temple_warden_plant_64x80_3f.png', 64, 80, 3, 120, 1],
         wardenStrike: ['enemy_temple_warden_slam_64x80_4f.png', 64, 80, 4, 60, 1],
@@ -112,9 +102,7 @@
     const act = (key, w) => ({ key, w, walk: key + 'Walk', wind: key + 'Wind', strike: key + 'Strike', die: key + 'Die' });
     const ENEMY_ART = [
         act('acolyte', 50), // 0 acolyte: melee grunt, ~64px tall like V19's swordsman
-        act('wisp', 36), // 1 wisp: ranged ember lantern (hovers)
-        act('archer', 50), // 2 archer: mid-range arrows
-        act('warden', 74), // 3 warden: heavy ground slam
+        act('warden', 74), // 1 warden: heavy ground slam
     ];
     load();
     root.WCHCombatArt = { SHEETS, ENEMY_ART, load, ready, frame, play, loop, frameCount, duration, loadedCount: () => loaded };

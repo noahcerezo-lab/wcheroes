@@ -267,7 +267,7 @@ io.on('connection', socket => {
         if (h.state !== 'alive' || r.world.over) return; // downed heroes wait for a revive
         const move = SIM.normalizeMove(data.x, data.y);
         p.input = move;
-        if (SIM.stepHero(h, move, h.speed)) p.lastMoveTick = r.world.tick;
+        if (SIM.stepHero(h, move, COMBAT.moveSpeed(r.world, h))) p.lastMoveTick = r.world.tick;
         // Intents only. The next tick checks cooldowns and resolves hits; any other fields
         // (damage, target, hp...) are ignored, so a modified client cannot deal or avoid damage.
         if (data.attack === true) h.wantAttack = true;

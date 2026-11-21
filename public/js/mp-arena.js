@@ -3,8 +3,8 @@
  *
  * Draws the server's battle snapshots:
  *   - V19 battlefield (Moonlit Temple and the other three zones) and V19 hero sprites
- *   - enemies with Draper's sprites (combat-art.js): Horned Acolyte, Lantern Wisp, Tomoe Archer,
- *     Temple Warden, each with idle / walk / windup / strike / die sheets picked from server flags.
+ *   - enemies with Draper's sprites (combat-art.js):  Horned Acolyte and
+ *     Temple Warden (no projectile enemies), each with idle / walk / windup / strike / die sheets picked from server flags.
  *   - combat effects from the server's per-tick events: hero attack/special sheets, hit sparks,
  *     crit flashes, damage numbers (#FFF2A0 normal, #FFD36D crit, #ADFFCB heal), heal/buff auras,
  *     stun/taunt marks, downed/revive rings, combo counter, wave banners and the game-over card.
@@ -37,6 +37,15 @@
     };
     const SPECIAL_RADIUS = { NOAH: 140, DESTINY: 120, MARKIE: 107, ESPIRIT: 227 }; // fallback; events carry r
     const SLAM_R = 55; // Temple Warden shockwave radius (world units)
+    // Power-ups (shared/combat.js PICKUP_KINDS order) and buff colors. pu[] in snapshots = FURY, HASTE, WARD, SYNERGY.
+    const PICKUP = [
+        { key: 'heal', label: 'HEAL', color: '#74FFB2', core: '#ADFFCB' },
+        { key: 'fury', label: 'FURY', color: '#FF7A45', core: '#FFD36D' },
+        { key: 'haste', label: 'HASTE', color: '#53BAFF', core: '#D8FFFF' },
+        { key: 'ward', label: 'WARD', color: '#A9B8FF', core: '#E8EEFF' },
+    ];
+    const BUFF = [PICKUP[1], PICKUP[2], PICKUP[3], { key: 'synergy', label: 'SYNERGY', color: '#E6AD57', core: '#FFD36D' }];
+    const BUFF_MAX = [105, 105, 110, 65]; // full duration in 0.1 s, for the HUD timer bars
 
     function lerp(a, b, t) { return a + (b - a) * t }
     // 8-way aim index (shared-sim DIR8: 0 right, 2 down, 4 left, 6 up) -> unit vector.
@@ -47,7 +56,7 @@
         const g = canvas.getContext('2d');
         g.imageSmoothingEnabled = false;
         const interpEnabled = opts.interpolate !== false;
-        const snaps = []; // {tick, at, heroes, enemies, shots, zone, hud}
+        const snaps = []; // {tick, at, heroes, enemies, zone, hud}
         let clockOffset = null; // estimated (client receive time - tick * TICK_MS)
         let running = false;
         const stats = { snapshots: 0, frames: 0 };
@@ -60,6 +69,7 @@
         const ghosts = []; // dying enemies fading out
         const lastActs = []; // per hero {a, s} counters from the previous snapshot
         const enemyMotion = new Map(); // id -> {x, y, moveAt}
+        const chains = []; // per hero: {n, at} latest Critical Chain (2+ crits in a row)
         // Screen shake: small (<= 7 px) and short (<= 180 ms); disabled under prefers-reduced-motion.
         const shake = { amp: 0, start: 0, life: 1, count: 0 };
         function addShake(amp, life, now) {
@@ -87,9 +97,8 @@
             if (clockOffset === null || sample < clockOffset) clockOffset = sample;
             else clockOffset += (sample - clockOffset) * 0.02;
             const enemies = Array.isArray(world.enemies) ? world.enemies : [];
-            const shots = Array.isArray(world.shots) ? world.shots : [];
             const prevSnap = snaps[snaps.length - 1];
-            snaps.push({ tick, at: now, heroes: world.heroes, enemies, shots, zone: world.zone || 0, hud: world });
+            snaps.push({ tick, at: now, heroes: world.heroes, enemies, zone: world.zone || 0, hud: world });
             while (snaps.length > 40) snaps.shift();
             stats.snapshots++;
             const ev = Array.isArray(world.ev) ? world.ev : [];
@@ -99,11 +108,12 @@
 
         function reset() {
             snaps.length = 0; clockOffset = null; lastActs.length = 0; fx.length = 0; parts.length = 0; texts.length = 0;
-            banners.length = 0; flashes.clear(); ghosts.length = 0; enemyMotion.clear(); overInfo = null;
+            banners.length = 0; chains.length = 0; flashes.clear(); ghosts.length = 0; enemyMotion.clear(); overInfo = null;
         }
 
-        function burst(x, y, color, n, speed = 4) {
-            for (let i = 0; i < n && parts.length < 260; i++) parts.push({ x, y, vx: (Math.random() - .5) * 2 * speed, vy: (Math.random() - .5) * 2 * speed - 1, born: performance.now(), life: 380 + Math.random() * 200, color });
+        // Particle cap keeps phones smooth: 260 squares at most, each one fillRect (no blur/shadows).
+        function burst(x, y, color, n, speed = 4, o) {
+            for (let i = 0; i < n && parts.length < 260; i++) parts.push({ x, y, vx: (Math.random() - .5) * 2 * speed, vy: (Math.random() - .5) * 2 * speed * (o && o.flat || 1) - (o && o.lift !== undefined ? o.lift : 1), born: performance.now(), life: (o && o.life || 380) + Math.random() * 200, color, sz: o && o.size || 5, gr: o && o.grav !== undefined ? o.grav : .04 });
         }
         function floatText(x, y, str, color, size, life = 870) { if (texts.length < 80) texts.push({ x, y, str, color, size, born: performance.now(), life, dx: (Math.random() - .5) * 14 }) } // ~26 V19 ticks
         function latestHero(i) { const s = snaps[snaps.length - 1]; return s && s.heroes[i] }
@@ -125,9 +135,35 @@
                         f.life = Math.max(120, Math.hypot(f.tx - h.x, f.ty - h.y) * S / 3.2);
                     }
                     fx.push(f);
+                    attackBurst(f, h, now);
                 }
                 if (h.specialN > prev.s) fx.push({ kind: 'cast', i, start: now, life: 560 });
             });
+        }
+
+        // One-off particles/floor marks when a swing starts (capped by burst()).
+        function attackBurst(f, h, now) {
+            const fin = f.stage === 2, x = h.x * S, y = h.y * S;
+            if (h.name === 'NOAH') { // arcane sparks at the tip of the swing
+                const tip = KIT.NOAH.atkW * .55;
+                const tx = x + f.aim.x * tip, ty = y - 34 + f.aim.y * tip;
+                burst(tx, ty, '#79E4FF', fin ? 10 : 6, 4, { life: 320, size: 4, grav: .01 });
+                burst(tx, ty, '#D8FFFF', fin ? 5 : 3, 5, { life: 260, size: 3, grav: 0 });
+                burst(x + f.aim.x * tip * .5, ty, '#7A5FE0', fin ? 6 : 3, 3, { life: 360, size: 4, grav: 0 });
+            } else if (h.name === 'MARKIE') { // ground impact + dust burst; finisher hits harder
+                const gx = x + f.aim.x * 34, gy = y + f.aim.y * 14 + 4;
+                const cracks = []; for (let j = 0; j < (fin ? 7 : 5); j++) { const an = j / (fin ? 7 : 5) * Math.PI * 2 + Math.random() * .6; const c = []; let r = 0; for (let q = 0; q < 3; q++) { r += .25 + Math.random() * .15; c.push([Math.cos(an + (Math.random() - .5) * .5) * r, Math.sin(an + (Math.random() - .5) * .5) * r]) } cracks.push(c) }
+                fx.push({ kind: 'crack', x: gx, y: gy, r: fin ? 90 : 62, cracks, fin, start: now, life: fin ? 520 : 400 });
+                if (fin) fx.push({ kind: 'ring', x: gx, y: gy, r0: 16, r1: 110, color: '#FFC277', width: 5, start: now, life: 360 });
+                burst(gx, gy - 6, '#A7855F', fin ? 16 : 9, fin ? 5 : 3.5, { flat: .35, lift: 1.4, grav: .03, life: 520, size: 6 }); // dust
+                burst(gx, gy - 6, '#8C7A66', fin ? 10 : 5, 3, { flat: .35, lift: 1, grav: .02, life: 600, size: 7 });
+                burst(gx, gy - 10, '#FFC277', fin ? 8 : 4, 4, { life: 300, size: 4 });
+                addShake(fin ? 5.5 : 1.5, fin ? 170 : 90, now); // extra weight on the combo finisher (capped, off with reduced motion)
+            } else if (h.name === 'ESPIRIT') {
+                burst(x + f.facing * 20, y - 38, '#FFE17B', 4, 2, { life: 260, size: 4, grav: 0 });
+            } else if (h.name === 'DESTINY') {
+                burst(x + f.aim.x * 30, y - 34 + f.aim.y * 20, fin ? '#FFE1A2' : '#9EFFC9', fin ? 8 : 4, 3, { life: 340, size: 4, grav: 0 });
+            }
         }
 
         function onEvent(e, now, prevSnap) {
@@ -140,10 +176,19 @@
                     fx.push({ kind: 'sheet', key: sheet, x: px + (Math.random() - .5) * 10, y: py + (Math.random() - .5) * 10, w: big ? 64 : 34, start: now, life: A ? A.duration(sheet) : 220 });
                     // Expanding impact ring on the floor under the target.
                     fx.push({ kind: 'ring', x: e.x * S, y: e.y * S, r0: 8, r1: e.f ? 62 : big ? 44 : 30, color: e.c ? '#FFD36D' : e.f ? '#FFF1C5' : '#FFF2B5', width: e.f ? 5 : 3, start: now, life: e.f ? 320 : 230 });
-                    burst(px, py, e.c ? '#FFD36D' : '#FFF2B5', e.f ? 16 : e.c ? 9 : 5, e.f ? 6 : 4);
+                    burst(px, py, e.c ? '#FFD36D' : '#FFF2B5', e.f ? 16 : e.c ? 12 : 5, e.f ? 6 : e.c ? 5 : 4);
                     if (e.f) burst(px, py, heroCfg(latestHero(e.h)?.name).color, 8, 6);
-                    floatText(px, py - 30, String(e.d) + (e.c ? '!' : ''), e.c ? NUM.crit : NUM.normal, e.f ? 26 : e.c ? 24 : 18);
-                    if (e.f) addShake(4, 140, now); else if (e.c) addShake(2, 100, now);
+                    if (e.h === 3) burst(px, py, '#FFE17B', 6, 4, { life: 320, size: 4 }); // Espirit: gold arrow sparks
+                    if (e.c) { // critical hit: extra impact (white-gold flash particles + a second gold ring)
+                        burst(px, py, '#FFF1C5', 8, 7); burst(px, py, '#E6AD57', 6, 3);
+                        fx.push({ kind: 'ring', x: e.x * S, y: e.y * S, r0: 14, r1: 70, color: '#E6AD57', width: 2, start: now + 40, life: 300 });
+                        stats.crits = (stats.crits || 0) + 1;
+                        if (e.cc >= 2) { chains[e.h] = { n: e.cc, at: now }; stats.maxChain = Math.max(stats.maxChain || 0, e.cc) }
+                    }
+                    floatText(px, py - 30, String(e.d) + (e.c ? '!' : ''), e.c ? NUM.crit : NUM.normal, e.f ? 26 : e.c ? 28 : 18);
+                    // Crits shake harder than normal hits (still capped at 7 px / 180 ms; off with reduced motion).
+                    if (e.c) addShake(Math.min(7, 3.5 + 0.5 * Math.min(6, e.cc || 1) + (e.f ? 1 : 0)), 160, now);
+                    else if (e.f) addShake(4, 140, now);
                     break;
                 }
                 case 'kill': {
@@ -187,6 +232,27 @@
                     banners.push({ str: h.name + ' REVIVED!', color: '#A5FFBF', born: now, life: 1500, small: true });
                     break;
                 }
+                case 'pspawn': { // a power-up appears: small flash where it lands
+                    const P = PICKUP[e.k] || PICKUP[0];
+                    fx.push({ kind: 'ring', x: e.x * S, y: e.y * S, r0: 6, r1: 46, color: P.color, width: 3, start: now, life: 420 });
+                    burst(e.x * S, e.y * S - 24, P.core, 8, 3);
+                    break;
+                }
+                case 'pick': {
+                    const P = PICKUP[e.k] || PICKUP[0], h = latestHero(e.h);
+                    stats.picks = (stats.picks || 0) + 1;
+                    fx.push({ kind: 'ring', x: e.x * S, y: e.y * S, r0: 10, r1: 80, color: P.color, width: 4, start: now, life: 380 });
+                    burst(e.x * S, e.y * S - 30, P.color, 14, 5); burst(e.x * S, e.y * S - 30, P.core, 8, 3);
+                    if (h) floatText(h.x * S, h.y * S - 118, P.label + (P.key === 'heal' ? '' : '!'), P.core, 22, 1000);
+                    if (h) banners.push({ str: h.name + ' • ' + P.label + (P.key === 'heal' ? ' +32% HP' : P.key === 'fury' ? ' • CRIT UP' : P.key === 'haste' ? ' • SPEED UP' : ' • DAMAGE DOWN'), color: P.core, born: now, life: 1400, small: true });
+                    break;
+                }
+                case 'syn': { // SQUAD SYNERGY: gold particles on every boosted hero + a short banner
+                    stats.synergy = (stats.synergy || 0) + 1;
+                    for (const j of e.all || []) { const u = latestHero(j); if (u) { burst(u.x * S, u.y * S - 50, '#FFD36D', 10, 4, { life: 600 }); burst(u.x * S, u.y * S - 50, '#E6AD57', 6, 2, { lift: 2.2, grav: 0, life: 700 }) } }
+                    banners.push({ str: 'SQUAD SYNERGY • CRIT UP', color: '#FFD36D', born: now, life: 1700 });
+                    break;
+                }
                 case 'wave': banners.push({ str: 'WAVE ' + e.n + (e.boss ? ' • BOSS WAVE' : ''), color: '#FFD36D', born: now, life: 2000 }); break;
                 case 'clear': banners.push({ str: 'WAVE ' + e.n + ' CLEARED • +25 HP', color: '#9ef0c0', born: now, life: 2200 }); break;
                 case 'over': overInfo = { wave: e.wave, score: e.score, kills: e.kills, at: now }; break;
@@ -197,7 +263,7 @@
         function sample(now) {
             if (!snaps.length) return null;
             const latest = snaps[snaps.length - 1];
-            if (!interpEnabled || snaps.length < 2) return { heroes: latest.heroes, enemies: latest.enemies, shots: latest.shots, zone: latest.zone, hud: latest.hud };
+            if (!interpEnabled || snaps.length < 2) return { heroes: latest.heroes, enemies: latest.enemies, zone: latest.zone, hud: latest.hud, pk: latest.hud.pk || [] };
             const renderTick = (now - INTERP_DELAY_MS - clockOffset) / TICK_MS;
             let a = snaps[0], b = latest;
             if (renderTick >= latest.tick) { a = b = latest }
@@ -214,7 +280,7 @@
                 if (Math.hypot(hb.x - ha.x, hb.y - ha.y) > SNAP_DISTANCE) return hb;
                 return Object.assign({}, hb, { x: lerp(ha.x, hb.x, t), y: lerp(ha.y, hb.y, t) });
             });
-            // Enemies and shots are matched by id (they appear and vanish between snapshots).
+            // Enemies are matched by id (they appear and vanish between snapshots).
             const blend = (listA, listB) => {
                 const prev = new Map(listA.map(e => [e[0], e]));
                 return listB.map(eb => {
@@ -223,7 +289,7 @@
                     const out = eb.slice(); out[2] = lerp(ea[2], eb[2], t); out[3] = lerp(ea[3], eb[3], t); return out;
                 });
             };
-            return { heroes, enemies: blend(a.enemies, b.enemies), shots: blend(a.shots, b.shots), zone: b.zone, hud: b.hud };
+            return { heroes, enemies: blend(a.enemies, b.enemies), zone: b.zone, hud: b.hud, pk: latest.hud.pk || [] };
         }
 
         // Bigger sprites/labels when the canvas is shown small (phones), so units stay readable.
@@ -284,6 +350,19 @@
                 const cd = view.heroes[mine].cd || 0;
                 g.fillStyle = cd ? '#c9b8e8' : '#9ef0c0';
                 g.fillText('SPECIAL ' + (cd ? (cd / 10).toFixed(1) + 's' : 'READY'), W / k - 30, 82);
+            }
+            if (mine >= 0) { // power-up timers for your hero (under the squad panel)
+                const pu = view.heroes[mine].pu || [];
+                let yy = 18 + 30 + view.heroes.length * 22 + 10;
+                for (let j = 0; j < 4; j++) if (pu[j]) {
+                    const B = BUFF[j];
+                    g.textAlign = 'left';
+                    g.fillStyle = '#161326d9'; g.fillRect(18, yy, 200, 24);
+                    g.fillStyle = B.color; g.fillRect(22, yy + 18, 192 * Math.min(1, pu[j] / BUFF_MAX[j]), 3);
+                    g.fillStyle = B.core; g.font = 'bold 13px monospace';
+                    g.fillText(B.label + ' ' + (pu[j] / 10).toFixed(1) + 's', 30, yy + 15);
+                    yy += 28;
+                }
             }
             if (hud.combo >= 2) { // combo text + Draper's combo sting underlay on each new KO
                 const cx = W / k - 160, cy = 112;
@@ -364,6 +443,7 @@
         function drawFloorFx(now) {
             for (const f of fx) {
                 const el = now - f.start;
+                if (el < 0) continue; // delayed effect (e.g. the crit's second ring) not started yet
                 if (f.kind === 'special') {
                     const key = KIT[f.name] && KIT[f.name].spc;
                     const w = f.r * 2; // world radius wins over the 64px motif
@@ -378,12 +458,61 @@
                     const t = el / f.life, r = lerp(f.r0, f.r1, 1 - (1 - t) * (1 - t));
                     g.save(); g.globalAlpha = Math.max(0, 1 - t); g.strokeStyle = f.color; g.lineWidth = f.width;
                     g.beginPath(); g.ellipse(f.x, f.y, r, r * .42, 0, 0, Math.PI * 2); g.stroke(); g.restore();
+                } else if (f.kind === 'crack') { // Markie ground impact: stone cracks + hot glow + ring
+                    const t = el / f.life, fade = 1 - t;
+                    g.save(); g.translate(f.x, f.y);
+                    g.globalAlpha = .55 * fade; g.fillStyle = '#FFC277'; g.globalCompositeOperation = 'lighter';
+                    g.beginPath(); g.ellipse(0, 0, f.r * (.5 + .5 * t), f.r * .36 * (.5 + .5 * t), 0, 0, Math.PI * 2); g.fill();
+                    g.globalCompositeOperation = 'source-over';
+                    g.globalAlpha = Math.min(1, fade * 1.6); g.strokeStyle = '#55616A'; g.lineWidth = f.fin ? 4 : 3;
+                    for (const c of f.cracks) { g.beginPath(); g.moveTo(0, 0); for (const [cx, cy] of c) g.lineTo(cx * f.r, cy * f.r * .42); g.stroke() }
+                    g.strokeStyle = '#FF9657'; g.lineWidth = 1.5; g.globalAlpha = fade;
+                    for (const c of f.cracks) { g.beginPath(); g.moveTo(0, 0); for (const [cx, cy] of c) g.lineTo(cx * f.r, cy * f.r * .42); g.stroke() }
+                    g.restore();
                 } else if (f.kind === 'floor' && A) {
                     A.play(g, f.key, el, f.x, f.y, f.r * 2, f.r * 2 * .5);
                 }
             }
         }
         // Over-unit layer: attack trails, Espirit arrows, sparks, auras that follow a hero.
+        // Noah: arcane energy on every basic attack -- a glowing violet/cyan sweep arc with runes riding it.
+        // Drawn in the swing's rotated frame (+x = aim). Palette #7A5FE0 #637BFF #79E4FF #D8FFFF.
+        function arcaneArc(t, size, fin, now) {
+            const r = size * .42, sweep = 1.1, a0 = -sweep, a1 = -sweep + 2 * sweep * Math.min(1, t * 1.6), fade = 1 - t;
+            g.save();
+            g.globalCompositeOperation = 'lighter';
+            g.lineCap = 'round';
+            g.globalAlpha = .38 * fade; g.strokeStyle = '#7A5FE0'; g.lineWidth = (fin ? 20 : 14);
+            g.beginPath(); g.arc(0, 0, r, a0, a1); g.stroke();
+            g.globalAlpha = .7 * fade; g.strokeStyle = '#53BAFF'; g.lineWidth = fin ? 8 : 5;
+            g.beginPath(); g.arc(0, 0, r, a0, a1); g.stroke();
+            g.globalAlpha = .95 * fade; g.strokeStyle = '#D8FFFF'; g.lineWidth = 2;
+            g.beginPath(); g.arc(0, 0, r, Math.max(a0, a1 - .7), a1); g.stroke();
+            // runes: small rotating diamonds and squares along the arc
+            const n = fin ? 5 : 3;
+            for (let j = 0; j < n; j++) {
+                const an = a0 + (a1 - a0) * (j + .5) / n, rr = r + Math.sin(now / 90 + j) * 6;
+                g.save(); g.translate(Math.cos(an) * rr, Math.sin(an) * rr); g.rotate(now / 160 + j);
+                g.globalAlpha = .9 * fade; g.strokeStyle = j % 2 ? '#79E4FF' : '#A48BFF'; g.lineWidth = 2;
+                const q = fin ? 7 : 5;
+                if (j % 2) g.strokeRect(-q, -q, 2 * q, 2 * q); else { g.beginPath(); g.moveTo(0, -q * 1.3); g.lineTo(q, 0); g.lineTo(0, q * 1.3); g.lineTo(-q, 0); g.closePath(); g.stroke() }
+                g.restore();
+            }
+            g.restore();
+        }
+        // Markie: heavy bronze cleave arc (wide, thick, hot core) -- weight before the sprite slash.
+        function mightyArc(t, size, fin) {
+            const r = size * .36, fade = 1 - t, a1 = -Math.PI * .85 + Math.PI * 1.7 * Math.min(1, t * 2.2);
+            g.save();
+            g.globalCompositeOperation = 'lighter'; g.lineCap = 'round';
+            g.globalAlpha = .45 * fade; g.strokeStyle = '#C98A4B'; g.lineWidth = fin ? 26 : 18;
+            g.beginPath(); g.arc(0, 0, r, -Math.PI * .85, a1); g.stroke();
+            g.globalAlpha = .75 * fade; g.strokeStyle = '#FF9657'; g.lineWidth = fin ? 10 : 7;
+            g.beginPath(); g.arc(0, 0, r, -Math.PI * .85, a1); g.stroke();
+            g.globalAlpha = fade; g.strokeStyle = '#FFF0A4'; g.lineWidth = 3;
+            g.beginPath(); g.arc(0, 0, r, Math.max(-Math.PI * .85, a1 - .9), a1); g.stroke();
+            g.restore();
+        }
         function drawActionFx(view, now, k) {
             for (const f of fx) {
                 const el = now - f.start;
@@ -391,13 +520,29 @@
                     const h = view.heroes[f.i] || f, kit = KIT[f.name];
                     if (!kit) continue;
                     if (f.name === 'ESPIRIT') { // projectile from the bow to the target
-                        const t = Math.min(1, el / f.life);
+                        const t = Math.min(1, el / f.life), t0 = Math.max(0, t - .38);
                         const sx = f.x * S + f.facing * 20, sy = f.y * S - 38, ex = f.tx * S, ey = f.ty * S - 38;
+                        const hx = lerp(sx, ex, t), hy = lerp(sy, ey, t), tx0 = lerp(sx, ex, t0), ty0 = lerp(sy, ey, t0);
+                        // Gold trail + glow (Espirit palette #D3A14B #FFE17B #FFF9D4 #FFB948), additive, no blur.
                         g.save();
-                        g.translate(lerp(sx, ex, t), lerp(sy, ey, t));
+                        g.globalCompositeOperation = 'lighter';
+                        const grad = g.createLinearGradient(tx0, ty0, hx, hy);
+                        grad.addColorStop(0, 'rgba(211,161,75,0)'); grad.addColorStop(1, 'rgba(255,185,72,.85)');
+                        g.strokeStyle = grad; g.lineCap = 'round';
+                        g.lineWidth = 9 * Math.min(k, 1.3); g.beginPath(); g.moveTo(tx0, ty0); g.lineTo(hx, hy); g.stroke();
+                        g.strokeStyle = '#FFF4AD'; g.globalAlpha = .9; g.lineWidth = 2.5;
+                        g.beginPath(); g.moveTo(lerp(tx0, hx, .45), lerp(ty0, hy, .45)); g.lineTo(hx, hy); g.stroke();
+                        g.globalAlpha = .45 + .15 * Math.sin(now / 40); g.fillStyle = '#FFE17B';
+                        g.beginPath(); g.arc(hx, hy, 13 * Math.min(k, 1.3), 0, Math.PI * 2); g.fill();
+                        g.globalAlpha = .9; g.fillStyle = '#FFF9D4'; g.beginPath(); g.arc(hx, hy, 4.5, 0, Math.PI * 2); g.fill();
+                        g.restore();
+                        g.save();
+                        g.translate(hx, hy);
                         g.rotate(Math.atan2(ey - sy, ex - sx));
                         A.loop(g, 'espiritArrow', now, 0, 0, kit.atkW * k);
+                        g.globalCompositeOperation = 'lighter'; g.globalAlpha = .55; A.loop(g, 'espiritArrow', now, 0, 0, kit.atkW * k); // gold-hot redraw
                         g.restore();
+                        if (t < 1 && Math.random() < .5) burst(hx, hy, Math.random() < .5 ? '#FFE17B' : '#FFB948', 1, 1.2, { life: 260, size: 4, grav: .02 });
                     } else {
                         // Directional swing: the sheet faces right; mirror for leftward aims, then rotate to
                         // the 8-way aim (up/down/diagonals). Markie's cleave is 360° so it only mirrors.
@@ -407,8 +552,12 @@
                         if (a.x < -0.01) g.scale(-1, 1);
                         if (f.name !== 'MARKIE') g.rotate(Math.atan2(a.y, Math.abs(a.x) < 0.01 ? 0.0001 : Math.abs(a.x)));
                         const ox = f.name === 'MARKIE' ? 0 : kit.atkW * .28 * Math.min(k, 1.15);
+                        const t = Math.min(1, el / f.life);
+                        if (f.name === 'NOAH') arcaneArc(t, size, fin, now);
+                        else if (f.name === 'MARKIE') mightyArc(t, size, fin, a);
                         A.play(g, kit.atk, el, ox, 0, size);
-                        if (fin) { g.globalAlpha = .5; g.globalCompositeOperation = 'lighter'; A.play(g, kit.atk, el, ox, 0, size * 1.15); }
+                        if (fin || f.name === 'MARKIE') { g.globalAlpha = fin ? .55 : .35; g.globalCompositeOperation = 'lighter'; A.play(g, kit.atk, el, ox, 0, size * (fin ? 1.15 : 1.05)); }
+                        if (f.name === 'DESTINY') { g.globalCompositeOperation = 'lighter'; g.globalAlpha = .35 * (1 - t); g.strokeStyle = '#FFE1A2'; g.lineWidth = 6; g.beginPath(); g.arc(ox * .4, 0, size * .42, -1, 1); g.stroke() }
                         g.restore();
                     }
                 } else if (f.kind === 'sheet' && A) {
@@ -425,9 +574,27 @@
                 const f = age / 16.7;
                 g.globalAlpha = 1 - age / p.life;
                 g.fillStyle = p.color;
-                g.fillRect(Math.round(p.x + p.vx * f), Math.round(p.y + p.vy * f + 0.04 * f * f), 5, 5);
+                g.fillRect(Math.round(p.x + p.vx * f), Math.round(p.y + p.vy * f + p.gr * f * f), p.sz, p.sz);
             }
             g.globalAlpha = 1;
+        }
+        // Critical Chain counter over a hero who landed 2+ crits in a row (fades 1.4 s after the last one).
+        function drawChains(view, now, k) {
+            g.save(); g.textAlign = 'center';
+            chains.forEach((c, i) => {
+                const h = view.heroes[i];
+                if (!c || !h) return;
+                const age = now - c.at;
+                if (age > 1400) { chains[i] = null; return }
+                const pop = age < 120 ? 1.35 - age / 400 : 1, sz = Math.round(Math.min(k, 1.3) * 19 * pop);
+                g.globalAlpha = age > 1000 ? (1400 - age) / 400 : 1;
+                g.font = 'bold ' + sz + 'px monospace';
+                const x = h.x * S, y = h.y * S - 128 * Math.min(k, 1.3);
+                g.lineWidth = 5; g.strokeStyle = '#2a1606';
+                const str = 'CRITICAL CHAIN x' + c.n;
+                g.strokeText(str, x, y); g.fillStyle = '#FFD36D'; g.fillText(str, x, y);
+            });
+            g.restore();
         }
         function drawNumbers(now) {
             g.textAlign = 'center';
@@ -447,6 +614,95 @@
         }
 
         // ---------- units ----------
+        // Power-up icon (vector, no images): heal cross, fury star, haste chevrons, ward shield.
+        function pickupIcon(kind, r) {
+            g.beginPath();
+            if (kind === 0) { const a = r * .32; g.rect(-a, -r, 2 * a, 2 * r); g.rect(-r, -a, 2 * r, 2 * a) }
+            else if (kind === 1) { for (let j = 0; j < 8; j++) { const rr = j % 2 ? r * .42 : r, an = j * Math.PI / 4 - Math.PI / 2; g.lineTo(Math.cos(an) * rr, Math.sin(an) * rr) } g.closePath() }
+            else if (kind === 2) { for (const ox of [-r * .55, r * .25]) { g.moveTo(ox, -r * .8); g.lineTo(ox + r * .6, 0); g.lineTo(ox, r * .8); g.lineTo(ox + r * .3, r * .8); g.lineTo(ox + r * .9, 0); g.lineTo(ox + r * .3, -r * .8); g.closePath() } }
+            else { g.moveTo(0, -r); g.lineTo(r * .85, -r * .6); g.quadraticCurveTo(r * .8, r * .55, 0, r); g.quadraticCurveTo(-r * .8, r * .55, -r * .85, -r * .6); g.closePath() }
+            g.fill();
+        }
+        // Glowing pickups on the floor: pulsing halo, bobbing orb + icon, blinks in its last 3 s.
+        function drawPickups(view, now, k) {
+            for (const p of view.pk || []) {
+                const [id, kind, x, y, secs] = p, P = PICKUP[kind] || PICKUP[0];
+                if (secs <= 3 && Math.floor(now / 150) % 2) continue;
+                const px = x * S, py = y * S, bob = Math.sin(now / 260 + id) * 5, pulse = .5 + .5 * Math.sin(now / 180 + id), r = 17 * Math.min(k, 1.3);
+                g.save();
+                g.globalAlpha = .55; g.fillStyle = '#0b0914'; g.beginPath(); g.ellipse(px, py + 4, r * 1.3, r * .45, 0, 0, Math.PI * 2); g.fill();
+                g.globalCompositeOperation = 'lighter';
+                g.globalAlpha = .22 + .2 * pulse; g.fillStyle = P.color;
+                g.beginPath(); g.ellipse(px, py + 2, r * (2 + pulse * .5), r * (.8 + pulse * .2), 0, 0, Math.PI * 2); g.fill();
+                g.globalAlpha = .35 + .25 * pulse; g.beginPath(); g.arc(px, py - 30 + bob, r * 1.55, 0, Math.PI * 2); g.fill();
+                g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+                g.fillStyle = '#141024'; g.beginPath(); g.arc(px, py - 30 + bob, r, 0, Math.PI * 2); g.fill();
+                g.lineWidth = 3; g.strokeStyle = P.color; g.stroke();
+                g.translate(px, py - 30 + bob); g.fillStyle = P.core; pickupIcon(kind, r * .62);
+                g.restore();
+                if (Math.random() < .08) burst(px + (Math.random() - .5) * r * 2, py - 30 + bob, P.core, 1, 1, { lift: 1.6, grav: 0, life: 500, size: 4 });
+            }
+        }
+        // Destiny's passive aura (combat-vfx.md: dashed ellipse 145x85, five orbiting #9BFFCB pips), made more
+        // present: brighter stroke, soft mint floor glow, and a pulse that expands when she attacks.
+        function drawDestinyAura(view, now) {
+            view.heroes.forEach((h, i) => {
+                if (h.name !== 'DESTINY' || h.state) return;
+                const x = h.x * S, y = h.y * S, rx = 145, ry = 85;
+                let pulse = 0;
+                for (const f of fx) if (f.i === i && (f.kind === 'attack' || f.kind === 'cast')) pulse = Math.max(pulse, 1 - (now - f.start) / 420);
+                pulse = Math.max(0, pulse);
+                const breathe = .5 + .5 * Math.sin(now / 500);
+                g.save();
+                g.globalCompositeOperation = 'lighter';
+                g.globalAlpha = .1 + .05 * breathe + .18 * pulse; g.fillStyle = '#74FFB2';
+                g.beginPath(); g.ellipse(x, y, rx * .92, ry * .92, 0, 0, Math.PI * 2); g.fill();
+                g.globalAlpha = 1;
+                g.setLineDash([12, 9]); g.lineDashOffset = -now / 40;
+                g.lineWidth = 3; g.strokeStyle = 'rgba(105,255,170,' + (.32 + .14 * breathe + .3 * pulse).toFixed(3) + ')';
+                g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); g.stroke();
+                g.setLineDash([]);
+                if (pulse > 0) { // attack pulse: a bright ring sweeping outward
+                    const t = 1 - pulse;
+                    g.lineWidth = 4 * pulse + 1; g.strokeStyle = 'rgba(173,255,203,' + (.75 * pulse).toFixed(3) + ')';
+                    g.beginPath(); g.ellipse(x, y, rx * (.45 + .6 * t), ry * (.45 + .6 * t), 0, 0, Math.PI * 2); g.stroke();
+                }
+                g.fillStyle = '#9BFFCB';
+                for (let j = 0; j < 5; j++) { const an = now / 900 + j * Math.PI * 2 / 5; g.fillRect(Math.round(x + Math.cos(an) * rx - 2), Math.round(y + Math.sin(an) * ry - 2), 5, 5) }
+                g.restore();
+            });
+        }
+        // Buffed heroes: FURY flames, HASTE speed streaks, WARD bubble, SYNERGY gold orbit; icons over the head.
+        function drawBuffs(view, now, k) {
+            view.heroes.forEach((h, i) => {
+                const pu = h.pu; if (!pu || h.state || !(pu[0] || pu[1] || pu[2] || pu[3])) return;
+                const x = h.x * S, y = h.y * S, kk = Math.min(k, 1.3);
+                g.save();
+                g.globalCompositeOperation = 'lighter';
+                if (pu[2]) { // WARD: translucent shield bubble
+                    g.globalAlpha = .16 + .06 * Math.sin(now / 200); g.fillStyle = '#A9B8FF';
+                    g.beginPath(); g.ellipse(x, y - 40 * kk, 40 * kk, 52 * kk, 0, 0, Math.PI * 2); g.fill();
+                    g.globalAlpha = .7; g.lineWidth = 2; g.strokeStyle = '#E8EEFF'; g.stroke();
+                }
+                if (pu[1] && h.moving) { // HASTE: cyan streaks trailing behind
+                    g.globalAlpha = .6; g.strokeStyle = '#79E4FF'; g.lineWidth = 3;
+                    const dir = h.facing === -1 ? 1 : -1;
+                    for (let j = 0; j < 3; j++) { const yy = y - (18 + j * 18) * kk, off = (now / 6 + j * 37) % 30; g.beginPath(); g.moveTo(x + dir * (22 + off) * kk, yy); g.lineTo(x + dir * (46 + off) * kk, yy); g.stroke() }
+                }
+                if (pu[3]) { // SYNERGY: four gold pips orbiting
+                    g.globalAlpha = .9; g.fillStyle = '#FFD36D';
+                    for (let j = 0; j < 4; j++) { const an = now / 300 + j * Math.PI / 2; g.fillRect(Math.round(x + Math.cos(an) * 36 * kk - 3), Math.round(y - 40 * kk + Math.sin(an) * 14 * kk - 3), 6, 6) }
+                }
+                g.restore();
+                if (pu[0] && Math.random() < .35) burst(x + (Math.random() - .5) * 40 * kk, y - Math.random() * 60 * kk, Math.random() < .5 ? '#FF7A45' : '#FFD36D', 1, 1, { lift: 2.4, grav: -.01, life: 420, size: 4 }); // FURY flames
+                if (pu[3] && Math.random() < .2) burst(x + (Math.random() - .5) * 50 * kk, y - 20 - Math.random() * 60 * kk, '#FFD36D', 1, 1, { lift: 1.5, grav: 0, life: 520, size: 4 });
+                // little buff icons above the name
+                const on = [0, 1, 2, 3].filter(j => pu[j]);
+                g.save(); g.translate(x - (on.length - 1) * 10 * kk, y - 112 * kk);
+                for (const j of on) { g.fillStyle = '#141024d0'; g.beginPath(); g.arc(0, 0, 8 * kk, 0, Math.PI * 2); g.fill(); g.fillStyle = BUFF[j].core; if (j < 3) pickupIcon(j + 1, 5 * kk); else { g.beginPath(); g.arc(0, 0, 4 * kk, 0, Math.PI * 2); g.fill() } g.translate(20 * kk, 0) }
+                g.restore();
+            });
+        }
         function drawHero(h, i, now, room, myId, k) {
             const px = h.x * S, py = h.y * S;
             const human = controllerOf(room, i), waiting = reservedOf(room, i);
@@ -535,8 +791,7 @@
             else if (wind && has(art.wind)) { key = art.wind; mode = 'hold'; t0 = m.windAt }
             else if (walking && has(art.walk)) { key = art.walk; flip = false }
             else if (struck) ox = dir * 7; // procedural lunge fallback
-            if (art.key === 'wisp' && dieAt === undefined) oy = Math.sin(now / 260 + id) * 4 - 6; // hovers
-            else if (walking && key === art.key) oy = -Math.abs(Math.sin(now / 90 + id)) * 3; // bob fallback
+            if (walking && key === art.key) oy = -Math.abs(Math.sin(now / 90 + id)) * 3; // bob fallback
             if (flash) ox += Math.sin(now / 34) * 3; // hurt shake
             g.save();
             g.translate(Math.round(ex * S), Math.round(ey * S));
@@ -561,7 +816,7 @@
                 g.globalCompositeOperation = 'source-over';
             }
             g.globalAlpha = fade !== undefined ? Math.max(0, fade) : 1;
-            const top = art.key === 'warden' ? -88 : art.key === 'wisp' ? -56 : -68;
+            const top = art.key === 'warden' ? -88 : -68;
             if (hpPct < 100 && fade === undefined) {
                 g.fillStyle = '#292035'; g.fillRect(-20, top, 40, 4);
                 g.fillStyle = '#ff5d73'; g.fillRect(-20, top, 40 * hpPct / 100, 4);
@@ -571,27 +826,6 @@
                 if (flags & 2) A.loop(g, 'tauntMark', now, (flags & 1) ? 18 : 0, top - 6, 26);
             }
             g.restore();
-        }
-
-        function drawShots(shots, k) {
-            for (const p of shots) {
-                const [, type, x, y, vx, vy] = p;
-                const art = A && A.ENEMY_ART[type];
-                g.save();
-                g.translate(x * S, y * S - 36);
-                g.scale(k, k);
-                if (art && art.key === 'wisp') { // slow ember bolt
-                    g.fillStyle = '#FF9B5688'; g.beginPath(); g.arc(0, 0, 9, 0, Math.PI * 2); g.fill();
-                    g.fillStyle = '#FFD36D'; g.fillRect(-4, -4, 8, 8);
-                    g.fillStyle = '#FFF4AD'; g.fillRect(-2, -2, 4, 4);
-                } else { // tomoe archer arrow: hilt-brown shaft, steel head, red fletching
-                    g.rotate(Math.atan2(vy, vx));
-                    g.fillStyle = '#C28B61'; g.fillRect(-16, -1, 26, 3);
-                    g.fillStyle = '#B8C0D0'; g.fillRect(10, -2, 6, 5);
-                    g.fillStyle = '#C8505A'; g.fillRect(-18, -3, 5, 7);
-                }
-                g.restore();
-            }
         }
 
         function frame() {
@@ -617,15 +851,18 @@
             R.drawArena(g, now, view.zone || 0);
             // Layering (combat-vfx.md): floor rings -> units -> slashes/projectiles -> sparks -> numbers -> HUD/combo.
             drawFloorFx(now);
+            drawDestinyAura(view, now);
+            drawPickups(view, now, k);
             const units = view.heroes.map((h, i) => ({ y: h.y, h, i }));
             for (const e of view.enemies || []) units.push({ y: e[3], e });
             for (const gh of ghosts) { const el = now - gh.start; units.push({ y: gh.e[3], e: gh.e, dieAt: gh.start, fade: el < gh.life - 160 ? 1 : (gh.life - el) / 160 }) } // die frames, then fade
             units.sort((a, b) => a.y - b.y).forEach(u => u.e ? drawEnemy(u.e, now, k, u.fade, u.dieAt) : drawHero(u.h, u.i, now, room, myId, k));
             if (enemyMotion.size > 64) { const live = new Set((view.enemies || []).map(e => e[0])); for (const id of enemyMotion.keys()) if (!live.has(id)) enemyMotion.delete(id) }
-            drawShots(view.shots || [], k);
+            drawBuffs(view, now, k);
             drawActionFx(view, now, k);
             drawParticles(now);
             drawNumbers(now);
+            drawChains(view, now, k);
             g.setTransform(1, 0, 0, 1, 0, 0);
             drawHud(view, room, myId, k, now);
             drawBanners(now, k);
@@ -636,7 +873,7 @@
         function start() { if (!running) { running = true; requestAnimationFrame(frame) } }
         function stop() { running = false }
 
-        return { push, reset, start, stop, sample, stats, interpolating: interpEnabled, fxCounts: () => ({ fx: fx.length, parts: parts.length, texts: texts.length, banners: banners.length, art: A ? A.loadedCount() : 0, shakes: shake.count, reducedMotion: reducedMotion() }), lastAttackFx: () => { const f = [...fx].reverse().find(v => v.kind === 'attack'); return f ? { name: f.name, aim: f.aim, stage: f.stage } : null } };
+        return { push, reset, start, stop, sample, stats, interpolating: interpEnabled, fxCounts: () => ({ fx: fx.length, parts: parts.length, texts: texts.length, banners: banners.length, art: A ? A.loadedCount() : 0, shakes: shake.count, reducedMotion: reducedMotion() }), pickupsShown: () => { const v = sample(performance.now()); return v ? (v.pk || []).length : 0 }, chainOf: i => chains[i] ? chains[i].n : 0, lastAttackFx: name => { const f = [...fx].reverse().find(v => v.kind === 'attack' && (!name || v.name === name)); return f ? { name: f.name, aim: f.aim, stage: f.stage } : null } };
     }
 
     root.WCHArena = { createArena, TICK_MS, INTERP_DELAY_MS };

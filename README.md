@@ -25,13 +25,13 @@ Server -> client: `room:update`, `battle:start`, `battle:state`, `battle:end`, `
 
 `player:input` is **intent only**: movement plus `attack`/`special` booleans. The server checks cooldowns and resolves every hit; any other field (damage, hp, targets…) is ignored.
 
-`battle:state` (20 Hz, compact) = `{tick, wave, ws (1 = fighting), next (ms to next wave), left, score, kills, combo, over, zone, heroes:[…], enemies:[[id, type, x, y, hp%, facing, flags]…], shots:[[id, type, x, y, vx×10, vy×10]…], ev:[…]}`.
-- heroes (slot order 1P NOAH, 2P DESTINY, 3P MARKIE, 4P ESPIRIT): `name, x, y, vx, vy, facing, aim (0–7, 0 = right, 2 = down, 4 = left, 6 = up), moving, controller, seq (prediction ack), hp, maxHp, state (0 alive, 1 downed), rv (revive %), attackN, specialN, cs (chain stage of last swing, 2 = finisher), buff, shield, cd (special cooldown, 0.1 s)`.
-- enemy types: 0 Horned Acolyte (melee), 1 Lantern Wisp (slow ember bolt), 2 Tomoe Archer (arrows), 3 Temple Warden (ground slam). Flags: 1 stunned, 2 taunted, 4 winding up (telegraph), 8 just struck.
-- events `ev`: `hit {id,d,c (crit),f (finisher),h,x,y}`, `kill`, `hurt`, `heal`, `buff`, `spc`, `slam`, `down`, `revive`, `wave`, `clear`, `over`.
+`battle:state` (20 Hz, compact) = `{tick, wave, ws (1 = fighting), next (ms to next wave), left, score, kills, combo, over, zone, heroes:[…], enemies:[[id, type, x, y, hp%, facing, flags]…], pk:[[id, kind, x, y, seconds left]…], ev:[…]}`. Pickup kinds: 0 HEAL, 1 FURY, 2 HASTE, 3 WARD.
+- heroes (slot order 1P NOAH, 2P DESTINY, 3P MARKIE, 4P ESPIRIT): `name, x, y, vx, vy, facing, aim (0–7, 0 = right, 2 = down, 4 = left, 6 = up), moving, controller, seq (prediction ack), hp, maxHp, state (0 alive, 1 downed), rv (revive %), attackN, specialN, cs (chain stage of last swing, 2 = finisher), cc (Critical Chain: crits in a row), buff, shield, cd (special cooldown, 0.1 s), spd (move speed right now, includes HASTE), pu ([FURY, HASTE, WARD, SYNERGY] time left in 0.1 s)`.
+- enemy types: 0 Horned Acolyte (melee), 1 Temple Warden (ground slam). No projectile enemies. Flags: 1 stunned, 2 taunted, 4 winding up (telegraph), 8 just struck.
+- events `ev`: `hit {id,d,c (crit),cc (chain count on a crit),f (finisher),h,x,y}`, `pspawn {id,k,x,y}`, `pick {id,k,h,x,y}`, `syn {h,all}`, `kill`, `hurt`, `heal`, `buff`, `spc`, `slam`, `down`, `revive`, `wave`, `clear`, `over`.
 - `battle:start` and `session:resume` add `arena` and `enemyTypes`. `battle:end {reason: 'host'|'wipe', wave, score, kills}`.
 
-Bandwidth: ~21 KB/s of JSON per client in a 4-player fight; WebSocket compression (`perMessageDeflate`) brings it to ~2.6 KB/s on the wire (measured, see the PR).
+Bandwidth: ~28 KB/s of JSON per client in a 4-player fight; WebSocket compression (`perMessageDeflate`) brings it to ~3.6 KB/s on the wire (measured with tools/headless-c.js).
 
 ## Reconnects, prediction, limits
 
@@ -42,10 +42,14 @@ Bandwidth: ~21 KB/s of JSON per client in a 4-player fight; WebSocket compressio
 ## Combat rules (shared/combat.js)
 
 - **World size.** The server simulates in 960×540 units; V19 drew a 1440×810 world. V19 distances ÷ 1.5; V19 per-frame speeds × 2 per 50 ms tick (Noah 3.7 → 7.4). The canvas is still 1440×810 (×1.5).
-- **Heroes** (V19 numbers): NOAH crescent arc + ARCANE NOVA blast; DESTINY spear strike with stun, RALLY STRIKE (team heal 35, +25% damage 5 s, stun) and a healing aura; MARKIE 360° axe cleave (front ×1.5), EARTHSHATTER (×4, taunt 4 s, damage shield 3 s); ESPIRIT long-range single arrow, ARROW STORM. LUK → crit chance, VIT → damage taken (stats from the hero sheets, `public/assets/heroes.json`).
+- **Heroes** (V19 numbers): NOAH crescent arc + ARCANE NOVA blast; DESTINY spear strike with stun, RALLY STRIKE (team heal 35, +25% damage 5 s, stun) and a healing aura; MARKIE 360° axe cleave (front ×1.5), EARTHSHATTER (×4, taunt 4 s, damage shield 3 s); ESPIRIT long-range single arrow, ARROW STORM. VIT → damage taken (stats from the hero sheets, `public/assets/heroes.json`).
 - **Feel.** Attacks aim in 8 directions (the way you last moved; AI aims at its target). Swings chain 1-2-3; the 3rd is a finisher (×1.6 damage, ×1.8 knockback, longer reach, then a short recovery). The chain resets if you pause longer than the cooldown + 450 ms. Movement accelerates and decelerates (full speed in ~200 ms), diagonals are normalized, walls stop velocity. All of it is in the shared modules, so client prediction matches the server exactly.
+- **Critical hits.** Every hit has a 14% crit chance (rolled on the server) for ×1.85 damage. Crits in a row by the same hero build a Critical Chain (shown over the hero); any normal hit resets it.
+- **Power-ups.** From wave 1, a glowing pickup appears every 10–17 s (at most 2 on the field, each lasts 15 s). Walk over it to collect (the server checks the distance). HEAL: +32% max HP. FURY: +25% crit chance for 10.5 s. HASTE: +50% move speed and attacks 35% sooner for 10.5 s (the snapshot's `spd` keeps client prediction exact). WARD: incoming damage halved for 11 s.
+- **SQUAD SYNERGY.** If the squad has any AI teammates, every pickup also gives all living heroes +12% crit chance for 6.5 s (stacks with FURY).
+- **AI teammates** circle their target at their preferred range instead of standing still, step back when they overlap an enemy, and sidestep if they get stuck. Espirit keeps about 150 units away, lined up on one of her 8 aim lines.
 - **Downed / revive.** At 0 HP a hero is downed (can't move or attack). Stand next to them for 2 s (two helpers = faster) to revive at 40% HP. Everyone downed = game over; after 8 s (`GAME_OVER_RETURN_MS`) the room returns to the lobby, or the host can return earlier.
-- **Waves.** Wave n has 5 + 3n enemies, at most 24 alive (`MAX_ENEMIES`). They spawn off-screen and can't leave the arena once inside. +25 HP to living heroes on a clear, 3 s break. Wisps from wave 3, archers from 4, wardens from 5. Every 15th wave is flagged as a boss wave and every 10th calls an upgrade hook (both no-ops until Phase D).
+- **Waves.** Wave n has 5 + 3n enemies, at most 24 alive (`MAX_ENEMIES`). They spawn off-screen and can't leave the arena once inside. +25 HP to living heroes on a clear, 3 s break. Wardens join from wave 3 and grow to about a third of each wave by wave 10. Every 15th wave is flagged as a boss wave and every 10th calls an upgrade hook (both no-ops until Phase D).
 - **Env knobs.** `FIRST_WAVE_DELAY_MS` (3000), `GAME_OVER_RETURN_MS` (8000), `ENEMY_DAMAGE_MUL` (1, difficulty), `COMBAT_SEED` (fixed fights for testing), `WS_DEFLATE=0` (turn compression off).
 
 ## Art

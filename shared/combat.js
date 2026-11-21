@@ -30,6 +30,18 @@ const RULES = {
     destinyAuraMs: 1500, destinyAuraHeal: 3, destinyAuraRadius: S(145),
     reviveRadius: 38, reviveMs: 2000, reviveHpFrac: 0.4,
     comboWindowMs: 4300,
+    // Critical hits (rolled on the server for every hit): 14% base, x1.85 damage. FURY and SQUAD
+    // SYNERGY add to the chance. Consecutive crits by the same hero build a Critical Chain.
+    critBase: 0.14, critMul: 1.85,
+    // Power-ups: one glowing pickup appears every 10-17 s during a run (max 2 on the field, each lasts
+    // 15 s). A living hero collects it by walking over it; the server checks the distance.
+    pickupEveryMs: [10000, 17000], pickupLifeMs: 15000, pickupMax: 2, pickupRadius: 26,
+    healFrac: 0.32, // HEAL: +32% max HP
+    furyMs: 10500, furyCrit: 0.25, // FURY: +25% crit chance (14% -> 39%)
+    hasteMs: 10500, hasteSpeedMul: 1.5, hasteCooldownMul: 0.65, // HASTE: +50% move speed, attacks 35% sooner
+    wardMs: 11000, wardMul: 0.5, // WARD: incoming damage halved
+    // SQUAD SYNERGY: when the squad has AI teammates, any pickup also gives every living hero +12% crit for 6.5 s.
+    synergyMs: 6500, synergyCrit: 0.12,
     // Three-hit attack chain (server-timed): a swing within cooldown + chainWindowMs of the previous
     // one continues the chain; the 3rd hit is a finisher, then a short recovery before the next swing.
     chainWindowMs: 450, finisherDamageMul: 1.6, finisherKnockMul: 1.8, finisherRangeMul: 1.15, finisherRecoveryMul: 0.6,
@@ -42,15 +54,14 @@ const RULES = {
 };
 
 // Enemy types (art: Draper's /workspace/wcheroes-design/enemies.md). The acolyte is V19's armored
-// swordsman (hp 30+8w, speed 1+0.1w per frame, 7+w damage every 850 ms). The others are new for co-op.
+// swordsman (hp 30+8w, speed 1+0.1w per frame, 7+w damage every 850 ms); the warden is new for co-op.
+// No projectile enemies (Noah removed the Lantern Wisp and Tomoe Archer): every threat is up close.
 //   kind 'melee': walks to `reach`, telegraphs for `windMs`, then strikes if the hero is still in reach.
-//   kind 'ranged': holds at ~`range`, telegraphs, then fires a dodgeable projectile at where the hero was.
 //   kind 'slam': heavy, telegraphs longest, then hits every hero within `slamR` (shockwave).
+// `weight(wave)` is the spawn share; wardens ramp from ~16% at wave 3 to 35% so later waves stay heavy.
 const ENEMY_TYPES = [
-    { key: 'acolyte', kind: 'melee', from: 1, weight: 1, hp: w => 30 + 8 * w, speed: w => Math.min(5.2, (1 + 0.1 * w) * 2), dmg: w => 7 + w, reach: S(29) + 3, atkMs: 850, windMs: 150, knockResist: 0, radius: 12, points: 1 },
-    { key: 'wisp', kind: 'ranged', from: 3, weight: 0.3, hp: w => 14 + 4 * w, speed: w => Math.min(5.6, (1.2 + 0.08 * w) * 2), dmg: w => 5 + 0.6 * w, range: 190, atkMs: 2200, windMs: 250, shot: { speed: 4.5, r: 14 }, knockResist: 0, radius: 10, points: 1 },
-    { key: 'archer', kind: 'ranged', from: 4, weight: 0.3, hp: w => 22 + 6 * w, speed: w => Math.min(5, (1 + 0.08 * w) * 2), dmg: w => 6 + 0.8 * w, range: 165, atkMs: 1700, windMs: 220, shot: { speed: 9, r: 12 }, knockResist: 0, radius: 12, points: 1.5 },
-    { key: 'warden', kind: 'slam', from: 5, weight: 0.16, hp: w => 90 + 22 * w, speed: w => Math.min(3.4, (0.7 + 0.05 * w) * 2), dmg: w => 14 + 2 * w, reach: S(40) + 3, slamR: 55, atkMs: 1600, windMs: 350, knockResist: 0.6, radius: 18, points: 3 },
+    { key: 'acolyte', kind: 'melee', from: 1, weight: () => 1, hp: w => 30 + 8 * w, speed: w => Math.min(5.2, (1 + 0.1 * w) * 2), dmg: w => 7 + w, reach: S(29) + 3, atkMs: 850, windMs: 150, knockResist: 0, radius: 12, points: 1 },
+    { key: 'warden', kind: 'slam', from: 3, weight: w => Math.min(0.54, (0.1 + 0.03 * w) / (0.9 - 0.03 * w)), hp: w => 90 + 22 * w, speed: w => Math.min(3.4, (0.7 + 0.05 * w) * 2), dmg: w => 14 + 2 * w, reach: S(40) + 3, slamR: 55, atkMs: 1600, windMs: 350, knockResist: 0.6, radius: 18, points: 3 },
 ];
 const ENEMY_INDEX = Object.fromEntries(ENEMY_TYPES.map((t, i) => [t.key, i]));
 
@@ -59,11 +70,16 @@ const KITS = {
     NOAH: { attack: 'crescent', arc: 1.12, knock: 15, stun: 0, specialName: 'ARCANE NOVA', specialRadius: S(210), specialMul: 3, specialKnock: 15, aiIdeal: S(100) },
     DESTINY: { attack: 'captain', arc: 0.95, knock: 10, stun: 650, specialName: 'RALLY STRIKE', specialRadius: S(180), specialMul: 3, specialStun: 1000, rallyHeal: 35, rallyRadius: S(190), buffMs: 5000, buffMul: 1.25, aiIdeal: S(58) },
     MARKIE: { attack: 'cleave', front: 0.55, frontMul: 1.5, sideMul: 0.7, knock: 19, stun: 140, specialName: 'EARTHSHATTER', specialRadius: S(160), specialMul: 4, specialStun: 600, tauntMs: 4000, shieldMs: 3000, shieldMul: 0.45, aiIdeal: S(48) },
-    ESPIRIT: { attack: 'arrow', arc: 0.24, knock: 10, stun: 0, specialName: 'ARROW STORM', specialRadius: S(340), specialMul: 3, aiIdeal: S(185), critMul: 2 },
+    ESPIRIT: { attack: 'arrow', arc: 0.24, knock: 10, stun: 0, specialName: 'ARROW STORM', specialRadius: S(340), specialMul: 3, aiIdeal: 150 },
 };
 
 // Sheet stats -> small modifiers. LUK = crit chance, VIT = damage taken.
-const critChance = (name, st) => st.LUK * (name === 'ESPIRIT' ? 0.04 : 0.015); // Espirit: 36%
+// Crit chance for a hero right now: 14% base + active boosts (FURY, SQUAD SYNERGY; see power-ups).
+const critChance = (h, w) => Math.min(0.95, RULES.critBase + (w && h ? critBonus(w, h) : 0));
+function critBonus(w, h) { return (w.time < (h.furyUntil || 0) ? RULES.furyCrit : 0) + (w.time < (h.synergyUntil || 0) ? RULES.synergyCrit : 0) }
+const PICKUP_KINDS = ['heal', 'fury', 'haste', 'ward']; // index = snapshot kind
+// Move speed right now (HASTE: x1.5). Server input handling, AI and client prediction all use this.
+const moveSpeed = (w, h) => h.speed * (w.time < (h.hasteUntil || 0) ? RULES.hasteSpeedMul : 1);
 const damageTakenMul = st => clamp(1 - (st.VIT - 5) * 0.04, 0.7, 1.2); // Markie (VIT 9): 0.84
 
 function isBossWave(n) { return n > 0 && n % 15 === 0 } // Phase D: spawn a boss instead of a normal wave
@@ -91,10 +107,10 @@ function createBattle(opts = {}) {
             hp: cfg.v19.hp, maxHp: cfg.v19.hp, damage: cfg.v19.damage, range: S(cfg.v19.range), cool: cfg.v19.cool,
             speed: SIM.speedFromV19(cfg.v19.speed), stats: cfg.stats,
             state: 'alive', reviveMs: 0, attackAt: -1e9, specialAt: -1e9, healAt: 0, attackN: 0, specialN: 0,
-            buffUntil: 0, shieldUntil: 0, wantAttack: false, wantSpecial: false, ai: true, controller: null, seq: 0,
+            buffUntil: 0, shieldUntil: 0, furyUntil: 0, hasteUntil: 0, wardUntil: 0, synergyUntil: 0, critChain: 0, wantAttack: false, wantSpecial: false, ai: true, controller: null, seq: 0,
         })),
         enemies: [],
-        shots: [], nextShotId: 1, // enemy projectiles
+        pickups: [], nextPickupId: 1, nextPickupAt: null, // set when the first wave starts
         events: [],
         hooks: opts.hooks || {},
     };
@@ -108,8 +124,9 @@ const emit = (w, e) => { w.events.push(e) };
 function damageEnemy(w, hero, e, base, o = {}) {
     if (e.hp <= 0) return;
     let d = base * (w.time < hero.buffUntil ? KITS.DESTINY.buffMul : 1);
-    const crit = rng(w) < critChance(hero.name, hero.stats);
-    if (crit) d *= KITS[hero.name].critMul || 1.75;
+    const crit = rng(w) < critChance(hero, w);
+    if (crit) d *= RULES.critMul;
+    hero.critChain = crit ? (hero.critChain || 0) + 1 : 0; // consecutive crits; any normal hit breaks it
     d = Math.max(1, Math.round(d));
     e.hp -= d;
     const t = ENEMY_TYPES[e.type];
@@ -122,6 +139,7 @@ function damageEnemy(w, hero, e, base, o = {}) {
     if (o.stun) e.stunUntil = Math.max(e.stunUntil, w.time + o.stun);
     const ev = { t: 'hit', id: e.id, d, c: crit ? 1 : 0, h: w.heroes.indexOf(hero), x: Math.round(e.x), y: Math.round(e.y) };
     if (o.finisher) ev.f = 1;
+    if (crit) ev.cc = hero.critChain;
     emit(w, ev);
     if (e.hp <= 0) killEnemy(w, hero, e);
 }
@@ -142,6 +160,7 @@ function damageHero(w, h, amount, by) {
     if (!alive(h) || w.over) return;
     let d = amount * damageTakenMul(h.stats);
     if (w.time < h.shieldUntil) d *= KITS.MARKIE.shieldMul;
+    if (w.time < h.wardUntil) d *= RULES.wardMul;
     d = Math.max(1, Math.round(d));
     h.hp = Math.max(0, h.hp - d);
     const i = w.heroes.indexOf(h);
@@ -193,7 +212,7 @@ function nextChainStage(w, h, cool) {
 
 function performAttack(w, h) {
     if (!alive(h) || w.over) return false;
-    const cool = h.ai ? h.cool * RULES.aiAttackCooldownMul : h.cool;
+    const cool = (h.ai ? h.cool * RULES.aiAttackCooldownMul : h.cool) * (w.time < h.hasteUntil ? RULES.hasteCooldownMul : 1);
     const recovery = h.chain === 2 ? cool * RULES.finisherRecoveryMul : 0; // brief pause after a finisher
     if (w.time - h.attackAt < cool + recovery) return false;
     const stage = nextChainStage(w, h, cool + recovery);
@@ -238,9 +257,9 @@ function performSpecial(w, h) {
 // ---------------- enemies ----------------
 function pickEnemyType(w) {
     const avail = ENEMY_TYPES.filter(t => w.wave >= t.from);
-    const total = avail.reduce((s, t) => s + t.weight, 0);
+    const total = avail.reduce((s, t) => s + t.weight(w.wave), 0);
     let r = rng(w) * total;
-    for (const t of avail) { if ((r -= t.weight) <= 0) return ENEMY_INDEX[t.key] }
+    for (const t of avail) { if ((r -= t.weight(w.wave)) <= 0) return ENEMY_INDEX[t.key] }
     return 0;
 }
 
@@ -262,14 +281,8 @@ function keepInside(e) {
     else { const m = RULES.enemyMargin + 10; e.x = clamp(e.x, -m, ARENA.width + m); e.y = clamp(e.y, -m, ARENA.height + m) } // still walking in: never knocked far away
 }
 
-function fireShot(w, e, t, target) {
-    const dx = target.x - e.x, dy = target.y - e.y, d = Math.hypot(dx, dy) || 1;
-    w.shots.push({ id: w.nextShotId++, kind: e.type, x: e.x, y: e.y - 0, vx: dx / d * t.shot.speed, vy: dy / d * t.shot.speed, r: t.shot.r, dmg: e.dmg, left: Math.ceil((t.range * 1.35) / t.shot.speed), from: e.id });
-}
-
 function strike(w, e, t, target) {
     e.strikeAt = w.time;
-    if (t.kind === 'ranged') return fireShot(w, e, t, target);
     if (t.kind === 'slam') {
         emit(w, { t: 'slam', id: e.id, x: Math.round(e.x), y: Math.round(e.y), r: t.slamR });
         for (const h of w.heroes) if (alive(h) && dist(h, e) <= t.slamR) damageHero(w, h, e.dmg, e);
@@ -295,24 +308,13 @@ function stepEnemies(w) {
         }
         const d = dist(target, e) || 1;
         e.facing = Math.sign(target.x - e.x) || -1;
-        const want = t.kind === 'ranged' ? (e.entered ? t.range * 0.85 : 0) : t.reach; // ranged units walk in before holding range
-        const inRange = t.kind === 'ranged' ? d <= t.range && e.entered : d <= t.reach;
-        if (t.kind === 'ranged' && e.entered && d < want * 0.55) { // too close: back off a little
-            e.x -= (target.x - e.x) / d * e.speed * 0.6; e.y -= (target.y - e.y) / d * e.speed * 0.6; keepInside(e);
-        } else if (d > want) {
+        const want = t.reach, inRange = d <= t.reach;
+        if (d > want) {
             e.x += (target.x - e.x) / d * Math.min(e.speed, d - want + 0.5);
             e.y += (target.y - e.y) / d * Math.min(e.speed, d - want + 0.5);
             keepInside(e);
         }
         if (inRange && w.time - e.at >= t.atkMs) { e.at = w.time; e.windUntil = w.time + t.windMs }
-    }
-    // Projectiles: straight lines, hit the first living hero they touch, vanish at the arena edge.
-    for (let j = w.shots.length - 1; j >= 0; j--) {
-        const p = w.shots[j];
-        p.x += p.vx; p.y += p.vy; p.left--;
-        const hitHero = w.heroes.find(h => alive(h) && Math.hypot(h.x - p.x, (h.y - p.y) * 1.2) <= p.r);
-        if (hitHero) damageHero(w, hitHero, p.dmg, { id: p.from });
-        if (hitHero || p.left <= 0 || p.x < ARENA.minX - 30 || p.x > ARENA.maxX + 30 || p.y < ARENA.minY - 30 || p.y > ARENA.maxY + 30) w.shots.splice(j, 1);
     }
     // Light separation so a crowd doesn't collapse into one sprite.
     const es = w.enemies;
@@ -357,6 +359,44 @@ function stepWaves(w) {
     }
 }
 
+// ---------------- power-ups ----------------
+function stepPickups(w) {
+    if (w.wave < 1) return; // nothing before the first wave
+    const [lo, hi] = RULES.pickupEveryMs;
+    if (w.nextPickupAt === null) w.nextPickupAt = w.time + lo + rng(w) * (hi - lo);
+    for (let j = w.pickups.length - 1; j >= 0; j--) if (w.time >= w.pickups[j].until) w.pickups.splice(j, 1);
+    if (w.time >= w.nextPickupAt) {
+        w.nextPickupAt = w.time + lo + rng(w) * (hi - lo);
+        if (w.pickups.length < RULES.pickupMax) {
+            const kind = Math.floor(rng(w) * PICKUP_KINDS.length);
+            const p = { id: w.nextPickupId++, kind, x: Math.round(ARENA.minX + 60 + rng(w) * (ARENA.maxX - ARENA.minX - 120)), y: Math.round(ARENA.minY + 40 + rng(w) * (ARENA.maxY - ARENA.minY - 70)), at: w.time, until: w.time + RULES.pickupLifeMs };
+            w.pickups.push(p);
+            emit(w, { t: 'pspawn', id: p.id, k: kind, x: p.x, y: p.y });
+        }
+    }
+    for (let j = w.pickups.length - 1; j >= 0; j--) {
+        const p = w.pickups[j];
+        let best = null, bd = RULES.pickupRadius;
+        for (const h of w.heroes) if (alive(h)) { const d = dist(h, p); if (d <= bd) { bd = d; best = h } }
+        if (best) { w.pickups.splice(j, 1); collectPickup(w, best, p) }
+    }
+}
+
+function collectPickup(w, h, p) {
+    const i = w.heroes.indexOf(h), kind = PICKUP_KINDS[p.kind];
+    if (kind === 'heal') healHero(w, h, Math.round(h.maxHp * RULES.healFrac), h);
+    else if (kind === 'fury') h.furyUntil = w.time + RULES.furyMs;
+    else if (kind === 'haste') h.hasteUntil = w.time + RULES.hasteMs;
+    else if (kind === 'ward') h.wardUntil = w.time + RULES.wardMs;
+    emit(w, { t: 'pick', id: p.id, k: p.kind, h: i, x: p.x, y: p.y });
+    // SQUAD SYNERGY: only when playing alongside AI teammates.
+    if (w.heroes.some(u => u.ai)) {
+        const got = [];
+        w.heroes.forEach((u, j) => { if (alive(u)) { u.synergyUntil = w.time + RULES.synergyMs; got.push(j) } });
+        emit(w, { t: 'syn', h: i, all: got });
+    }
+}
+
 // ---------------- heroes: passives, revive, AI ----------------
 function stepPassives(w) {
     for (const h of w.heroes) {
@@ -388,11 +428,54 @@ function moveToward(h, tx, ty, speed) {
     return Math.abs(h.x - ox) + Math.abs(h.y - oy) > 0.01;
 }
 
+// AI combat movement: never stand still against a threat.
+//  - approach to the hero's ideal range, then ORBIT the target (circle around it, flipping direction now and then);
+//  - BACK OFF when overlapping any enemy body;
+//  - STUCK (wanted to move but barely did for 8 ticks): sidestep perpendicular for ~0.45 s and flip orbit;
+//  - Espirit keeps her distance and lines up on one of the 8 aim lines so her arrows connect, hopping lines.
+function aiCombatMove(w, h, k, enemy, ed, speed) {
+    const i = w.heroes.indexOf(h), ox = h.x, oy = h.y;
+    if (h.orbitDir === undefined) h.orbitDir = i % 2 ? 1 : -1;
+    if (w.time >= (h.orbitFlipAt || 0)) { h.orbitFlipAt = w.time + 2200 + rng(w) * 1800; if (h.orbitFlipAt > 0 && rng(w) < 0.45) h.orbitDir *= -1 }
+    let tx, ty, spd = speed;
+    // overlap check against every entered enemy
+    let ax = 0, ay = 0, over = false;
+    for (const e of w.enemies) {
+        if (!e.entered) continue;
+        const r = (ENEMY_TYPES[e.type].radius || 12) + 16, d = dist(e, h);
+        if (d < r) { over = true; const dd = d || 0.01; ax += (h.x - e.x) / dd * (r - d + 1); ay += (h.y - e.y) / dd * (r - d + 1) }
+    }
+    if (w.time < (h.escapeUntil || 0)) { tx = h.x + h.escX * 40; ty = h.y + h.escY * 40 }
+    else if (over) { const m = Math.hypot(ax, ay) || 1; tx = h.x + ax / m * 30; ty = h.y + ay / m * 30 }
+    else {
+        const ideal = k.aiIdeal;
+        let phi = Math.atan2(h.y - enemy.y, h.x - enemy.x), rad = ideal;
+        if (h.name === 'ESPIRIT') {
+            if (h.lane === undefined || w.time >= (h.laneAt || 0)) { h.lane = Math.round(phi / (Math.PI / 4)) + (h.lane === undefined ? 0 : h.orbitDir); h.laneAt = w.time + 2400 }
+            phi = h.lane * Math.PI / 4;
+            rad = ideal + 18 * Math.sin(w.time / 600 + i); // drift in and out along the lane
+            if (ed < ideal * 0.6) spd = speed * 1.05; // too close: retreat at full pace
+        } else if (ed <= ideal + 14) { phi += h.orbitDir * 0.55; spd = speed * 0.7 } // orbit at ~70% pace
+        tx = enemy.x + Math.cos(phi) * rad; ty = enemy.y + Math.sin(phi) * rad;
+        const cx = clamp(tx, ARENA.minX + 6, ARENA.maxX - 6), cy = clamp(ty, ARENA.minY + 6, ARENA.maxY - 6);
+        if (Math.abs(cx - tx) + Math.abs(cy - ty) > 12) { h.orbitDir *= -1; if (h.name === 'ESPIRIT') h.laneAt = 0 } // walled in: go round the other way
+        tx = cx; ty = cy;
+    }
+    const want = Math.hypot(tx - h.x, ty - h.y);
+    h.moving = moveToward(h, tx, ty, spd);
+    const moved = Math.hypot(h.x - ox, h.y - oy);
+    h.stuckN = want > 2 && moved < Math.min(0.4, want * 0.5) ? (h.stuckN || 0) + 1 : 0;
+    if (h.stuckN >= 8) { // sideways escape, perpendicular to where we were trying to go
+        const ux = (tx - h.x) / (want || 1), uy = (ty - h.y) / (want || 1), side = rng(w) < 0.5 ? 1 : -1;
+        h.escX = -uy * side; h.escY = ux * side; h.escapeUntil = w.time + 450; h.stuckN = 0; h.orbitDir *= -1;
+    }
+}
+
 // Port of V19 aiTick(): engage the nearest threat, regroup otherwise; plus revive duty (new for co-op).
 function stepAI(w, h, leader) {
     h.moving = false;
     if (!alive(h)) return;
-    const k = KITS[h.name], speed = h.speed * 0.83;
+    const k = KITS[h.name], speed = moveSpeed(w, h) * 0.83;
     let enemy = null, ed = Infinity;
     for (const e of w.enemies) { if (!e.entered) continue; const d = dist(e, h); if (d < ed) { ed = d; enemy = e } }
     const downed = w.heroes.filter(u => u !== h && u.state === 'downed').sort((a, b) => dist(a, h) - dist(b, h))[0];
@@ -401,10 +484,7 @@ function stepAI(w, h, leader) {
         return;
     }
     if (enemy && ed < S(380)) {
-        const ideal = k.aiIdeal, dx = enemy.x - h.x;
-        if (ed > ideal + 8) h.moving = moveToward(h, enemy.x - Math.sign(dx || 1) * ideal * 0.7, enemy.y, speed);
-        else if (h.name === 'ESPIRIT' && ed < ideal - 25) h.moving = moveToward(h, h.x - Math.sign(dx || 1) * 20, h.y + (enemy.y - h.y) * -0.2, speed * 0.66);
-        else { h.vx = 0; h.vy = 0 }
+        aiCombatMove(w, h, k, enemy, ed, speed);
         h.aim = SIM.dir8Of(enemy.x - h.x, enemy.y - h.y); // AI aims (8-way) at its target
         if (Math.abs(SIM.DIR8[h.aim].x) > 0.01) h.facing = SIM.DIR8[h.aim].x > 0 ? 1 : -1;
         if (attackTargets(w, h).length) performAttack(w, h);
@@ -444,6 +524,7 @@ function step(w) {
     stepEnemies(w);
     stepPassives(w);
     stepWaves(w);
+    stepPickups(w);
     if (w.heroes.every(h => h.state === 'downed')) {
         w.over = true;
         emit(w, { t: 'over', wave: w.wave, score: w.score, kills: w.kills });
@@ -456,8 +537,8 @@ function enemyFlags(w, e) {
     return (w.time < e.stunUntil ? 1 : 0) | (w.time < e.tauntUntil ? 2 : 0) | (e.windUntil ? 4 : 0) | (w.time - e.strikeAt < 250 ? 8 : 0);
 }
 
-// Compact per-tick snapshot. Enemies are arrays: [id, type, x, y, hp%, facing, flags];
-// enemy shots are [id, enemyType, x, y, vx*10, vy*10].
+// Compact per-tick snapshot. Enemies are arrays: [id, type, x, y, hp%, facing, flags].
+const left = (w, until) => Math.max(0, Math.ceil(((until || 0) - w.time) / 100));
 function snapshot(w) {
     return {
         tick: w.tick, time: w.time, zone: w.zone, wave: w.wave, ws: w.waveState === 'fighting' ? 1 : 0,
@@ -466,14 +547,18 @@ function snapshot(w) {
         heroes: w.heroes.map(h => ({
             name: h.name, x: h.x, y: h.y, vx: h.vx, vy: h.vy, facing: h.facing, aim: h.aim, moving: h.moving, controller: h.controller, seq: h.seq,
             cs: h.chain, // chain stage of the last swing (2 = finisher)
+            cc: h.critChain || 0, // Critical Chain: consecutive crits
             hp: h.hp, maxHp: h.maxHp, state: h.state === 'alive' ? 0 : 1, rv: h.state === 'downed' ? Math.round(h.reviveMs / RULES.reviveMs * 100) : 0,
             attackN: h.attackN, specialN: h.specialN, buff: w.time < h.buffUntil ? 1 : 0, shield: w.time < h.shieldUntil ? 1 : 0,
-            cd: Math.max(0, Math.round((h.specialAt + RULES.specialCooldownMs - w.time) / 100)) // special cooldown, 0.1 s
+            cd: Math.max(0, Math.round((h.specialAt + RULES.specialCooldownMs - w.time) / 100)), // special cooldown, 0.1 s
+            spd: moveSpeed(w, h), // effective move speed (HASTE) so client prediction matches the server exactly
+            // power-up time left in 0.1 s (0 = off): FURY, HASTE, WARD, SQUAD SYNERGY
+            pu: [left(w, h.furyUntil), left(w, h.hasteUntil), left(w, h.wardUntil), left(w, h.synergyUntil)],
         })),
+        pk: w.pickups.map(p => [p.id, p.kind, p.x, p.y, Math.ceil((p.until - w.time) / 1000)]),
         enemies: w.enemies.map(e => [e.id, e.type, Math.round(e.x), Math.round(e.y), Math.max(0, Math.round(e.hp / e.max * 100)), e.facing, enemyFlags(w, e)]),
-        shots: w.shots.map(p => [p.id, p.kind, Math.round(p.x), Math.round(p.y), Math.round(p.vx * 10), Math.round(p.vy * 10)]),
         ev: w.events,
     };
 }
 
-module.exports = { nextChainStage, aimOf, RULES, ENEMY_TYPES, ENEMY_INDEX, KITS, createBattle, step, snapshot, spawnEnemy, performAttack, performSpecial, damageHero, attackTargets, isBossWave, waveSize, critChance, damageTakenMul, inArc };
+module.exports = { PICKUP_KINDS, moveSpeed, stepPickups, collectPickup, damageEnemy, nextChainStage, aimOf, RULES, ENEMY_TYPES, ENEMY_INDEX, KITS, createBattle, step, snapshot, spawnEnemy, performAttack, performSpecial, damageHero, attackTargets, isBossWave, waveSize, critChance, damageTakenMul, inArc };
