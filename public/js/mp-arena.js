@@ -401,12 +401,12 @@
                     } else {
                         // Directional swing: the sheet faces right; mirror for leftward aims, then rotate to
                         // the 8-way aim (up/down/diagonals). Markie's cleave is 360° so it only mirrors.
-                        const a = f.aim, fin = f.stage === 2, size = kit.atkW * k * (fin ? 1.35 : 1);
+                        const a = f.aim, fin = f.stage === 2, size = kit.atkW * Math.min(k, 1.15) * (fin ? 1.35 : 1); // world-scale reach: barely grows on phones
                         g.save();
                         g.translate(h.x * S, h.y * S - 34 * k);
                         if (a.x < -0.01) g.scale(-1, 1);
                         if (f.name !== 'MARKIE') g.rotate(Math.atan2(a.y, Math.abs(a.x) < 0.01 ? 0.0001 : Math.abs(a.x)));
-                        const ox = f.name === 'MARKIE' ? 0 : kit.atkW * .28 * k;
+                        const ox = f.name === 'MARKIE' ? 0 : kit.atkW * .28 * Math.min(k, 1.15);
                         A.play(g, kit.atk, el, ox, 0, size);
                         if (fin) { g.globalAlpha = .5; g.globalCompositeOperation = 'lighter'; A.play(g, kit.atk, el, ox, 0, size * 1.15); }
                         g.restore();
