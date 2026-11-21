@@ -48,6 +48,27 @@
     const BUFF_MAX = [105, 105, 110, 65]; // full duration in 0.1 s, for the HUD timer bars
 
     function lerp(a, b, t) { return a + (b - a) * t }
+    // Draper's overhaul art (public/assets/overhaul, see wcheroes-design/m-overhaul READMEs).
+    const OV = {};
+    (function loadOverhaul() {
+        const files = { levelup: 'fx_levelup_64x128_10f', sky: 'bg_sky_moon_1440x810', temple: 'bg_temple_silhouettes_1440x810', pillars: 'bg_near_pillars_1440x810', floor: 'floor_tile_64x64', mist: 'fx_mist_24x16_4f', ember: 'fx_ember_8x8_6f', shadowSm: 'shadow_sm_24x10', shadowMd: 'shadow_md_40x16', shadowLg: 'shadow_lg_56x20', shadowXl: 'shadow_xl_80x24', hitNOAH: 'fx_noah_hitflash_32x32_5f', hitDESTINY: 'fx_destiny_hitflash_32x32_5f', hitMARKIE: 'fx_markie_hitflash_32x32_5f', hitESPIRIT: 'fx_espirit_hitflash_32x32_5f' };
+        if (typeof Image === 'undefined') return;
+        for (const k in files) { const im = new Image(); im.onload = () => { OV[k] = im }; im.src = 'assets/overhaul/' + files[k] + '.png' }
+    })();
+    // Level-up sheet pre-tinted per hero once (multiply by the hero's primary, alpha kept; hot core stays white).
+    const LEVELUP_TINT = { NOAH: ['#7A5FE0', '#83B8FF'], DESTINY: ['#F5C65D', '#D8434F'], MARKIE: ['#FF9657', '#C98A4B'], ESPIRIT: ['#5CCE8A', '#F5D477'] };
+    const tinted = {};
+    function tintedLevelup(name) {
+        if (tinted[name]) return tinted[name];
+        if (!OV.levelup) return null;
+        const im = OV.levelup, c = document.createElement('canvas'); c.width = im.width; c.height = im.height;
+        const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+        g.drawImage(im, 0, 0);
+        g.globalCompositeOperation = 'multiply'; g.fillStyle = (LEVELUP_TINT[name] || ['#FFD36D'])[0]; g.fillRect(0, 0, c.width, c.height);
+        g.globalCompositeOperation = 'destination-in'; g.drawImage(im, 0, 0); // restore the sheet's alpha
+        g.globalCompositeOperation = 'lighter'; g.globalAlpha = .45; g.drawImage(im, 0, 0); // keep the hot core bright
+        return (tinted[name] = c);
+    }
     // 8-way aim index (shared-sim DIR8: 0 right, 2 down, 4 left, 6 up) -> unit vector.
     const aimVec = (aim, facing) => { const i = Number.isInteger(aim) ? aim : (facing === -1 ? 4 : 0); return { x: Math.cos(i * Math.PI / 4), y: Math.sin(i * Math.PI / 4) } };
     const reducedMotion = () => { try { return root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches } catch { return false } };
@@ -64,7 +85,13 @@
         // ---------- effects state ----------
         let overInfo = null, comboAt = -1e9;
         const fx = []; // timed effects: {kind, start, life, ...}
-        const parts = [], texts = [], banners = [];
+        const texts = [], banners = [];
+        // Pooled particles (fx-pool.js) and the hero pose/attack animator (hero-anim.js).
+        const pool = root.WCHFxPool.createPool(520);
+        const anim = root.WCHHeroAnim ? root.WCHHeroAnim.create({ R, pool, S, theme: ART_THEME }) : null;
+        const pendingHits = []; // hit visuals waiting for the weapon to connect: {at, e}
+        const recoils = new Map(); // enemy id -> {at, dx, dy, holdUntil, x, y}
+        let lastFrame = 0;
         const flashes = new Map(); // enemy id -> flash-until
         const ghosts = []; // dying enemies fading out
         const lastActs = []; // per hero {a, s} counters from the previous snapshot
@@ -107,14 +134,12 @@
         }
 
         function reset() {
-            snaps.length = 0; clockOffset = null; lastActs.length = 0; fx.length = 0; parts.length = 0; texts.length = 0;
+            snaps.length = 0; clockOffset = null; lastActs.length = 0; fx.length = 0; pool.clear(); pendingHits.length = 0; recoils.clear(); texts.length = 0;
             banners.length = 0; chains.length = 0; flashes.clear(); ghosts.length = 0; enemyMotion.clear(); overInfo = null;
         }
 
         // Particle cap keeps phones smooth: 260 squares at most, each one fillRect (no blur/shadows).
-        function burst(x, y, color, n, speed = 4, o) {
-            for (let i = 0; i < n && parts.length < 260; i++) parts.push({ x, y, vx: (Math.random() - .5) * 2 * speed, vy: (Math.random() - .5) * 2 * speed * (o && o.flat || 1) - (o && o.lift !== undefined ? o.lift : 1), born: performance.now(), life: (o && o.life || 380) + Math.random() * 200, color, sz: o && o.size || 5, gr: o && o.grav !== undefined ? o.grav : .04 });
-        }
+        function burst(x, y, color, n, speed = 4, o) { return pool.burst(x, y, color, n, speed, o) }
         function floatText(x, y, str, color, size, life = 870) { if (texts.length < 80) texts.push({ x, y, str, color, size, born: performance.now(), life, dx: (Math.random() - .5) * 14 }) } // ~26 V19 ticks
         function latestHero(i) { const s = snaps[snaps.length - 1]; return s && s.heroes[i] }
 
@@ -134,8 +159,9 @@
                         f.ty = hit ? hit.y : h.y + f.aim.y * KIT.ESPIRIT.range;
                         f.life = Math.max(120, Math.hypot(f.tx - h.x, f.ty - h.y) * S / 3.2);
                     }
+                    if (anim && anim.hasPose(h.name)) { anim.onAttack(i, h, f.stage, f.aim, now); f.pose = true }
                     fx.push(f);
-                    attackBurst(f, h, now);
+                    if (!f.pose) attackBurst(f, h, now);
                 }
                 if (h.specialN > prev.s) fx.push({ kind: 'cast', i, start: now, life: 560 });
             });
@@ -166,10 +192,73 @@
             }
         }
 
+        // Freeze a struck enemy where it was hit until the blade connects (it would otherwise slide away first).
+        function recoilHold(e, at) {
+            const prev = snaps[snaps.length - 2];
+            const last = prev && prev.enemies.find(v => v[0] === e.id);
+            recoils.set(e.id, { at: 0, dx: 0, dy: 0, holdUntil: at, x: last ? last[2] : e.x, y: last ? last[3] : e.y });
+        }
+        // Impact on a struck enemy: hit-stop hold, then a short recoil away from the attacker.
+        function impactRecoil(e, now, strength) {
+            const h = latestHero(e.h); if (!h) return;
+            const dx = e.x - h.x, dy = e.y - h.y, d = Math.hypot(dx, dy) || 1;
+            const r = recoils.get(e.id) || {};
+            Object.assign(r, { at: now, dx: dx / d * strength, dy: dy / d * strength * .6, holdUntil: now + (e.f ? 70 : 40), x: r.x ?? e.x, y: r.y ?? e.y });
+            recoils.set(e.id, r);
+        }
+        // Noah's impact: blue sparks + crystal shards at the collision point, flash, recoil, hit-stop; the
+        // Arcane Breaker (finisher) adds a bright impact flash and an expanding magical shockwave.
+        function noahImpact(e, now) {
+            const h = latestHero(e.h);
+            const px = e.x * S, py = e.y * S - 36;
+            const dx = h ? e.x - h.x : 1, dy = h ? e.y - h.y : 0, d = Math.hypot(dx, dy) || 1;
+            const cx = px - dx / d * 14, cy = py - dy / d * 8; // collision point: the near side of the enemy
+            const fin = !!e.f, mine = isMine(e.h);
+            anim.hitStop(e.h, fin ? 85 : 45);
+            impactRecoil(e, now, fin ? 16 : e.c ? 11 : 8);
+            pool.emit(fin ? 16 : e.c ? 11 : 7, p => { // blue sparks spraying along the cut
+                const a = Math.atan2(dy, dx) + (Math.random() - .5) * 1.8, sp = .12 + Math.random() * .25;
+                p.x = cx; p.y = cy; p.vx = Math.cos(a) * sp; p.vy = Math.sin(a) * sp * .8 - .05; p.grav = .0006; p.drag = .003;
+                p.kind = 2; p.size = 3 + Math.random() * 2; p.life = 180 + Math.random() * 160; p.color = Math.random() < .4 ? '#FFFFFF' : Math.random() < .5 ? '#79E4FF' : '#53BAFF'; p.add = true;
+            });
+            pool.emit(fin ? 8 : 4, p => {
+                const a = Math.random() * 6.28, sp = .04 + Math.random() * .08;
+                p.x = cx; p.y = cy; p.vx = Math.cos(a) * sp; p.vy = Math.sin(a) * sp; p.kind = 1; p.size = 3 + Math.random() * 3; p.life = 300 + Math.random() * 200;
+                p.color = Math.random() < .5 ? '#D8FFFF' : '#83B8FF'; p.add = true; p.rot = a; p.vr = .01;
+            });
+            fx.push({ kind: 'flash', x: cx, y: cy, r: fin ? 46 : e.c ? 30 : 20, color: e.c ? '#FFE9A8' : '#D8FFFF', start: now, life: fin ? 160 : 110 });
+            if (fin) { // Arcane Breaker: shockwave rings (a dark refractive inner ring sells the "distortion")
+                fx.push({ kind: 'shock', x: e.x * S, y: e.y * S - 10, r0: 12, r1: 120, start: now, life: 420 });
+                addShake(mine ? 3.5 : 1.5, 140, now);
+            } else if (e.c) addShake(mine ? 2.5 : 1, 100, now);
+            hitNumber(e, cx, cy - 22, now);
+            if (e.c) { stats.crits = (stats.crits || 0) + 1; if (e.cc >= 2) { chains[e.h] = { n: e.cc, at: now }; stats.maxChain = Math.max(stats.maxChain || 0, e.cc) } }
+            stats.noahImpacts = (stats.noahImpacts || 0) + 1;
+        }
+        function isMine(i) { const h = latestHero(i), id = opts.getMyId && opts.getMyId(); return !!(h && id && h.controller === id) }
+        function hitNumber(e, x, y, now) { floatText(x, y, String(e.d) + (e.c ? '!' : ''), e.c ? NUM.crit : NUM.normal, e.f ? 22 : e.c ? 22 : 16) }
+        function processPending(now) {
+            for (let j = pendingHits.length - 1; j >= 0; j--) {
+                const p = pendingHits[j];
+                if (p.at > now) continue;
+                pendingHits.splice(j, 1);
+                p.e.late = true;
+                onEvent(p.e, now, null);
+            }
+        }
         function onEvent(e, now, prevSnap) {
+            if (e.t === 'hit' && !e.late && anim) { // pose heroes: show the impact when the weapon connects
+                const h = latestHero(e.h);
+                if (h && anim.hasPose(h.name)) {
+                    const at = anim.contactAt(e.h);
+                    if (at > now) { pendingHits.push({ at, e }); recoilHold(e, at); return }
+                }
+            }
             switch (e.t) {
                 case 'hit': {
                     flashes.set(e.id, now + 200);
+                    const hh = latestHero(e.h);
+                    if (anim && hh && hh.name === 'NOAH') { noahImpact(e, now); break }
                     const px = e.x * S, py = e.y * S - 40;
                     const big = e.c || e.f; // crit or 3rd-hit finisher
                     const sheet = e.c ? (e.h === 3 ? 'espiritCrit' : 'critFlash') : e.f ? 'critFlash' : 'hitSpark';
@@ -251,6 +340,18 @@
                     stats.synergy = (stats.synergy || 0) + 1;
                     for (const j of e.all || []) { const u = latestHero(j); if (u) { burst(u.x * S, u.y * S - 50, '#FFD36D', 10, 4, { life: 600 }); burst(u.x * S, u.y * S - 50, '#E6AD57', 6, 2, { lift: 2.2, grav: 0, life: 700 }) } }
                     banners.push({ str: 'SQUAD SYNERGY • CRIT UP', color: '#FFD36D', born: now, life: 1700 });
+                    break;
+                }
+                case 'lvl': {
+                    for (const j of e.all || []) {
+                        const u = latestHero(j); if (!u) continue;
+                        const color = heroCfg(u.name).color;
+                        fx.push({ kind: 'levelup', i: j, color, start: now + j * 90, life: 1700 });
+                        if (anim) anim.onLevelUp(j, now + j * 90);
+                        floatText(u.x * S, u.y * S - 130, 'Lv ' + (u.lv || e.lv), '#FFE9A8', 20, 1400);
+                    }
+                    banners.push({ str: 'LEVEL UP • SQUAD Lv ' + e.lv, color: '#FFD36D', born: now, life: 2200 });
+                    stats.levelUps = (stats.levelUps || 0) + 1;
                     break;
                 }
                 case 'wave': banners.push({ str: 'WAVE ' + e.n + (e.boss ? ' • BOSS WAVE' : ''), color: '#FFD36D', born: now, life: 2000 }); break;
@@ -513,9 +614,93 @@
             g.beginPath(); g.arc(0, 0, r, Math.max(-Math.PI * .85, a1 - .9), a1); g.stroke();
             g.restore();
         }
-        function drawActionFx(view, now, k) {
+        // Cached soft-glow sprites (radial gradients are built once per color, then drawn as images).
+        const glowCache = new Map();
+        function glowSprite(color) {
+            let c = glowCache.get(color);
+            if (c) return c;
+            c = document.createElement('canvas'); c.width = c.height = 64;
+            const gg = c.getContext('2d'), gr = gg.createRadialGradient(32, 32, 0, 32, 32, 32);
+            gr.addColorStop(0, color); gr.addColorStop(.35, color + 'aa'); gr.addColorStop(1, color + '00');
+            gg.fillStyle = gr; gg.fillRect(0, 0, 64, 64);
+            glowCache.set(color, c); return c;
+        }
+        const pillarCache = new Map();
+        function pillarSprite(color) { // vertical light column for LEVEL UP
+            let c = pillarCache.get(color);
+            if (c) return c;
+            c = document.createElement('canvas'); c.width = 32; c.height = 256;
+            const gg = c.getContext('2d');
+            const v = gg.createLinearGradient(0, 0, 0, 256); v.addColorStop(0, color + '00'); v.addColorStop(.55, color + 'aa'); v.addColorStop(1, color + 'ff');
+            gg.fillStyle = v; gg.fillRect(0, 0, 32, 256);
+            gg.globalCompositeOperation = 'destination-in';
+            const hgr = gg.createLinearGradient(0, 0, 32, 0); hgr.addColorStop(0, '#0000'); hgr.addColorStop(.5, '#000f'); hgr.addColorStop(1, '#0000');
+            gg.fillStyle = hgr; gg.fillRect(0, 0, 32, 256);
+            pillarCache.set(color, c); return c;
+        }
+        function drawFlashFx(f, now, view) {
+            const el = now - f.start; if (el < 0) return;
+            const t = el / f.life;
+            if (f.kind === 'flash') { // bright impact flash at the collision point: glow + 4-point star
+                const r = f.r * (1 + t * .6);
+                g.globalCompositeOperation = 'lighter';
+                g.globalAlpha = (1 - t);
+                g.drawImage(glowSprite(f.color), f.x - r, f.y - r, r * 2, r * 2);
+                g.fillStyle = '#FFFFFF'; g.globalAlpha = (1 - t) * .9;
+                const a = r * 1.3 * (1 - t * .5), b = r * .12;
+                g.beginPath(); g.moveTo(f.x - a, f.y); g.lineTo(f.x, f.y - b); g.lineTo(f.x + a, f.y); g.lineTo(f.x, f.y + b); g.closePath(); g.fill();
+                g.beginPath(); g.moveTo(f.x, f.y - a * .7); g.lineTo(f.x + b, f.y); g.lineTo(f.x, f.y + a * .7); g.lineTo(f.x - b, f.y); g.closePath(); g.fill();
+                g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+            } else if (f.kind === 'shock') { // expanding magical shockwave (bright rim + dark refractive inner ring)
+                const e = 1 - (1 - t) * (1 - t), r = f.r0 + (f.r1 - f.r0) * e;
+                g.globalAlpha = .28 * (1 - t); g.strokeStyle = '#06122e'; g.lineWidth = 9 * (1 - t) + 2;
+                g.beginPath(); g.ellipse(f.x, f.y, r * .9, r * .9 * .42, 0, 0, Math.PI * 2); g.stroke();
+                g.globalCompositeOperation = 'lighter';
+                g.globalAlpha = .8 * (1 - t); g.strokeStyle = '#53BAFF'; g.lineWidth = 5 * (1 - t) + 1;
+                g.beginPath(); g.ellipse(f.x, f.y, r, r * .42, 0, 0, Math.PI * 2); g.stroke();
+                g.globalAlpha = .9 * (1 - t); g.strokeStyle = '#E8FFFF'; g.lineWidth = 1.5;
+                g.beginPath(); g.ellipse(f.x, f.y, r * 1.02, r * 1.02 * .42, 0, 0, Math.PI * 2); g.stroke();
+                g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+            } else if (f.kind === 'levelup') { // light pillar + rising rune circle in the hero's color
+                const h = view.heroes[f.i]; if (!h) return;
+                const x = h.x * S, y = h.y * S, k = uiScale();
+                const sheet = tintedLevelup(h.name);
+                if (sheet && el < 700) { // Draper's tinted pillar + rune sheet (10 frames x 70 ms), feet anchored
+                    const fr = Math.min(9, Math.floor(el / 70)), sc = 1.6 * Math.min(k, 1.3);
+                    g.imageSmoothingEnabled = false;
+                    g.drawImage(sheet, fr * 64, 0, 64, 128, Math.round(x - 32 * sc), Math.round(y - 118 * sc), 64 * sc, 128 * sc);
+                }
+                const inA = Math.min(1, el / 180), out = t > .6 ? 1 - (t - .6) / .4 : 1, a = inA * out;
+                g.globalCompositeOperation = 'lighter';
+                const pw = (34 + 14 * Math.sin(el / 90)) * Math.min(k, 1.3) * (1 - t * .4), ph = 300 * Math.min(k, 1.2);
+                g.globalAlpha = .7 * a; g.drawImage(pillarSprite(f.color), x - pw / 2, y - ph, pw, ph);
+                g.globalAlpha = .9 * a; g.drawImage(pillarSprite('#ffffff'), x - pw / 6, y - ph * .8, pw / 3, ph * .8);
+                for (let j = 0; j < 2; j++) { // two rune rings rising up the pillar
+                    const u = ((el / 900) + j * .5) % 1, ry = y - u * 110 * Math.min(k, 1.3), rr = (38 - u * 10) * Math.min(k, 1.3);
+                    g.globalAlpha = a * (1 - u); g.strokeStyle = f.color; g.lineWidth = 2;
+                    g.beginPath(); g.ellipse(x, ry, rr, rr * .38, 0, 0, Math.PI * 2); g.stroke();
+                    g.fillStyle = '#FFFFFF';
+                    for (let q = 0; q < 8; q++) { const an = q * Math.PI / 4 + el / 400 * (j ? -1 : 1); g.fillRect(Math.round(x + Math.cos(an) * rr - 1.5), Math.round(ry + Math.sin(an) * rr * .38 - 1.5), 3, 3) }
+                }
+                g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+                if (Math.random() < .5 * a) pool.emit(1, p => { p.x = x + (Math.random() - .5) * 40; p.y = y - Math.random() * 30; p.vy = -.08 - Math.random() * .08; p.vx = (Math.random() - .5) * .02; p.kind = 3; p.size = 2 + Math.random() * 2; p.life = 700; p.color = Math.random() < .5 ? f.color : '#FFFFFF'; p.add = true });
+            }
+        }
+        function drawActionFx(view, now, k, dt) {
+            if (anim) {
+                const room = opts.getRoom(), myId = opts.getMyId();
+                view.heroes.forEach((h, i) => {
+                    if (h.state || !anim.hasPose(h.name)) return;
+                    const p = controllerOf(room, i), role = p ? (p.id === myId ? 'me' : 'human') : 'ai';
+                    g.save(); g.translate(Math.round(h.x * S), Math.round(h.y * S)); g.scale(k, k);
+                    anim.drawFx(g, h, i, now, dt, k, lookFor(role, heroCfg(h.name).color), h.x * S, h.y * S);
+                    g.restore();
+                });
+            }
             for (const f of fx) {
                 const el = now - f.start;
+                if (f.kind === 'flash' || f.kind === 'shock' || f.kind === 'levelup') { drawFlashFx(f, now, view); continue }
+                if (f.kind === 'attack' && f.pose) continue; // drawn by hero-anim (blade-path crescent)
                 if (f.kind === 'attack' && A) {
                     const h = view.heroes[f.i] || f, kit = KIT[f.name];
                     if (!kit) continue;
@@ -567,17 +752,7 @@
                 }
             }
         }
-        function drawParticles(now) {
-            for (let j = parts.length - 1; j >= 0; j--) {
-                const p = parts[j], age = now - p.born;
-                if (age > p.life) { parts.splice(j, 1); continue }
-                const f = age / 16.7;
-                g.globalAlpha = 1 - age / p.life;
-                g.fillStyle = p.color;
-                g.fillRect(Math.round(p.x + p.vx * f), Math.round(p.y + p.vy * f + p.gr * f * f), p.sz, p.sz);
-            }
-            g.globalAlpha = 1;
-        }
+        function drawParticles(now) { pool.draw(g) }
         // Critical Chain counter over a hero who landed 2+ crits in a row (fades 1.4 s after the last one).
         function drawChains(view, now, k) {
             g.save(); g.textAlign = 'center';
@@ -703,6 +878,10 @@
                 g.restore();
             });
         }
+        // Readability: your hero gets a gold outline and full-strength effects; others are outlined dark and
+        // their effects are dimmed (other players 80%, AI 60%) so a clumped squad doesn't turn into soup.
+        const LOOKS = { me: { fx: 1, outline: '#ffd279' }, human: { fx: .8, outline: '#0b0914' }, ai: { fx: .6, outline: '#0b0914' } };
+        function lookFor(role, color) { const l = LOOKS[role]; l.color = color; return l }
         function drawHero(h, i, now, room, myId, k) {
             const px = h.x * S, py = h.y * S;
             const human = controllerOf(room, i), waiting = reservedOf(room, i);
@@ -747,7 +926,8 @@
                 g.fillStyle = '#ffb3b3'; g.font = 'bold 12px monospace'; g.textAlign = 'center';
                 g.fillText(h.rv ? 'REVIVING' : 'DOWN', 0, -36);
                 g.restore();
-            } else R.drawSprite(g, 0, 0, color, false, h.name, now, entity);
+            } else if (anim && anim.hasPose(h.name)) anim.drawHero(g, h, i, now, k, lookFor(role, color));
+            else R.drawSprite(g, 0, 0, color, false, h.name, now, entity);
             if (!h.state && (h.buff || h.shield) && A) A.loop(g, 'buffAura', now, 0, -34, 58, null, false, .85, i * 90); // rally buff / Markie shield
             // Name + controller label and HP bar above the head (V19 ally style).
             g.fillStyle = '#292035';
@@ -757,7 +937,7 @@
             g.textAlign = 'center';
             g.font = 'bold 12px monospace';
             g.fillStyle = role === 'me' ? '#ffd279' : role === 'ai' ? '#a8f0c6' : '#fff2c9';
-            g.fillText(h.name + (role === 'ai' ? ' AI' : role === 'me' ? ' (YOU)' : ''), 0, -92);
+            g.fillText(h.name + ' Lv' + (h.lv || 1) + (role === 'ai' ? ' AI' : role === 'me' ? ' (YOU)' : ''), 0, -92);
             const sub = role === 'human' ? human.name : waiting ? waiting.name + ' reconnecting…' : '';
             if (sub) {
                 g.font = '11px monospace';
@@ -771,7 +951,17 @@
         // 8 just struck): wind -> windup/charge/draw/plant, strike -> slash/fire/slam, moving -> walk
         // (front-facing, not flipped), else idle. Dying enemies play their die sheet then fade.
         function drawEnemy(e, now, k, fade, dieAt) {
-            const [id, type, ex, ey, hpPct, facing, flags] = e;
+            let [id, type, ex, ey, hpPct, facing, flags] = e;
+            let tilt = 0;
+            const rc = dieAt === undefined && recoils.get(id);
+            if (rc) { // hit-stop hold, then a quick recoil jolt + tilt away from the hit (stagger)
+                if (now < rc.holdUntil) { ex = rc.x; ey = rc.y }
+                else {
+                    const t = (now - Math.max(rc.at, rc.holdUntil)) / 200;
+                    if (t >= 1) recoils.delete(id);
+                    else { const amt = (1 - t) * (1 - t); ex += rc.dx * amt; ey += rc.dy * amt; tilt = Math.sign(rc.dx || 1) * .22 * amt }
+                }
+            }
             const art = (A && A.ENEMY_ART[type]) || { key: 'acolyte', w: 50 };
             const flash = (flashes.get(id) || 0) > now;
             let m = enemyMotion.get(id);
@@ -796,6 +986,7 @@
             g.save();
             g.translate(Math.round(ex * S), Math.round(ey * S));
             g.scale(k, k);
+            if (tilt) { g.translate(0, -4); g.rotate(tilt); g.translate(0, 4) }
             if (fade !== undefined) g.globalAlpha = Math.max(0, fade);
             // World-scale telegraph (sheets only hint at it): warden plant ring at the slam radius.
             if (wind && art.key === 'warden' && A) A.loop(g, 'warning', now, 0, 0, SLAM_R * S * 2 / k, SLAM_R * S / k);
@@ -832,8 +1023,12 @@
             if (!running) return;
             requestAnimationFrame(frame);
             const now = performance.now();
+            const dt = lastFrame ? Math.min(50, now - lastFrame) : 16.7;
+            lastFrame = now;
             const view = sample(now);
             if (!view) return;
+            processPending(now);
+            pool.update(dt);
             const room = opts.getRoom(), myId = opts.getMyId();
             // Your own hero is drawn at its predicted position (instant response); others are interpolated.
             const local = opts.getLocalHero && opts.getLocalHero();
@@ -859,7 +1054,7 @@
             units.sort((a, b) => a.y - b.y).forEach(u => u.e ? drawEnemy(u.e, now, k, u.fade, u.dieAt) : drawHero(u.h, u.i, now, room, myId, k));
             if (enemyMotion.size > 64) { const live = new Set((view.enemies || []).map(e => e[0])); for (const id of enemyMotion.keys()) if (!live.has(id)) enemyMotion.delete(id) }
             drawBuffs(view, now, k);
-            drawActionFx(view, now, k);
+            drawActionFx(view, now, k, dt);
             drawParticles(now);
             drawNumbers(now);
             drawChains(view, now, k);
@@ -873,7 +1068,7 @@
         function start() { if (!running) { running = true; requestAnimationFrame(frame) } }
         function stop() { running = false }
 
-        return { push, reset, start, stop, sample, stats, interpolating: interpEnabled, fxCounts: () => ({ fx: fx.length, parts: parts.length, texts: texts.length, banners: banners.length, art: A ? A.loadedCount() : 0, shakes: shake.count, reducedMotion: reducedMotion() }), pickupsShown: () => { const v = sample(performance.now()); return v ? (v.pk || []).length : 0 }, chainOf: i => chains[i] ? chains[i].n : 0, lastAttackFx: name => { const f = [...fx].reverse().find(v => v.kind === 'attack' && (!name || v.name === name)); return f ? { name: f.name, aim: f.aim, stage: f.stage } : null } };
+        return { push, reset, start, stop, sample, stats, interpolating: interpEnabled, fxCounts: () => ({ fx: fx.length, parts: pool.count, density: pool.density, texts: texts.length, banners: banners.length, art: A ? A.loadedCount() : 0, shakes: shake.count, reducedMotion: reducedMotion() }), pickupsShown: () => { const v = sample(performance.now()); return v ? (v.pk || []).length : 0 }, chainOf: i => chains[i] ? chains[i].n : 0, lastAttackFx: name => { const f = [...fx].reverse().find(v => v.kind === 'attack' && (!name || v.name === name)); return f ? { name: f.name, aim: f.aim, stage: f.stage } : null } };
     }
 
     root.WCHArena = { createArena, TICK_MS, INTERP_DELAY_MS };

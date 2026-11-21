@@ -12,6 +12,9 @@
 (function(root) {
     'use strict';
     let x = null; // active 2D context (V19 named its context `x`)
+    // Multiplayer pose layer only: when true, makeArt/makeHDArt leave out the weapon and the weapon hand so
+    // the client can draw them as separately animated parts. V19 never sets it, so legacy output is unchanged.
+    let NO_WEAPON = false;
     function rect(a, b, w, h, c) {
         x.fillStyle = c;
         x.fillRect(Math.round(a), Math.round(b), w, h)
@@ -251,10 +254,13 @@
         // hands, gauntlets and weapons (large recognizable silhouettes)
         r(7, 35, 7, 11, ink);
         r(8, 36, 5, 9, body);
-        r(36, 35, 7, 11, ink);
-        r(37, 36, 5, 9, body);
+        if (!NO_WEAPON) {
+            r(36, 35, 7, 11, ink);
+            r(37, 36, 5, 9, body);
+        }
         r(8, 43, 7, 6, skin);
-        r(37, 43, 7, 6, skin);
+        if (!NO_WEAPON) r(37, 43, 7, 6, skin);
+        if (NO_WEAPON) return c;
         if (name === 'NOAH') {
             r(39, 17, 3, 33, '#e9efff');
             r(38, 11, 5, 8, '#8fcaff');
@@ -330,7 +336,7 @@
         r(44, 47, 9, 2, '#9f5c5a');
         r(39, 29, 15, 2, '#ffd2a0');
         r(33, 52, 5, 8, '#f3b48a');
-        r(61, 52, 5, 8, '#f3b48a');
+        if (!NO_WEAPON) r(61, 52, 5, 8, '#f3b48a');
         if (name === 'NOAH') {
             // Royal blue mantle, luminous runes and crystalline sword.
             line([
@@ -350,18 +356,20 @@
                 r(27 + i * 10, 70 + (i % 2) * 6, 3, 5, '#9ce6ff');
                 r(30 + i * 9, 86, 3, 3, '#5f8fff')
             }
-            line([
-                [79, 97],
-                [82, 52],
-                [84, 18]
-            ], '#a6eaff', 6);
-            line([
-                [84, 18],
-                [88, 9],
-                [90, 18]
-            ], '#e4ffff', 3);
-            r(76, 62, 16, 4, '#d8ba68');
-            r(83, 58, 3, 36, '#ecf9ff');
+            if (!NO_WEAPON) {
+                line([
+                    [79, 97],
+                    [82, 52],
+                    [84, 18]
+                ], '#a6eaff', 6);
+                line([
+                    [84, 18],
+                    [88, 9],
+                    [90, 18]
+                ], '#e4ffff', 3);
+                r(76, 62, 16, 4, '#d8ba68');
+                r(83, 58, 3, 36, '#ecf9ff');
+            }
             r(32, 18, 6, 5, '#28365d');
             r(47, 8, 8, 4, '#1b1c34');
             r(61, 14, 7, 4, '#17172d');
@@ -380,21 +388,23 @@
                 [40, 69 + j * 4],
                 [57, 69 + j * 4]
             ], '#82718d', 1);
-            r(73, 17, 6, 80, '#8e624a');
-            r(75, 22, 2, 66, '#d6a76a');
-            line([
-                [64, 20],
-                [88, 13],
-                [94, 26],
-                [83, 39],
-                [65, 36]
-            ], '#e9e0d5', 5);
-            line([
-                [68, 25],
-                [84, 20],
-                [89, 26],
-                [79, 32]
-            ], '#7e889e', 3);
+            if (!NO_WEAPON) {
+                r(73, 17, 6, 80, '#8e624a');
+                r(75, 22, 2, 66, '#d6a76a');
+                line([
+                    [64, 20],
+                    [88, 13],
+                    [94, 26],
+                    [83, 39],
+                    [65, 36]
+                ], '#e9e0d5', 5);
+                line([
+                    [68, 25],
+                    [84, 20],
+                    [89, 26],
+                    [79, 32]
+                ], '#7e889e', 3);
+            }
             r(23, 25, 8, 3, '#33303b');
             r(29, 20, 40, 4, '#292733');
             r(65, 24, 16, 4, '#1b1b2b');
@@ -422,9 +432,11 @@
                 r(32 + j * 12, 85, 6, 3, '#f1d18a');
                 r(34 + j * 12, 89, 4, 2, '#fff6d4')
             }
-            r(75, 24, 4, 80, '#f7f2dd');
-            r(74, 25, 6, 5, '#fff8e9');
-            r(69, 40, 17, 4, '#ffdc81');
+            if (!NO_WEAPON) {
+                r(75, 24, 4, 80, '#f7f2dd');
+                r(74, 25, 6, 5, '#fff8e9');
+                r(69, 40, 17, 4, '#ffdc81');
+            }
             r(32, 19, 31, 4, '#d6b66c');
             r(46, 13, 6, 7, '#ffedac');
             r(37, 24, 5, 3, '#fff0b9');
@@ -453,19 +465,21 @@
             for (let j = 0; j < 4; j++) {
                 r(72 + j * 3, 43 - j * 4, 3, 11, j % 2 ? '#e9d487' : '#d3b0a5')
             }
-            g.strokeStyle = '#f3ce76';
-            g.lineWidth = 4;
-            g.beginPath();
-            g.arc(78, 70, 32, -1.35, 1.35);
-            g.stroke();
-            line([
-                [84, 39],
-                [84, 100]
-            ], '#f6ead0', 2);
-            line([
-                [47, 75],
-                [93, 75]
-            ], '#ffe29a', 3);
+            if (!NO_WEAPON) {
+                g.strokeStyle = '#f3ce76';
+                g.lineWidth = 4;
+                g.beginPath();
+                g.arc(78, 70, 32, -1.35, 1.35);
+                g.stroke();
+                line([
+                    [84, 39],
+                    [84, 100]
+                ], '#f6ead0', 2);
+                line([
+                    [47, 75],
+                    [93, 75]
+                ], '#ffe29a', 3);
+            }
             r(30, 19, 6, 8, '#4d322d');
             r(65, 22, 6, 28, '#724735');
         }
@@ -495,7 +509,7 @@
             }
             r(43, 11, 3, 3, '#4a4779');
             r(58, 17, 5, 2, '#4d4270');
-            for (let j = 0; j < 4; j++) r(76, 27 + j * 9, 2, 4, '#d6fbff');
+            if (!NO_WEAPON) for (let j = 0; j < 4; j++) r(76, 27 + j * 9, 2, 4, '#d6fbff');
         } else if (name === 'MARKIE') {
             gem(48, 78, '#ffd47e', '#644353');
             for (let j = 0; j < 4; j++) {
@@ -835,6 +849,16 @@
         x.restore();
     }
 
+    // Weapon-less HD art (theme-aware) for the multiplayer pose layer: body only, weapon arm drawn separately.
+    const poseArt = {};
+    function makePoseArt(name, frame, themeName) {
+        const key = name + frame + (themeName || '');
+        if (poseArt[key]) return poseArt[key];
+        NO_WEAPON = true;
+        try { poseArt[key] = themeName ? makeThemedArt(name, frame, themeName) : makeHDArt(name, frame) } finally { NO_WEAPON = false }
+        return poseArt[key];
+    }
+
     function drawSprite(ctx, px, py, color, enemy, name, now, entity) {
         ensureArt();
         x = ctx;
@@ -862,6 +886,7 @@
         ensureArt,
         THEMES,
         makeThemedArt,
+        makePoseArt,
         drawSprite,
         drawArena: drawArenaOn,
         WORLD_SCALE: 1.5, // V19 art is tuned for a 1440x810 canvas; arena() draws a 960x540 scene scaled x1.5
