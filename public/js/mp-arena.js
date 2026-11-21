@@ -1097,7 +1097,7 @@
         // their effects are dimmed (other players 80%, AI 60%) so a clumped squad doesn't turn into soup.
         const LOOKS = { me: { fx: 1, outline: '#ffd279' }, human: { fx: .8, outline: '#0b0914' }, ai: { fx: .6, outline: '#0b0914' } };
         function lookFor(role, color) { const l = LOOKS[role]; l.color = color; return l }
-        function drawHero(h, i, now, room, myId, k) {
+        function drawHero(h, i, now, room, myId, k, heroes) {
             const px = h.x * S, py = h.y * S;
             const human = controllerOf(room, i), waiting = reservedOf(room, i);
             const role = human ? (human.id === myId ? 'me' : 'human') : 'ai';
@@ -1151,9 +1151,20 @@
             g.fillRect(-22, -86, 44 * Math.max(0, (h.hp || 0) / (h.maxHp || 100)), 5);
             g.textAlign = 'center';
             g.font = 'bold ' + (k > 1.15 && role !== 'me' ? 10 : 12) + 'px monospace';
-            if (k > 1.15 && role === 'ai') g.globalAlpha = .75; // phones: AI labels recede so clumps stay readable
-            g.fillStyle = role === 'me' ? '#ffd279' : role === 'ai' ? '#a8f0c6' : '#fff2c9';
-            g.fillText(h.name + ' Lv' + (h.lv || 1) + (role === 'ai' ? ' AI' : role === 'me' ? ' (YOU)' : ''), 0, -92);
+            // On crowded screens, hide only redundant AI name text (not the HP bar).
+            // Human labels always win; among nearby AI, the earlier roster slot wins.
+            // The squad HUD still identifies every teammate, including hidden AI labels.
+            const crowdedAI = role === 'ai' && k > 1.15 && heroes && heroes.some((other, j) => {
+                if (j === i || !other || other.state) return false;
+                if (Math.abs(other.x - h.x) * S > 100 / k || Math.abs(other.y - h.y) * S > 26 / k) return false;
+                return !!controllerOf(room, j) || (j < i && !controllerOf(room, j));
+            });
+            if (!crowdedAI) {
+                if (k > 1.15 && role === 'ai') g.globalAlpha = .75;
+                g.fillStyle = role === 'me' ? '#ffd279' : role === 'ai' ? '#a8f0c6' : '#fff2c9';
+                g.fillText(h.name + ' Lv' + (h.lv || 1) + (role === 'ai' ? ' AI' : role === 'me' ? ' (YOU)' : ''), 0, -92);
+                g.globalAlpha = 1;
+            }
             const sub = role === 'human' ? human.name : waiting ? waiting.name + ' reconnecting…' : '';
             if (sub) {
                 g.font = '11px monospace';
@@ -1275,7 +1286,7 @@
                 if (gh.kx) { e2[2] = gh.e[2] + gh.kx * ease; e2[3] = gh.e[3] + gh.ky * ease }
                 units.push({ y: e2[3], e: e2, dieAt: gh.start, fade: el < gh.life - 160 ? 1 : (gh.life - el) / 160 });
             }
-            units.sort((a, b) => a.y - b.y).forEach(u => u.e ? drawEnemy(u.e, now, k, u.fade, u.dieAt) : drawHero(u.h, u.i, now, room, myId, k));
+            units.sort((a, b) => a.y - b.y).forEach(u => u.e ? drawEnemy(u.e, now, k, u.fade, u.dieAt) : drawHero(u.h, u.i, now, room, myId, k, view.heroes));
             if (enemyMotion.size > 64) { const live = new Set((view.enemies || []).map(e => e[0])); for (const id of enemyMotion.keys()) if (!live.has(id)) enemyMotion.delete(id) }
             drawBuffs(view, now, k);
             drawActionFx(view, now, k, dt);
