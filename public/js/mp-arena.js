@@ -408,6 +408,16 @@
                     floatText(h.x * S, h.y * S - 112, e.k, heroCfg(h.name).color, isMine(e.h) ? 14 : 11, 1100); // small tag at the hero, not a banner
                     break;
                 }
+                case 'awaken': {
+                    const h = latestHero(e.h);
+                    if (!h) break;
+                    const col = HERO_FINISH[h.name]?.primary || heroCfg(h.name).color;
+                    fx.push({ kind: 'ring', x: h.x * S, y: h.y * S, r0: 8, r1: 100, color: col, width: 5, start: now, life: 720 });
+                    burst(h.x * S, h.y * S - 45, col, 18, 5);
+                    floatText(h.x * S, h.y * S - 135, 'AWAKENED', col, 19, 1200);
+                    if (isMine(e.h)) addShake(4, 220, now);
+                    break;
+                }
                 case 'boss:enter': {
                     banners.push({ str: 'THE VOID EMPEROR AWAKENS', color: '#e6a8ff', born: now, life: 2300 });
                     fx.push({ kind: 'ring', x: e.x * S, y: e.y * S, r0: 8, r1: 170, color: '#bd71ef', width: 7, start: now, life: 1200 });
@@ -1161,8 +1171,8 @@
             const sp = action && action.spc;
             const specialAge = sp ? now - sp.start : Infinity;
             const surge = specialAge >= 0 && specialAge < 750 ? Math.sin(Math.PI * specialAge / 750) : 0;
-            const empowered = !!(h.buff || h.shield || (h.pu && h.pu.some(Boolean)));
-            const intensity = empowered ? .72 : .30;
+            const empowered = !!(h.awake || h.buff || h.shield || (h.pu && h.pu.some(Boolean)));
+            const intensity = h.awake ? .9 : empowered ? .72 : .30;
             const wave = Math.sin(now / 280 + i);
             g.save();
             g.globalCompositeOperation = 'lighter';
@@ -1203,7 +1213,7 @@
             const skin = HERO_FINISH[h.name];
             if (!skin) return;
             const phase = now / 950 + i * 1.7, pulse = (Math.sin(phase * 2) + 1) / 2;
-            const active = h.buff || h.shield || (h.pu && h.pu.some(Boolean));
+            const active = h.awake || h.buff || h.shield || (h.pu && h.pu.some(Boolean));
             g.save();
             // A soft colored floor aura, kept beneath the combat silhouette.
             g.globalAlpha = (active ? .22 : .10) + pulse * .055;
@@ -1269,6 +1279,64 @@
             g.restore();
         }
 
+        // Procedural anime-fantasy armor overlay. Pixel-aligned shapes enhance existing
+        // premium hero sheets without requiring large downloads or changing collision boxes.
+        function drawLegendaryGear(h, now) {
+            if (h.state) return;
+            const skin = HERO_FINISH[h.name];
+            if (!skin) return;
+            const awakened = !!h.awake;
+            const f = h.facing === -1 ? -1 : 1;
+            g.save(); g.scale(f, 1);
+            const edge = awakened ? skin.light : skin.primary;
+            g.lineWidth = awakened ? 2.6 : 1.6;
+            g.strokeStyle = edge;
+            g.fillStyle = '#191b31';
+            // Shoulder armor, layered to read clearly at mobile resolution.
+            for (const side of [-1, 1]) {
+                g.beginPath(); g.moveTo(side * 12, -66); g.lineTo(side * 28, -72);
+                g.lineTo(side * 35, -61); g.lineTo(side * 29, -55);
+                g.lineTo(side * 14, -58); g.closePath(); g.fill(); g.stroke();
+                g.fillStyle = skin.primary;
+                g.fillRect(side * 25 - 3, -66, 6, 5);
+                g.fillStyle = '#191b31';
+            }
+            // Chest crest: the four heroes share a team silhouette, each with a distinct core.
+            g.fillStyle = '#151628';
+            g.beginPath(); g.moveTo(-10, -59); g.lineTo(0, -66);
+            g.lineTo(10, -59); g.lineTo(7, -43); g.lineTo(0, -37);
+            g.lineTo(-7, -43); g.closePath(); g.fill(); g.stroke();
+            g.fillStyle = awakened ? skin.light : skin.primary;
+            g.beginPath(); g.moveTo(0, -58); g.lineTo(5, -51);
+            g.lineTo(0, -44); g.lineTo(-5, -51); g.closePath(); g.fill();
+            // Crown/helm accents differentiate the silhouettes.
+            g.strokeStyle = edge;
+            g.beginPath();
+            if (h.name === 'NOAH') {
+                g.moveTo(-13, -86); g.lineTo(-18, -99); g.lineTo(-7, -92);
+                g.moveTo(13, -86); g.lineTo(18, -99); g.lineTo(7, -92);
+            } else if (h.name === 'DESTINY') {
+                g.moveTo(-15, -85); g.lineTo(-20, -94); g.lineTo(-7, -91);
+                g.lineTo(0, -99); g.lineTo(7, -91); g.lineTo(20, -94); g.lineTo(15, -85);
+            } else if (h.name === 'MARKIE') {
+                g.moveTo(-17, -84); g.lineTo(-27, -97); g.lineTo(-22, -83);
+                g.moveTo(17, -84); g.lineTo(27, -97); g.lineTo(22, -83);
+            } else {
+                g.moveTo(-15, -84); g.lineTo(-23, -91); g.lineTo(-15, -97);
+                g.moveTo(15, -84); g.lineTo(23, -91); g.lineTo(15, -97);
+            }
+            g.stroke();
+            // Awakened mode: illuminated trim and a pulsing legendary weapon rune.
+            if (awakened) {
+                g.globalCompositeOperation = 'lighter';
+                g.globalAlpha = .7 + .25 * Math.sin(now / 110);
+                g.strokeStyle = skin.light; g.lineWidth = 2;
+                g.beginPath(); g.moveTo(-11, -44); g.lineTo(0, -35); g.lineTo(11, -44); g.stroke();
+                g.beginPath(); g.arc(0, -51, 10 + Math.sin(now / 180) * 2, 0, Math.PI * 2); g.stroke();
+            }
+            g.restore();
+        }
+
         function drawHero(h, i, now, room, myId, k) {
             const px = h.x * S, py = h.y * S;
             const human = controllerOf(room, i), waiting = reservedOf(room, i);
@@ -1316,6 +1384,7 @@
                 g.restore();
             } else if (anim && anim.hasPose(h.name)) { if (env) env.shadow(g, 1, 46); anim.drawHero(g, h, i, now, k, lookFor(role, color)) }
             else R.drawSprite(g, 0, 0, color, false, h.name, now, entity);
+            drawLegendaryGear(h, now);
             if (!h.state && (h.buff || h.shield) && A) A.loop(g, 'buffAura', now, 0, -34, 58, null, false, .85, i * 90);
             drawHeroFinish(h, i, now, role, k); // rally buff / Markie shield
             // Name + controller label and HP bar above the head (V19 ally style).
