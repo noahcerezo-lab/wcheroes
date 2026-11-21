@@ -408,6 +408,17 @@
                     floatText(h.x * S, h.y * S - 112, e.k, heroCfg(h.name).color, isMine(e.h) ? 14 : 11, 1100); // small tag at the hero, not a banner
                     break;
                 }
+                case 'boss:enter': {
+                    banners.push({ str: 'THE VOID EMPEROR AWAKENS', color: '#e6a8ff', born: now, life: 2300 });
+                    fx.push({ kind: 'ring', x: e.x * S, y: e.y * S, r0: 8, r1: 170, color: '#bd71ef', width: 7, start: now, life: 1200 });
+                    burst(e.x * S, e.y * S - 75, '#d89aff', 24, 5);
+                    addShake(5, 380, now);
+                    break;
+                }
+                case 'boss:target': {
+                    fx.push({ kind: 'bossTarget', x: e.x * S, y: e.y * S, r: e.r * S, start: now, life: e.ms });
+                    break;
+                }
                 case 'slam': addShake(5, 170, now); fx.push({ kind: 'floor', key: 'impact', x: e.x * S, y: e.y * S, r: (e.r || SLAM_R) * S, start: now, life: A ? A.duration('impact') : 420 }); break;
                 case 'down': { const h = latestHero(e.h); if (h) banners.push({ str: h.name + ' DOWN • STAND CLOSE TO REVIVE', color: '#ff8a8a', born: now, life: 2200, small: true }); break }
                 case 'revive': {
@@ -626,6 +637,30 @@
             g.restore();
         }
 
+        // A persistent boss bar, sourced entirely from the authoritative snapshot.
+        function drawBossBar(view, k) {
+            const boss = view.hud && view.hud.boss;
+            if (!boss) return;
+            const compact = k > 1.15, width = compact ? 300 : 460;
+            const x = (canvas.width - width) / 2, y = compact ? 104 : 126;
+            const hp = Math.max(0, Math.min(1, boss.hp / (boss.max || 1)));
+            g.save();
+            g.fillStyle = 'rgba(12,8,26,.85)';
+            g.fillRect(x - 10, y - 27, width + 20, 55);
+            g.font = 'bold 16px monospace';
+            g.textAlign = 'center';
+            g.fillStyle = '#f1c5ff';
+            g.fillText(boss.name, canvas.width / 2, y - 8);
+            g.fillStyle = '#382744';
+            g.fillRect(x, y, width, 14);
+            g.fillStyle = '#ba60e8';
+            g.fillRect(x, y, width * hp, 14);
+            g.strokeStyle = '#e7b7ff';
+            g.lineWidth = 2;
+            g.strokeRect(x, y, width, 14);
+            g.restore();
+        }
+
         function drawBanners(now, k) {
             const W = canvas.width, compact = k > 1.15;
             for (let j = banners.length - 1; j >= 0; j--) if (now - banners[j].born > banners[j].life) banners.splice(j, 1);
@@ -701,7 +736,18 @@
             for (const f of fx) {
                 const el = now - f.start;
                 if (el < 0) continue; // delayed effect (e.g. the crit's second ring) not started yet
-                if (f.kind === 'special') {
+                if (f.kind === 'bossTarget') {
+                    const p = Math.max(0, Math.min(1, el / f.life));
+                    g.save();
+                    g.globalAlpha = 0.35 + p * 0.5;
+                    g.fillStyle = 'rgba(180,66,230,.18)';
+                    g.strokeStyle = p > .72 ? '#ffe5ff' : '#d278fa';
+                    g.lineWidth = 3 + p * 3;
+                    g.beginPath(); g.ellipse(f.x, f.y, f.r, f.r * .55, 0, 0, Math.PI * 2); g.fill(); g.stroke();
+                    g.beginPath(); g.moveTo(f.x - 13, f.y); g.lineTo(f.x + 13, f.y);
+                    g.moveTo(f.x, f.y - 13); g.lineTo(f.x, f.y + 13); g.stroke();
+                    g.restore();
+                } else if (f.kind === 'special') {
                     const key = KIT[f.name] && KIT[f.name].spc;
                     const w = f.r * 2; // world radius wins over the 64px motif
                     const sq = f.name === 'NOAH' ? .5 : 1; // nova is drawn as a round rune; lay it on the floor
@@ -1194,6 +1240,7 @@
             const has = k2 => A && k2 && A.ready(k2);
             if (dieAt !== undefined && has(art.die)) { key = art.die; mode = 'once'; t0 = dieAt }
             else if (struck && has(art.strike) && now - m.strikeAt < A.duration(art.strike)) { key = art.strike; mode = 'once'; t0 = m.strikeAt }
+            else if (wind && art.key === 'voidEmperor' && snaps[snaps.length - 1]?.hud?.boss?.mode === 'target' && has('bossTargetWind')) { key = 'bossTargetWind'; mode = 'hold'; t0 = m.windAt }
             else if (wind && has(art.wind)) { key = art.wind; mode = 'hold'; t0 = m.windAt }
             else if (walking && has(art.walk)) { key = art.walk; flip = false }
             else if (struck) ox = dir * 7; // procedural lunge fallback
@@ -1205,7 +1252,10 @@
             if (tilt) { g.translate(0, -4); g.rotate(tilt); g.translate(0, 4) }
             if (fade !== undefined) g.globalAlpha = Math.max(0, fade);
             // World-scale telegraph (sheets only hint at it): warden plant ring at the slam radius.
-            if (wind && art.key === 'warden' && A) A.loop(g, 'warning', now, 0, 0, SLAM_R * S * 2 / k, SLAM_R * S / k);
+            if (wind && (art.key === 'warden' || (art.key === 'voidEmperor' && ((snaps[snaps.length - 1]?.hud?.boss?.mode !== 'target')))) && A) {
+                const radius = art.key === 'voidEmperor' ? 90 : SLAM_R;
+                A.loop(g, 'warning', now, 0, 0, radius * S * 2 / k, radius * S / k);
+            }
             if (!(env && env.shadow(g, art.key === 'warden' ? 2 : art.w > 90 ? 3 : 1, art.w * .8))) { g.fillStyle = '#0006'; g.beginPath(); g.ellipse(0, 1, art.w * .36, 6, 0, 0, Math.PI * 2); g.fill() }
             const drawFrame = () => {
                 if (!A) return false;
@@ -1222,7 +1272,7 @@
                 g.globalCompositeOperation = 'source-over';
             }
             g.globalAlpha = fade !== undefined ? Math.max(0, fade) : 1;
-            const top = art.key === 'warden' ? -88 : -68;
+            const top = art.key === 'voidEmperor' ? -156 : art.key === 'warden' ? -88 : -68;
             if (hpPct < 100 && fade === undefined) {
                 g.fillStyle = '#292035'; g.fillRect(-20, top, 40, 4);
                 g.fillStyle = '#ff5d73'; g.fillRect(-20, top, 40 * hpPct / 100, 4);
@@ -1285,6 +1335,7 @@
             drawChains(view, now, k);
             g.setTransform(1, 0, 0, 1, 0, 0);
             drawHud(view, room, myId, k, now);
+            drawBossBar(view, k);
             drawBanners(now, k);
             drawGameOver(now, view.hud);
             stats.frames++;

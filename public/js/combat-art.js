@@ -103,6 +103,7 @@
     const ENEMY_ART = [
         act('acolyte', 50), // 0 acolyte: melee grunt, ~64px tall like V19's swordsman
         act('warden', 74), // 1 warden: heavy ground slam
+        { key: 'voidEmperor', w: 116, walk: 'voidEmperor', wind: 'bossSlamWind', strike: 'bossSlam', die: null }, // 2 boss
     ];
     load();
     root.WCHCombatArt = { SHEETS, ENEMY_ART, load, ready, frame, play, loop, frameCount, duration, loadedCount: () => loaded };
