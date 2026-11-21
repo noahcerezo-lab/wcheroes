@@ -13,6 +13,10 @@
  *     seq per hero so the client can reconcile its prediction.
  *   - Rate limiting / validation on every client event.
  *   - Host can return the room to the lobby (play again).
+ *
+ * Phase C: shared/combat.js runs the fight (enemies, hits, damage, downed/revive, AI teammates,
+ * waves) inside this 20 Hz tick. Clients only send intents (move / attack / special); the server
+ * resolves every hit and broadcasts a compact snapshot plus that tick's events.
  */
 const express = require('express');
 const http = require('http');
@@ -22,6 +26,7 @@ const crypto = require('crypto');
 const SIM = require('./public/js/shared-sim.js');
 // Roster (slot order, names, colors) is shared with the browser: public/js/heroes-config.js
 const ROSTER = require('./public/js/heroes-config.js');
+const COMBAT = require('./shared/combat.js');
 
 const PORT = Number(process.env.PORT || 3000);
 const RECONNECT_GRACE_MS = Number(process.env.RECONNECT_GRACE_MS || 45000);
@@ -30,8 +35,9 @@ const INPUT_RATE = 22; // inputs per second refilled (client sends 20/s)
 const INPUT_BURST = 8; // short bursts allowed (network jitter can bunch inputs)
 const EVENT_RATE = 5; // lobby/room events per second
 const EVENT_BURST = 15;
-const SPECIAL_COOLDOWN_MS = 6500; // V19 special cooldown
-const AI_SPEED = 2.6;
+const FIRST_WAVE_DELAY_MS = Number(process.env.FIRST_WAVE_DELAY_MS ?? 3000); // calm start before wave 1
+const GAME_OVER_RETURN_MS = Number(process.env.GAME_OVER_RETURN_MS || 8000); // team wipe -> lobby
+const COMBAT_SEED = process.env.COMBAT_SEED ? Number(process.env.COMBAT_SEED) : null; // fixed fights for tests
 
 const app = express();
 const server = http.createServer(app);
@@ -41,10 +47,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get('/health', (_req, res) => res.json({ ok: true, rooms: rooms.size }));
 
 const HEROES = ROSTER.NAMES; // ['NOAH', 'DESTINY', 'MARKIE', 'ESPIRIT']
-const COLORS = ROSTER.HEROES.map(h => h.color);
-const ATTACK_COOLDOWN_MS = ROSTER.HEROES.map(h => h.v19.cool);
 const ARENA = SIM.ARENA;
-const clamp = SIM.clamp;
 const rooms = new Map();
 const sessions = new Map(); // token -> {code, playerId}
 const safeAck = (ack, data) => { if (typeof ack === 'function') ack(data) };
@@ -162,15 +165,19 @@ function join(socket, r, name, ack) {
 }
 
 function initialWorld(r) {
-    const spawn = [[410, 230], [510, 230], [410, 330], [510, 330]];
-    r.world = {
-        tick: 0, serverTime: Date.now(), arena: ARENA, zone: 0, round: r.round,
-        heroes: HEROES.map((name, i) => ({
-            name, color: COLORS[i], x: spawn[i][0], y: spawn[i][1], hp: 100, maxHp: 100,
-            facing: i % 2 ? -1 : 1, moving: false, seq: 0, attackN: 0, specialN: 0, attackAt: 0, specialAt: 0,
-            controller: controllerOf(r, i)?.id || null
-        }))
-    };
+    r.world = COMBAT.createBattle({ seed: COMBAT_SEED ?? crypto.randomBytes(4).readUInt32LE(0), firstWaveDelayMs: FIRST_WAVE_DELAY_MS });
+    r.world.round = r.round;
+    r.overAt = 0;
+    syncControllers(r);
+}
+
+// What clients receive. The internal world (RNG seed, hooks, timers) never leaves the server.
+// `full` adds the static parts (arena bounds) that only need sending once per battle.
+function battleView(r, full) {
+    const v = COMBAT.snapshot(r.world);
+    v.round = r.round;
+    if (full) { v.arena = ARENA; v.enemyTypes = COMBAT.ENEMY_TYPES.map(t => ({ key: t.key, scale: t.scale })) }
+    return v;
 }
 
 // Wrap a lobby/room event handler with a per-socket rate limit.
@@ -202,7 +209,7 @@ io.on('connection', socket => {
         const r = s && rooms.get(s.code), p = r?.players.get(s?.playerId);
         if (!r || !p) return safeAck(ack, { ok: false, error: 'Session expired.' });
         attach(socket, r, p);
-        safeAck(ack, { ok: true, code: r.code, playerId: p.id, token: p.token, phase: r.phase, world: r.world, lastSeq: p.lastSeq });
+        safeAck(ack, { ok: true, code: r.code, playerId: p.id, token: p.token, phase: r.phase, world: r.phase === 'battle' && r.world ? battleView(r, true) : null, lastSeq: p.lastSeq });
         emitRoom(r);
     }));
     socket.on('hero:select', limited(socket, (data, ack) => {
@@ -234,7 +241,7 @@ io.on('connection', socket => {
         for (const v of playersOf(r)) { v.lastMoveTick = -9 }
         initialWorld(r);
         emitRoom(r);
-        io.to(r.code).emit('battle:start', r.world);
+        io.to(r.code).emit('battle:start', battleView(r, true));
         safeAck(ack, { ok: true });
     }));
     // Play again: host sends everyone back to hero select. Ready flags reset.
@@ -242,11 +249,7 @@ io.on('connection', socket => {
         const { r, p } = ctx();
         if (!r || !p || r.host !== p.id) return safeAck(ack, { ok: false, error: 'Only the host can return to the lobby.' });
         if (r.phase !== 'battle') return safeAck(ack, { ok: false, error: 'Not in a battle.' });
-        r.phase = 'lobby';
-        r.world = null;
-        for (const v of playersOf(r)) v.ready = false;
-        io.to(r.code).emit('battle:end', { reason: 'host', by: p.name });
-        emitRoom(r);
+        endBattle(r, { reason: 'host', by: p.name });
         safeAck(ack, { ok: true });
     }));
     // Movement input. Not acked: the next snapshot's hero.seq is the acknowledgement.
@@ -258,53 +261,57 @@ io.on('connection', socket => {
         p.lastSeq = seq;
         const h = r.world.heroes[p.hero];
         if (!takeToken(p.bucket, INPUT_RATE, INPUT_BURST)) { p.dropped++; return } // acked (seq advanced) but not applied
+        if (h.state !== 'alive' || r.world.over) return; // downed heroes wait for a revive
         const move = SIM.normalizeMove(data.x, data.y);
         p.input = move;
-        if (SIM.stepHero(h, move)) p.lastMoveTick = r.world.tick;
-        const now = Date.now();
-        if (data.attack === true && now - h.attackAt >= ATTACK_COOLDOWN_MS[p.hero]) { h.attackAt = now; h.attackN++ }
-        if (data.special === true && now - h.specialAt >= SPECIAL_COOLDOWN_MS) { h.specialAt = now; h.specialN++ }
+        if (SIM.stepHero(h, move, h.speed)) p.lastMoveTick = r.world.tick;
+        // Intents only. The next tick checks cooldowns and resolves hits; any other fields
+        // (damage, target, hp...) are ignored, so a modified client cannot deal or avoid damage.
+        if (data.attack === true) h.wantAttack = true;
+        if (data.special === true) h.wantSpecial = true;
     });
     socket.on('room:leave', () => leave(socket));
     socket.on('disconnect', () => drop(socket));
 });
 
-// Authoritative 20 Hz tick. Human movement is applied as inputs arrive (rate-limited above);
-// the tick runs AI teammates, records who controls each hero and broadcasts one snapshot.
-// Combat, enemy AI, damage and waves are not networked yet.
-function stepWorld(r) {
-    const w = r.world;
-    w.tick++;
-    w.serverTime = Date.now();
-    const humans = connectedPlayers(r);
-    for (let i = 0; i < HEROES.length; i++) {
-        const h = w.heroes[i];
-        const p = humans.find(v => v.hero === i);
-        const owner = playersOf(r).find(v => v.hero === i);
+function endBattle(r, info) {
+    r.phase = 'lobby';
+    r.world = null;
+    r.overAt = 0;
+    for (const v of playersOf(r)) v.ready = false;
+    io.to(r.code).emit('battle:end', info);
+    emitRoom(r);
+}
+
+// Who drives each hero this tick: a connected human, otherwise the AI.
+function syncControllers(r) {
+    const w = r.world, humans = connectedPlayers(r);
+    w.heroes.forEach((h, i) => {
+        const p = humans.find(v => v.hero === i), owner = playersOf(r).find(v => v.hero === i);
         h.seq = owner ? owner.lastSeq : 0;
-        if (p) {
-            h.controller = p.id;
-            h.moving = w.tick - p.lastMoveTick <= 1;
-            continue;
-        }
-        h.controller = null;
-        const ox = h.x, oy = h.y;
-        const leader = w.heroes.find(v => humans.some(q => q.hero === HEROES.indexOf(v.name))) || w.heroes[0];
-        const dx = leader.x - h.x + (i % 2 ? 55 : -55), dy = leader.y - h.y + ((i % 3) - 1) * 50, d = Math.hypot(dx, dy);
-        if (d > 65) {
-            h.x = clamp(h.x + dx / d * AI_SPEED, ARENA.minX, ARENA.maxX);
-            h.y = clamp(h.y + dy / d * AI_SPEED, ARENA.minY, ARENA.maxY);
-        }
-        const mx = h.x - ox;
-        h.moving = Math.abs(mx) + Math.abs(h.y - oy) > 0.01;
-        if (Math.abs(mx) > 0.01) h.facing = mx > 0 ? 1 : -1;
-    }
+        h.controller = p ? p.id : null;
+        h.ai = !p;
+        if (p) h.moving = w.tick - p.lastMoveTick <= 1;
+    });
+}
+
+// Authoritative 20 Hz tick: human movement was applied as inputs arrived (rate-limited above);
+// here the combat sim resolves attacks/specials, runs enemies and AI teammates, revives and waves.
+function stepWorld(r) {
+    syncControllers(r);
+    COMBAT.step(r.world);
+    if (r.world.over && !r.overAt) r.overAt = Date.now();
 }
 setInterval(() => {
     for (const r of rooms.values()) {
         if (r.phase !== 'battle' || !r.world) continue;
+        if (r.overAt && Date.now() - r.overAt >= GAME_OVER_RETURN_MS) {
+            const w = r.world;
+            endBattle(r, { reason: 'wipe', wave: w.wave, score: w.score, kills: w.kills });
+            continue;
+        }
         stepWorld(r);
-        io.to(r.code).emit('battle:state', r.world);
+        io.to(r.code).emit('battle:state', battleView(r, false));
     }
 }, SIM.TICK_MS);
 server.listen(PORT, () => console.log('West Coast Heroes multiplayer server on port ' + PORT));
