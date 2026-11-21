@@ -37,6 +37,15 @@
     };
     const SPECIAL_RADIUS = { NOAH: 140, DESTINY: 120, MARKIE: 107, ESPIRIT: 227 }; // fallback; events carry r
     const SLAM_R = 55; // Temple Warden shockwave radius (world units)
+    // Power-ups (shared/combat.js PICKUP_KINDS order) and buff colors. pu[] in snapshots = FURY, HASTE, WARD, SYNERGY.
+    const PICKUP = [
+        { key: 'heal', label: 'HEAL', color: '#74FFB2', core: '#ADFFCB' },
+        { key: 'fury', label: 'FURY', color: '#FF7A45', core: '#FFD36D' },
+        { key: 'haste', label: 'HASTE', color: '#53BAFF', core: '#D8FFFF' },
+        { key: 'ward', label: 'WARD', color: '#A9B8FF', core: '#E8EEFF' },
+    ];
+    const BUFF = [PICKUP[1], PICKUP[2], PICKUP[3], { key: 'synergy', label: 'SYNERGY', color: '#E6AD57', core: '#FFD36D' }];
+    const BUFF_MAX = [105, 105, 110, 65]; // full duration in 0.1 s, for the HUD timer bars
 
     function lerp(a, b, t) { return a + (b - a) * t }
     // 8-way aim index (shared-sim DIR8: 0 right, 2 down, 4 left, 6 up) -> unit vector.
@@ -102,8 +111,9 @@
             banners.length = 0; chains.length = 0; flashes.clear(); ghosts.length = 0; enemyMotion.clear(); overInfo = null;
         }
 
-        function burst(x, y, color, n, speed = 4) {
-            for (let i = 0; i < n && parts.length < 260; i++) parts.push({ x, y, vx: (Math.random() - .5) * 2 * speed, vy: (Math.random() - .5) * 2 * speed - 1, born: performance.now(), life: 380 + Math.random() * 200, color });
+        // Particle cap keeps phones smooth: 260 squares at most, each one fillRect (no blur/shadows).
+        function burst(x, y, color, n, speed = 4, o) {
+            for (let i = 0; i < n && parts.length < 260; i++) parts.push({ x, y, vx: (Math.random() - .5) * 2 * speed, vy: (Math.random() - .5) * 2 * speed * (o && o.flat || 1) - (o && o.lift !== undefined ? o.lift : 1), born: performance.now(), life: (o && o.life || 380) + Math.random() * 200, color, sz: o && o.size || 5, gr: o && o.grav !== undefined ? o.grav : .04 });
         }
         function floatText(x, y, str, color, size, life = 870) { if (texts.length < 80) texts.push({ x, y, str, color, size, born: performance.now(), life, dx: (Math.random() - .5) * 14 }) } // ~26 V19 ticks
         function latestHero(i) { const s = snaps[snaps.length - 1]; return s && s.heroes[i] }
@@ -195,6 +205,27 @@
                     banners.push({ str: h.name + ' REVIVED!', color: '#A5FFBF', born: now, life: 1500, small: true });
                     break;
                 }
+                case 'pspawn': { // a power-up appears: small flash where it lands
+                    const P = PICKUP[e.k] || PICKUP[0];
+                    fx.push({ kind: 'ring', x: e.x * S, y: e.y * S, r0: 6, r1: 46, color: P.color, width: 3, start: now, life: 420 });
+                    burst(e.x * S, e.y * S - 24, P.core, 8, 3);
+                    break;
+                }
+                case 'pick': {
+                    const P = PICKUP[e.k] || PICKUP[0], h = latestHero(e.h);
+                    stats.picks = (stats.picks || 0) + 1;
+                    fx.push({ kind: 'ring', x: e.x * S, y: e.y * S, r0: 10, r1: 80, color: P.color, width: 4, start: now, life: 380 });
+                    burst(e.x * S, e.y * S - 30, P.color, 14, 5); burst(e.x * S, e.y * S - 30, P.core, 8, 3);
+                    if (h) floatText(h.x * S, h.y * S - 118, P.label + (P.key === 'heal' ? '' : '!'), P.core, 22, 1000);
+                    if (h) banners.push({ str: h.name + ' • ' + P.label + (P.key === 'heal' ? ' +32% HP' : P.key === 'fury' ? ' • CRIT UP' : P.key === 'haste' ? ' • SPEED UP' : ' • DAMAGE DOWN'), color: P.core, born: now, life: 1400, small: true });
+                    break;
+                }
+                case 'syn': { // SQUAD SYNERGY: gold particles on every boosted hero + a short banner
+                    stats.synergy = (stats.synergy || 0) + 1;
+                    for (const j of e.all || []) { const u = latestHero(j); if (u) { burst(u.x * S, u.y * S - 50, '#FFD36D', 10, 4, { life: 600 }); burst(u.x * S, u.y * S - 50, '#E6AD57', 6, 2, { lift: 2.2, grav: 0, life: 700 }) } }
+                    banners.push({ str: 'SQUAD SYNERGY • CRIT UP', color: '#FFD36D', born: now, life: 1700 });
+                    break;
+                }
                 case 'wave': banners.push({ str: 'WAVE ' + e.n + (e.boss ? ' • BOSS WAVE' : ''), color: '#FFD36D', born: now, life: 2000 }); break;
                 case 'clear': banners.push({ str: 'WAVE ' + e.n + ' CLEARED • +25 HP', color: '#9ef0c0', born: now, life: 2200 }); break;
                 case 'over': overInfo = { wave: e.wave, score: e.score, kills: e.kills, at: now }; break;
@@ -205,7 +236,7 @@
         function sample(now) {
             if (!snaps.length) return null;
             const latest = snaps[snaps.length - 1];
-            if (!interpEnabled || snaps.length < 2) return { heroes: latest.heroes, enemies: latest.enemies, zone: latest.zone, hud: latest.hud };
+            if (!interpEnabled || snaps.length < 2) return { heroes: latest.heroes, enemies: latest.enemies, zone: latest.zone, hud: latest.hud, pk: latest.hud.pk || [] };
             const renderTick = (now - INTERP_DELAY_MS - clockOffset) / TICK_MS;
             let a = snaps[0], b = latest;
             if (renderTick >= latest.tick) { a = b = latest }
@@ -231,7 +262,7 @@
                     const out = eb.slice(); out[2] = lerp(ea[2], eb[2], t); out[3] = lerp(ea[3], eb[3], t); return out;
                 });
             };
-            return { heroes, enemies: blend(a.enemies, b.enemies), zone: b.zone, hud: b.hud };
+            return { heroes, enemies: blend(a.enemies, b.enemies), zone: b.zone, hud: b.hud, pk: latest.hud.pk || [] };
         }
 
         // Bigger sprites/labels when the canvas is shown small (phones), so units stay readable.
@@ -292,6 +323,19 @@
                 const cd = view.heroes[mine].cd || 0;
                 g.fillStyle = cd ? '#c9b8e8' : '#9ef0c0';
                 g.fillText('SPECIAL ' + (cd ? (cd / 10).toFixed(1) + 's' : 'READY'), W / k - 30, 82);
+            }
+            if (mine >= 0) { // power-up timers for your hero (under the squad panel)
+                const pu = view.heroes[mine].pu || [];
+                let yy = 18 + 30 + view.heroes.length * 22 + 10;
+                for (let j = 0; j < 4; j++) if (pu[j]) {
+                    const B = BUFF[j];
+                    g.textAlign = 'left';
+                    g.fillStyle = '#161326d9'; g.fillRect(18, yy, 200, 24);
+                    g.fillStyle = B.color; g.fillRect(22, yy + 18, 192 * Math.min(1, pu[j] / BUFF_MAX[j]), 3);
+                    g.fillStyle = B.core; g.font = 'bold 13px monospace';
+                    g.fillText(B.label + ' ' + (pu[j] / 10).toFixed(1) + 's', 30, yy + 15);
+                    yy += 28;
+                }
             }
             if (hud.combo >= 2) { // combo text + Draper's combo sting underlay on each new KO
                 const cx = W / k - 160, cy = 112;
@@ -433,7 +477,7 @@
                 const f = age / 16.7;
                 g.globalAlpha = 1 - age / p.life;
                 g.fillStyle = p.color;
-                g.fillRect(Math.round(p.x + p.vx * f), Math.round(p.y + p.vy * f + 0.04 * f * f), 5, 5);
+                g.fillRect(Math.round(p.x + p.vx * f), Math.round(p.y + p.vy * f + p.gr * f * f), p.sz, p.sz);
             }
             g.globalAlpha = 1;
         }
@@ -473,6 +517,95 @@
         }
 
         // ---------- units ----------
+        // Power-up icon (vector, no images): heal cross, fury star, haste chevrons, ward shield.
+        function pickupIcon(kind, r) {
+            g.beginPath();
+            if (kind === 0) { const a = r * .32; g.rect(-a, -r, 2 * a, 2 * r); g.rect(-r, -a, 2 * r, 2 * a) }
+            else if (kind === 1) { for (let j = 0; j < 8; j++) { const rr = j % 2 ? r * .42 : r, an = j * Math.PI / 4 - Math.PI / 2; g.lineTo(Math.cos(an) * rr, Math.sin(an) * rr) } g.closePath() }
+            else if (kind === 2) { for (const ox of [-r * .55, r * .25]) { g.moveTo(ox, -r * .8); g.lineTo(ox + r * .6, 0); g.lineTo(ox, r * .8); g.lineTo(ox + r * .3, r * .8); g.lineTo(ox + r * .9, 0); g.lineTo(ox + r * .3, -r * .8); g.closePath() } }
+            else { g.moveTo(0, -r); g.lineTo(r * .85, -r * .6); g.quadraticCurveTo(r * .8, r * .55, 0, r); g.quadraticCurveTo(-r * .8, r * .55, -r * .85, -r * .6); g.closePath() }
+            g.fill();
+        }
+        // Glowing pickups on the floor: pulsing halo, bobbing orb + icon, blinks in its last 3 s.
+        function drawPickups(view, now, k) {
+            for (const p of view.pk || []) {
+                const [id, kind, x, y, secs] = p, P = PICKUP[kind] || PICKUP[0];
+                if (secs <= 3 && Math.floor(now / 150) % 2) continue;
+                const px = x * S, py = y * S, bob = Math.sin(now / 260 + id) * 5, pulse = .5 + .5 * Math.sin(now / 180 + id), r = 17 * Math.min(k, 1.3);
+                g.save();
+                g.globalAlpha = .55; g.fillStyle = '#0b0914'; g.beginPath(); g.ellipse(px, py + 4, r * 1.3, r * .45, 0, 0, Math.PI * 2); g.fill();
+                g.globalCompositeOperation = 'lighter';
+                g.globalAlpha = .22 + .2 * pulse; g.fillStyle = P.color;
+                g.beginPath(); g.ellipse(px, py + 2, r * (2 + pulse * .5), r * (.8 + pulse * .2), 0, 0, Math.PI * 2); g.fill();
+                g.globalAlpha = .35 + .25 * pulse; g.beginPath(); g.arc(px, py - 30 + bob, r * 1.55, 0, Math.PI * 2); g.fill();
+                g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+                g.fillStyle = '#141024'; g.beginPath(); g.arc(px, py - 30 + bob, r, 0, Math.PI * 2); g.fill();
+                g.lineWidth = 3; g.strokeStyle = P.color; g.stroke();
+                g.translate(px, py - 30 + bob); g.fillStyle = P.core; pickupIcon(kind, r * .62);
+                g.restore();
+                if (Math.random() < .08) burst(px + (Math.random() - .5) * r * 2, py - 30 + bob, P.core, 1, 1, { lift: 1.6, grav: 0, life: 500, size: 4 });
+            }
+        }
+        // Destiny's passive aura (combat-vfx.md: dashed ellipse 145x85, five orbiting #9BFFCB pips), made more
+        // present: brighter stroke, soft mint floor glow, and a pulse that expands when she attacks.
+        function drawDestinyAura(view, now) {
+            view.heroes.forEach((h, i) => {
+                if (h.name !== 'DESTINY' || h.state) return;
+                const x = h.x * S, y = h.y * S, rx = 145, ry = 85;
+                let pulse = 0;
+                for (const f of fx) if (f.i === i && (f.kind === 'attack' || f.kind === 'cast')) pulse = Math.max(pulse, 1 - (now - f.start) / 420);
+                pulse = Math.max(0, pulse);
+                const breathe = .5 + .5 * Math.sin(now / 500);
+                g.save();
+                g.globalCompositeOperation = 'lighter';
+                g.globalAlpha = .1 + .05 * breathe + .18 * pulse; g.fillStyle = '#74FFB2';
+                g.beginPath(); g.ellipse(x, y, rx * .92, ry * .92, 0, 0, Math.PI * 2); g.fill();
+                g.globalAlpha = 1;
+                g.setLineDash([12, 9]); g.lineDashOffset = -now / 40;
+                g.lineWidth = 3; g.strokeStyle = 'rgba(105,255,170,' + (.32 + .14 * breathe + .3 * pulse).toFixed(3) + ')';
+                g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); g.stroke();
+                g.setLineDash([]);
+                if (pulse > 0) { // attack pulse: a bright ring sweeping outward
+                    const t = 1 - pulse;
+                    g.lineWidth = 4 * pulse + 1; g.strokeStyle = 'rgba(173,255,203,' + (.75 * pulse).toFixed(3) + ')';
+                    g.beginPath(); g.ellipse(x, y, rx * (.45 + .6 * t), ry * (.45 + .6 * t), 0, 0, Math.PI * 2); g.stroke();
+                }
+                g.fillStyle = '#9BFFCB';
+                for (let j = 0; j < 5; j++) { const an = now / 900 + j * Math.PI * 2 / 5; g.fillRect(Math.round(x + Math.cos(an) * rx - 2), Math.round(y + Math.sin(an) * ry - 2), 5, 5) }
+                g.restore();
+            });
+        }
+        // Buffed heroes: FURY flames, HASTE speed streaks, WARD bubble, SYNERGY gold orbit; icons over the head.
+        function drawBuffs(view, now, k) {
+            view.heroes.forEach((h, i) => {
+                const pu = h.pu; if (!pu || h.state || !(pu[0] || pu[1] || pu[2] || pu[3])) return;
+                const x = h.x * S, y = h.y * S, kk = Math.min(k, 1.3);
+                g.save();
+                g.globalCompositeOperation = 'lighter';
+                if (pu[2]) { // WARD: translucent shield bubble
+                    g.globalAlpha = .16 + .06 * Math.sin(now / 200); g.fillStyle = '#A9B8FF';
+                    g.beginPath(); g.ellipse(x, y - 40 * kk, 40 * kk, 52 * kk, 0, 0, Math.PI * 2); g.fill();
+                    g.globalAlpha = .7; g.lineWidth = 2; g.strokeStyle = '#E8EEFF'; g.stroke();
+                }
+                if (pu[1] && h.moving) { // HASTE: cyan streaks trailing behind
+                    g.globalAlpha = .6; g.strokeStyle = '#79E4FF'; g.lineWidth = 3;
+                    const dir = h.facing === -1 ? 1 : -1;
+                    for (let j = 0; j < 3; j++) { const yy = y - (18 + j * 18) * kk, off = (now / 6 + j * 37) % 30; g.beginPath(); g.moveTo(x + dir * (22 + off) * kk, yy); g.lineTo(x + dir * (46 + off) * kk, yy); g.stroke() }
+                }
+                if (pu[3]) { // SYNERGY: four gold pips orbiting
+                    g.globalAlpha = .9; g.fillStyle = '#FFD36D';
+                    for (let j = 0; j < 4; j++) { const an = now / 300 + j * Math.PI / 2; g.fillRect(Math.round(x + Math.cos(an) * 36 * kk - 3), Math.round(y - 40 * kk + Math.sin(an) * 14 * kk - 3), 6, 6) }
+                }
+                g.restore();
+                if (pu[0] && Math.random() < .35) burst(x + (Math.random() - .5) * 40 * kk, y - Math.random() * 60 * kk, Math.random() < .5 ? '#FF7A45' : '#FFD36D', 1, 1, { lift: 2.4, grav: -.01, life: 420, size: 4 }); // FURY flames
+                if (pu[3] && Math.random() < .2) burst(x + (Math.random() - .5) * 50 * kk, y - 20 - Math.random() * 60 * kk, '#FFD36D', 1, 1, { lift: 1.5, grav: 0, life: 520, size: 4 });
+                // little buff icons above the name
+                const on = [0, 1, 2, 3].filter(j => pu[j]);
+                g.save(); g.translate(x - (on.length - 1) * 10 * kk, y - 112 * kk);
+                for (const j of on) { g.fillStyle = '#141024d0'; g.beginPath(); g.arc(0, 0, 8 * kk, 0, Math.PI * 2); g.fill(); g.fillStyle = BUFF[j].core; if (j < 3) pickupIcon(j + 1, 5 * kk); else { g.beginPath(); g.arc(0, 0, 4 * kk, 0, Math.PI * 2); g.fill() } g.translate(20 * kk, 0) }
+                g.restore();
+            });
+        }
         function drawHero(h, i, now, room, myId, k) {
             const px = h.x * S, py = h.y * S;
             const human = controllerOf(room, i), waiting = reservedOf(room, i);
@@ -621,11 +754,14 @@
             R.drawArena(g, now, view.zone || 0);
             // Layering (combat-vfx.md): floor rings -> units -> slashes/projectiles -> sparks -> numbers -> HUD/combo.
             drawFloorFx(now);
+            drawDestinyAura(view, now);
+            drawPickups(view, now, k);
             const units = view.heroes.map((h, i) => ({ y: h.y, h, i }));
             for (const e of view.enemies || []) units.push({ y: e[3], e });
             for (const gh of ghosts) { const el = now - gh.start; units.push({ y: gh.e[3], e: gh.e, dieAt: gh.start, fade: el < gh.life - 160 ? 1 : (gh.life - el) / 160 }) } // die frames, then fade
             units.sort((a, b) => a.y - b.y).forEach(u => u.e ? drawEnemy(u.e, now, k, u.fade, u.dieAt) : drawHero(u.h, u.i, now, room, myId, k));
             if (enemyMotion.size > 64) { const live = new Set((view.enemies || []).map(e => e[0])); for (const id of enemyMotion.keys()) if (!live.has(id)) enemyMotion.delete(id) }
+            drawBuffs(view, now, k);
             drawActionFx(view, now, k);
             drawParticles(now);
             drawNumbers(now);
@@ -640,7 +776,7 @@
         function start() { if (!running) { running = true; requestAnimationFrame(frame) } }
         function stop() { running = false }
 
-        return { push, reset, start, stop, sample, stats, interpolating: interpEnabled, fxCounts: () => ({ fx: fx.length, parts: parts.length, texts: texts.length, banners: banners.length, art: A ? A.loadedCount() : 0, shakes: shake.count, reducedMotion: reducedMotion() }), chainOf: i => chains[i] ? chains[i].n : 0, lastAttackFx: () => { const f = [...fx].reverse().find(v => v.kind === 'attack'); return f ? { name: f.name, aim: f.aim, stage: f.stage } : null } };
+        return { push, reset, start, stop, sample, stats, interpolating: interpEnabled, fxCounts: () => ({ fx: fx.length, parts: parts.length, texts: texts.length, banners: banners.length, art: A ? A.loadedCount() : 0, shakes: shake.count, reducedMotion: reducedMotion() }), pickupsShown: () => { const v = sample(performance.now()); return v ? (v.pk || []).length : 0 }, chainOf: i => chains[i] ? chains[i].n : 0, lastAttackFx: () => { const f = [...fx].reverse().find(v => v.kind === 'attack'); return f ? { name: f.name, aim: f.aim, stage: f.stage } : null } };
     }
 
     root.WCHArena = { createArena, TICK_MS, INTERP_DELAY_MS };
