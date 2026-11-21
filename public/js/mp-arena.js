@@ -443,6 +443,7 @@
         function drawFloorFx(now) {
             for (const f of fx) {
                 const el = now - f.start;
+                if (el < 0) continue; // delayed effect (e.g. the crit's second ring) not started yet
                 if (f.kind === 'special') {
                     const key = KIT[f.name] && KIT[f.name].spc;
                     const w = f.r * 2; // world radius wins over the 64px motif
@@ -872,7 +873,7 @@
         function start() { if (!running) { running = true; requestAnimationFrame(frame) } }
         function stop() { running = false }
 
-        return { push, reset, start, stop, sample, stats, interpolating: interpEnabled, fxCounts: () => ({ fx: fx.length, parts: parts.length, texts: texts.length, banners: banners.length, art: A ? A.loadedCount() : 0, shakes: shake.count, reducedMotion: reducedMotion() }), pickupsShown: () => { const v = sample(performance.now()); return v ? (v.pk || []).length : 0 }, chainOf: i => chains[i] ? chains[i].n : 0, lastAttackFx: () => { const f = [...fx].reverse().find(v => v.kind === 'attack'); return f ? { name: f.name, aim: f.aim, stage: f.stage } : null } };
+        return { push, reset, start, stop, sample, stats, interpolating: interpEnabled, fxCounts: () => ({ fx: fx.length, parts: parts.length, texts: texts.length, banners: banners.length, art: A ? A.loadedCount() : 0, shakes: shake.count, reducedMotion: reducedMotion() }), pickupsShown: () => { const v = sample(performance.now()); return v ? (v.pk || []).length : 0 }, chainOf: i => chains[i] ? chains[i].n : 0, lastAttackFx: name => { const f = [...fx].reverse().find(v => v.kind === 'attack' && (!name || v.name === name)); return f ? { name: f.name, aim: f.aim, stage: f.stage } : null } };
     }
 
     root.WCHArena = { createArena, TICK_MS, INTERP_DELAY_MS };
