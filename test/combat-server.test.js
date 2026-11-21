@@ -32,7 +32,10 @@ test('downed humans cannot move; a team wipe shows game over and returns everyon
     const srv = await startServer({ FIRST_WAVE_DELAY_MS: '0', ENEMY_DAMAGE_MUL: '60', GAME_OVER_RETURN_MS: '1500', COMBAT_SEED: '4' });
     try {
         const { cs: [A, B] } = await battleWith(srv, 2);
-        const down = await once(A, 'battle:state', w => w.heroes[0].state === 1, 60000);
+        // No projectile enemies any more, so walk both humans to the left edge where enemies come in.
+        const walk = setInterval(() => { if (A.latest && A.latest.heroes[0].state !== 1) A.input(-1, 0); B.input(-1, 0) }, 50);
+        let down;
+        try { down = await once(A, 'battle:state', w => w.heroes[0].state === 1, 60000) } finally { clearInterval(walk) }
         const x0 = down.heroes[0].x, y0 = down.heroes[0].y;
         for (let i = 0; i < 6; i++) { A.input(1, 1); await wait(50) }
         await wait(200);
