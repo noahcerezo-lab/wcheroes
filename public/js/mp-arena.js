@@ -90,6 +90,7 @@
         const pool = root.WCHFxPool.createPool(520);
         const anim = root.WCHHeroAnim ? root.WCHHeroAnim.create({ R, pool, S, theme: ART_THEME, procedural: !!opts.procedural }) : null;
         const SH = root.WCHSheets || null;
+        const env = root.WCHEnv ? root.WCHEnv.create({ OV }) : null; // Draper's environment (cached per zone)
         // Oracle's fx.js (impact presets, cosmetic hit-stop time scale) once its module has loaded.
         let ofx = null; const OC = {};
         function oracle() {
@@ -404,17 +405,17 @@
                     if (h.name === 'DESTINY' && SH) fx.push({ kind: 'ov', sheet: 'destinyGuard', n: 8, fd: 70, follow: e.h, sc: 2.2 * uiScale(), start: now, life: 560 }); // gold shield + mint heal ring
                     if (h.name === 'DESTINY') sfx('healChime', e.h);
                     addShake(3, 150, now);
-                    banners.push({ str: h.name + ' • ' + e.k, color: heroCfg(h.name).color, born: now, life: 1300, small: true });
+                    floatText(h.x * S, h.y * S - 112, e.k, heroCfg(h.name).color, isMine(e.h) ? 14 : 11, 1100); // small tag at the hero, not a banner
                     break;
                 }
                 case 'slam': addShake(5, 170, now); fx.push({ kind: 'floor', key: 'impact', x: e.x * S, y: e.y * S, r: (e.r || SLAM_R) * S, start: now, life: A ? A.duration('impact') : 420 }); break;
-                case 'down': { const h = latestHero(e.h); if (h) banners.push({ str: h.name + ' IS DOWN — STAND NEXT TO THEM TO REVIVE', color: '#ff8a8a', born: now, life: 2200, small: true }); break }
+                case 'down': { const h = latestHero(e.h); if (h) banners.push({ str: h.name + ' DOWN • STAND CLOSE TO REVIVE', color: '#ff8a8a', born: now, life: 2200, small: true }); break }
                 case 'revive': {
                     const h = latestHero(e.h);
                     if (!h) break;
                     fx.push({ kind: 'floor', key: 'reviveRing', x: h.x * S, y: h.y * S, r: 60, start: now, life: A ? A.duration('reviveRing') : 640 });
                     burst(h.x * S, h.y * S - 40, '#A5FFBF', 16, 5);
-                    banners.push({ str: h.name + ' REVIVED!', color: '#A5FFBF', born: now, life: 1500, small: true });
+                    banners.push({ str: h.name + ' REVIVED', color: '#A5FFBF', born: now, life: 1300, small: true });
                     break;
                 }
                 case 'pspawn': { // a power-up appears: small flash where it lands
@@ -430,13 +431,13 @@
                     fx.push({ kind: 'ring', x: e.x * S, y: e.y * S, r0: 10, r1: 80, color: P.color, width: 4, start: now, life: 380 });
                     burst(e.x * S, e.y * S - 30, P.color, 14, 5); burst(e.x * S, e.y * S - 30, P.core, 8, 3);
                     if (h) floatText(h.x * S, h.y * S - 118, P.label + (P.key === 'heal' ? '' : '!'), P.core, 22, 1000);
-                    if (h) banners.push({ str: h.name + ' • ' + P.label + (P.key === 'heal' ? ' +32% HP' : P.key === 'fury' ? ' • CRIT UP' : P.key === 'haste' ? ' • SPEED UP' : ' • DAMAGE DOWN'), color: P.core, born: now, life: 1400, small: true });
+                    if (h && isMine(e.h)) banners.push({ str: P.label + (P.key === 'heal' ? ' +32% HP' : P.key === 'fury' ? ' • CRIT UP' : P.key === 'haste' ? ' • SPEED UP' : ' • DMG DOWN'), color: P.core, born: now, life: 1200, small: true });
                     break;
                 }
                 case 'syn': { // SQUAD SYNERGY: gold particles on every boosted hero + a short banner
                     stats.synergy = (stats.synergy || 0) + 1;
                     for (const j of e.all || []) { const u = latestHero(j); if (u) { burst(u.x * S, u.y * S - 50, '#FFD36D', 10, 4, { life: 600 }); burst(u.x * S, u.y * S - 50, '#E6AD57', 6, 2, { lift: 2.2, grav: 0, life: 700 }) } }
-                    banners.push({ str: 'SQUAD SYNERGY • CRIT UP', color: '#FFD36D', born: now, life: 1700 });
+                    banners.push({ str: 'SYNERGY • CRIT UP', color: '#FFD36D', born: now, life: 1500, small: true });
                     break;
                 }
                 case 'lvl': {
@@ -447,13 +448,13 @@
                         if (anim) anim.onLevelUp(j, now + j * 90);
                         floatText(u.x * S, u.y * S - 130, 'Lv ' + (u.lv || e.lv), '#FFE9A8', 20, 1400);
                     }
-                    banners.push({ str: 'LEVEL UP • SQUAD Lv ' + e.lv, color: '#FFD36D', born: now, life: 2200 });
+                    banners.push({ str: 'LEVEL UP • Lv ' + e.lv, color: '#FFD36D', born: now, life: 2200 });
                     stats.levelUps = (stats.levelUps || 0) + 1;
                     sfx('levelUp');
                     break;
                 }
-                case 'wave': banners.push({ str: 'WAVE ' + e.n + (e.boss ? ' • BOSS WAVE' : ''), color: '#FFD36D', born: now, life: 2000 }); break;
-                case 'clear': sfx('waveCleared'); banners.push({ str: 'WAVE ' + e.n + ' CLEARED • +25 HP', color: '#9ef0c0', born: now, life: 2200 }); break;
+                case 'wave': banners.push({ str: 'WAVE ' + e.n + (e.boss ? ' • BOSS' : ''), color: '#FFD36D', born: now, life: 1600 }); break;
+                case 'clear': sfx('waveCleared'); banners.push({ str: 'WAVE ' + e.n + ' CLEARED • +25 HP', color: '#9ef0c0', born: now, life: 1800 }); break;
                 case 'over': overInfo = { wave: e.wave, score: e.score, kills: e.kills, at: now }; break;
             }
         }
@@ -501,6 +502,7 @@
 
         // ---------- HUD ----------
         function drawHud(view, room, myId, k, now) {
+            if (k > 1.15) return drawHudCompact(view, room, myId, k, now);
             const W = canvas.width;
             const zone = view.zone || 0;
             g.save();
@@ -576,28 +578,84 @@
             g.restore();
         }
 
-        function drawBanners(now, k) {
-            const W = canvas.width;
-            let y = 190;
-            for (let j = banners.length - 1; j >= 0; j--) if (now - banners[j].born > banners[j].life) banners.splice(j, 1);
-            const big = banners.filter(b => !b.small).slice(-1), small = banners.filter(b => b.small).slice(-3);
+        // Banners live in one slim band under the top HUD (sky area, above the floor where units walk), so they
+        // never cover characters: one main line (newest) + at most one small line, short text, quick fade.
+        // Phones (canvas shown small): a slim, low-clutter HUD. Squad = 4 compact rows (colour chip, name, HP bar)
+        // in the top-left; wave/score/KOs centred at the top (the RETURN/LEAVE buttons own the top-right corner);
+        // special status + buff timers as small pills. The canvas itself sits inside the safe area (CSS).
+        function drawHudCompact(view, room, myId, k, now) {
+            const W = canvas.width, ks = Math.min(k, 1.5), hud = view.hud || {};
+            const mine = view.heroes.findIndex((h, i) => { const p = controllerOf(room, i); return p && p.id === myId });
             g.save();
-            g.textAlign = 'center';
+            g.scale(ks, ks);
+            const x0 = 10, y0 = 10, rowH = 15, pw = 150;
+            g.fillStyle = 'rgba(14,12,28,.62)'; g.fillRect(x0, y0, pw, 8 + view.heroes.length * rowH);
+            g.textAlign = 'left'; g.textBaseline = 'middle'; g.font = 'bold 10px monospace';
+            view.heroes.forEach((h, i) => {
+                const y = y0 + 4 + i * rowH + rowH / 2, human = controllerOf(room, i), me = human && human.id === myId;
+                g.fillStyle = heroCfg(h.name).color; g.fillRect(x0 + 6, y - 4, 7, 7);
+                g.fillStyle = me ? '#ffd279' : human ? '#fff2c9' : '#a8f0c6';
+                g.fillText(h.name + (me ? ' ★' : human ? '' : ' AI'), x0 + 17, y);
+                g.fillStyle = '#292035'; g.fillRect(x0 + 92, y - 3, 50, 6);
+                g.fillStyle = h.state ? '#8a3a4a' : (h.hp / (h.maxHp || 100) < .3 ? '#f0a05a' : '#72dba3');
+                g.fillRect(x0 + 92, y - 3, 50 * Math.max(0, (h.hp || 0) / (h.maxHp || 100)), 6);
+            });
+            // centre top: wave • score • KOs (+ enemies left / next wave)
+            const cx = W / ks / 2;
+            g.textAlign = 'center'; g.font = 'bold 13px monospace';
+            const line = 'WAVE ' + (hud.wave || 0) + '  •  ' + (hud.score || 0) + '  •  ' + (hud.kills || 0) + ' KO';
+            g.fillStyle = 'rgba(14,12,28,.55)'; const tw = g.measureText(line).width + 18; g.fillRect(cx - tw / 2, 8, tw, 20);
+            g.fillStyle = '#ffe4ac'; g.fillText(line, cx, 18);
+            g.font = '10px monospace'; g.fillStyle = '#cfc3e8';
+            g.fillText(hud.ws ? (hud.left || 0) + ' LEFT' : 'NEXT WAVE ' + Math.ceil((hud.next || 0) / 1000) + 's', cx, 36);
+            if (mine >= 0) { // special pill + buff pills under the squad
+                const h = view.heroes[mine], cd = h.cd || 0;
+                let px = x0, py = y0 + 14 + view.heroes.length * rowH;
+                g.textAlign = 'left'; g.font = 'bold 10px monospace';
+                const pill = (str, col, frac) => { const w = g.measureText(str).width + 12; g.fillStyle = 'rgba(14,12,28,.62)'; g.fillRect(px, py, w, 15); if (frac !== undefined) { g.fillStyle = col; g.fillRect(px, py + 13, w * frac, 2) } g.fillStyle = col; g.fillText(str, px + 6, py + 8); px += w + 4 };
+                pill(cd ? 'SPECIAL ' + (cd / 10).toFixed(1) + 's' : 'SPECIAL READY', cd ? '#c9b8e8' : '#9ef0c0');
+                const pu = h.pu || [];
+                for (let j = 0; j < 4; j++) if (pu[j]) pill(BUFF[j].label + ' ' + (pu[j] / 10).toFixed(0) + 's', BUFF[j].core, Math.min(1, pu[j] / BUFF_MAX[j]));
+            }
+            if (hud.combo >= 2) {
+                g.textAlign = 'center'; g.font = 'bold 12px monospace'; g.lineWidth = 3; g.strokeStyle = '#0B0A18';
+                const str = 'COMBO x' + Math.min(5, 1 + Math.floor(hud.combo / 4)) + ' • ' + hud.combo;
+                g.strokeText(str, cx, 52); g.fillStyle = '#FFCB83'; g.fillText(str, cx, 52);
+            }
+            g.textBaseline = 'alphabetic';
+            g.restore();
+        }
+
+        function drawBanners(now, k) {
+            const W = canvas.width, compact = k > 1.15;
+            for (let j = banners.length - 1; j >= 0; j--) if (now - banners[j].born > banners[j].life) banners.splice(j, 1);
+            const big = banners.filter(b => !b.small).slice(-1), small = banners.filter(b => b.small).slice(-1);
+            if (!big.length && !small.length) return;
+            const ks = Math.min(k, 1.4), bandY = (compact ? 64 : 104) * ks, bigPx = Math.round((compact ? 22 : 28) * ks), smPx = Math.round((compact ? 14 : 16) * ks);
+            const bandH = (big.length ? bigPx + 10 : 0) + (small.length ? smPx + 8 : 0) + 6;
+            let alpha = 0;
+            for (const b of big.concat(small)) alpha = Math.max(alpha, Math.min(1, (1 - (now - b.born) / b.life) * 4, (now - b.born) / 120));
+            g.save();
+            g.globalAlpha = .55 * alpha; // translucent strip behind the text, fades with it
+            const gr = g.createLinearGradient(W * .2, 0, W * .8, 0);
+            gr.addColorStop(0, 'rgba(11,10,24,0)'); gr.addColorStop(.25, 'rgba(11,10,24,1)'); gr.addColorStop(.75, 'rgba(11,10,24,1)'); gr.addColorStop(1, 'rgba(11,10,24,0)');
+            g.fillStyle = gr; g.fillRect(W * .2, bandY, W * .6, bandH);
+            g.textAlign = 'center'; g.textBaseline = 'top';
+            let y = bandY + 5;
             for (const b of big) {
-                const t = (now - b.born) / b.life;
-                g.globalAlpha = Math.min(1, (1 - t) * 3);
-                g.font = 'bold ' + Math.round(44 * Math.min(k, 1.4)) + 'px monospace';
-                g.lineWidth = 6; g.strokeStyle = '#111025'; g.strokeText(b.str, W / 2, y);
-                g.fillStyle = b.color; g.fillText(b.str, W / 2, y);
-                y += 50 * Math.min(k, 1.4);
+                const t = (now - b.born) / b.life, pop = Math.min(1, (now - b.born) / 120);
+                g.globalAlpha = Math.min(1, (1 - t) * 4) * pop;
+                g.font = 'bold ' + bigPx + 'px monospace';
+                g.lineWidth = 5; g.strokeStyle = '#0B0A18'; g.strokeText(b.str, W / 2, y + (1 - pop) * 6);
+                g.fillStyle = b.color; g.fillText(b.str, W / 2, y + (1 - pop) * 6);
+                y += bigPx + 8;
             }
             for (const b of small) {
                 const t = (now - b.born) / b.life;
-                g.globalAlpha = Math.min(1, (1 - t) * 3);
-                g.font = 'bold ' + Math.round(20 * Math.min(k, 1.4)) + 'px monospace';
-                g.lineWidth = 4; g.strokeStyle = '#111025'; g.strokeText(b.str, W / 2, y);
+                g.globalAlpha = Math.min(1, (1 - t) * 4);
+                g.font = 'bold ' + smPx + 'px monospace';
+                g.lineWidth = 4; g.strokeStyle = '#0B0A18'; g.strokeText(b.str, W / 2, y);
                 g.fillStyle = b.color; g.fillText(b.str, W / 2, y);
-                y += 28 * Math.min(k, 1.4);
             }
             g.restore();
         }
@@ -884,6 +942,32 @@
             }
         }
         function drawParticles(now) { pool.draw(g) }
+        // M5 adaptive density: track an EMA of frame time and of the frame's own work time; when frames run
+        // slow, spawn fewer cosmetic particles / ambient motes (down to 35%), and recover slowly when smooth.
+        // Phones (small canvas) start at 75%. Never affects gameplay, the sim, or prediction.
+        let lastWork = 0, emaDt = 16.7, emaWork = 4, densityAt = 0, densityInit = false;
+        function adaptDensity(now, dt) {
+            if (!densityInit) { densityInit = true; pool.density = uiScale() > 1.15 ? .75 : 1 }
+            emaDt += (dt - emaDt) * .08; emaWork += (lastWork - emaWork) * .08;
+            stats.frameMs = Math.round(emaDt * 10) / 10; stats.workMs = Math.round(emaWork * 10) / 10;
+            if (now - densityAt < 250) return;
+            densityAt = now;
+            if (emaDt > 20 || emaWork > 12) pool.density = Math.max(.35, pool.density - .08);
+            else if (emaDt < 17.6 && emaWork < 7) pool.density = Math.min(1, pool.density + .03);
+            stats.density = pool.density;
+        }
+        // Attack lighting: a brief additive pool of the hero's colour on the floor while they swing / shoot.
+        function drawAttackLight(view, now) {
+            if (!anim) return;
+            g.globalCompositeOperation = 'lighter';
+            view.heroes.forEach((h, i) => {
+                const s = anim.stateOf(i), a = s && s.atk; if (!a || h.state) return;
+                const t = (now - a.start) / 320; if (t < 0 || t >= 1) return;
+                const r = (a.stage === 2 ? 120 : 84) * uiScale(), al = Math.sin(t * Math.PI) * (a.stage === 2 ? .5 : .32);
+                g.globalAlpha = al; g.drawImage(glowSprite(heroCfg(h.name).color), h.x * S - r, h.y * S - r * .4, r * 2, r * .8);
+            });
+            g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+        }
         // Critical Chain counter over a hero who landed 2+ crits in a row (fades 1.4 s after the last one).
         function drawChains(view, now, k) {
             g.save(); g.textAlign = 'center';
@@ -1057,7 +1141,7 @@
                 g.fillStyle = '#ffb3b3'; g.font = 'bold 12px monospace'; g.textAlign = 'center';
                 g.fillText(h.rv ? 'REVIVING' : 'DOWN', 0, -36);
                 g.restore();
-            } else if (anim && anim.hasPose(h.name)) anim.drawHero(g, h, i, now, k, lookFor(role, color));
+            } else if (anim && anim.hasPose(h.name)) { if (env) env.shadow(g, 1, 46); anim.drawHero(g, h, i, now, k, lookFor(role, color)) }
             else R.drawSprite(g, 0, 0, color, false, h.name, now, entity);
             if (!h.state && (h.buff || h.shield) && A) A.loop(g, 'buffAura', now, 0, -34, 58, null, false, .85, i * 90); // rally buff / Markie shield
             // Name + controller label and HP bar above the head (V19 ally style).
@@ -1066,7 +1150,8 @@
             g.fillStyle = '#72dba3';
             g.fillRect(-22, -86, 44 * Math.max(0, (h.hp || 0) / (h.maxHp || 100)), 5);
             g.textAlign = 'center';
-            g.font = 'bold 12px monospace';
+            g.font = 'bold ' + (k > 1.15 && role !== 'me' ? 10 : 12) + 'px monospace';
+            if (k > 1.15 && role === 'ai') g.globalAlpha = .75; // phones: AI labels recede so clumps stay readable
             g.fillStyle = role === 'me' ? '#ffd279' : role === 'ai' ? '#a8f0c6' : '#fff2c9';
             g.fillText(h.name + ' Lv' + (h.lv || 1) + (role === 'ai' ? ' AI' : role === 'me' ? ' (YOU)' : ''), 0, -92);
             const sub = role === 'human' ? human.name : waiting ? waiting.name + ' reconnecting…' : '';
@@ -1121,8 +1206,7 @@
             if (fade !== undefined) g.globalAlpha = Math.max(0, fade);
             // World-scale telegraph (sheets only hint at it): warden plant ring at the slam radius.
             if (wind && art.key === 'warden' && A) A.loop(g, 'warning', now, 0, 0, SLAM_R * S * 2 / k, SLAM_R * S / k);
-            g.fillStyle = '#0006';
-            g.beginPath(); g.ellipse(0, 1, art.w * .36, 6, 0, 0, Math.PI * 2); g.fill();
+            if (!(env && env.shadow(g, art.key === 'warden' ? 2 : art.w > 90 ? 3 : 1, art.w * .8))) { g.fillStyle = '#0006'; g.beginPath(); g.ellipse(0, 1, art.w * .36, 6, 0, 0, Math.PI * 2); g.fill() }
             const drawFrame = () => {
                 if (!A) return false;
                 if (mode === 'loop') return A.loop(g, key, now, ox, oy + 2, art.w, null, flip, undefined, id * 37);
@@ -1159,6 +1243,7 @@
             const view = sample(now);
             if (!view) return;
             processPending(now);
+            adaptDensity(now, dt);
             const o = oracle();
             const ts = o ? o.update(dt) : 1; // cosmetic hit-stop: scales particle time only (never the sim or prediction)
             pool.update(dt * ts);
@@ -1176,7 +1261,8 @@
             const sh = shakeOffset(now);
             g.setTransform(1, 0, 0, 1, sh.x, sh.y); // world layers shake; the HUD below does not
             g.imageSmoothingEnabled = false;
-            R.drawArena(g, now, view.zone || 0);
+            if (!(env && env.draw(g, now, dt, view.zone || 0, pool.density))) R.drawArena(g, now, view.zone || 0);
+            drawAttackLight(view, now);
             // Layering (combat-vfx.md): floor rings -> units -> slashes/projectiles -> sparks -> numbers -> HUD/combo.
             drawFloorFx(now);
             drawDestinyAura(view, now);
@@ -1202,6 +1288,7 @@
             drawBanners(now, k);
             drawGameOver(now, view.hud);
             stats.frames++;
+            lastWork = performance.now() - now; // CPU time this frame took (drives adaptive density)
         }
 
         function start() { if (!running) { running = true; requestAnimationFrame(frame) } }
