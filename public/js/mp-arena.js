@@ -135,9 +135,35 @@
                         f.life = Math.max(120, Math.hypot(f.tx - h.x, f.ty - h.y) * S / 3.2);
                     }
                     fx.push(f);
+                    attackBurst(f, h, now);
                 }
                 if (h.specialN > prev.s) fx.push({ kind: 'cast', i, start: now, life: 560 });
             });
+        }
+
+        // One-off particles/floor marks when a swing starts (capped by burst()).
+        function attackBurst(f, h, now) {
+            const fin = f.stage === 2, x = h.x * S, y = h.y * S;
+            if (h.name === 'NOAH') { // arcane sparks at the tip of the swing
+                const tip = KIT.NOAH.atkW * .55;
+                const tx = x + f.aim.x * tip, ty = y - 34 + f.aim.y * tip;
+                burst(tx, ty, '#79E4FF', fin ? 10 : 6, 4, { life: 320, size: 4, grav: .01 });
+                burst(tx, ty, '#D8FFFF', fin ? 5 : 3, 5, { life: 260, size: 3, grav: 0 });
+                burst(x + f.aim.x * tip * .5, ty, '#7A5FE0', fin ? 6 : 3, 3, { life: 360, size: 4, grav: 0 });
+            } else if (h.name === 'MARKIE') { // ground impact + dust burst; finisher hits harder
+                const gx = x + f.aim.x * 34, gy = y + f.aim.y * 14 + 4;
+                const cracks = []; for (let j = 0; j < (fin ? 7 : 5); j++) { const an = j / (fin ? 7 : 5) * Math.PI * 2 + Math.random() * .6; const c = []; let r = 0; for (let q = 0; q < 3; q++) { r += .25 + Math.random() * .15; c.push([Math.cos(an + (Math.random() - .5) * .5) * r, Math.sin(an + (Math.random() - .5) * .5) * r]) } cracks.push(c) }
+                fx.push({ kind: 'crack', x: gx, y: gy, r: fin ? 90 : 62, cracks, fin, start: now, life: fin ? 520 : 400 });
+                if (fin) fx.push({ kind: 'ring', x: gx, y: gy, r0: 16, r1: 110, color: '#FFC277', width: 5, start: now, life: 360 });
+                burst(gx, gy - 6, '#A7855F', fin ? 16 : 9, fin ? 5 : 3.5, { flat: .35, lift: 1.4, grav: .03, life: 520, size: 6 }); // dust
+                burst(gx, gy - 6, '#8C7A66', fin ? 10 : 5, 3, { flat: .35, lift: 1, grav: .02, life: 600, size: 7 });
+                burst(gx, gy - 10, '#FFC277', fin ? 8 : 4, 4, { life: 300, size: 4 });
+                addShake(fin ? 5.5 : 1.5, fin ? 170 : 90, now); // extra weight on the combo finisher (capped, off with reduced motion)
+            } else if (h.name === 'ESPIRIT') {
+                burst(x + f.facing * 20, y - 38, '#FFE17B', 4, 2, { life: 260, size: 4, grav: 0 });
+            } else if (h.name === 'DESTINY') {
+                burst(x + f.aim.x * 30, y - 34 + f.aim.y * 20, fin ? '#FFE1A2' : '#9EFFC9', fin ? 8 : 4, 3, { life: 340, size: 4, grav: 0 });
+            }
         }
 
         function onEvent(e, now, prevSnap) {
@@ -152,6 +178,7 @@
                     fx.push({ kind: 'ring', x: e.x * S, y: e.y * S, r0: 8, r1: e.f ? 62 : big ? 44 : 30, color: e.c ? '#FFD36D' : e.f ? '#FFF1C5' : '#FFF2B5', width: e.f ? 5 : 3, start: now, life: e.f ? 320 : 230 });
                     burst(px, py, e.c ? '#FFD36D' : '#FFF2B5', e.f ? 16 : e.c ? 12 : 5, e.f ? 6 : e.c ? 5 : 4);
                     if (e.f) burst(px, py, heroCfg(latestHero(e.h)?.name).color, 8, 6);
+                    if (e.h === 3) burst(px, py, '#FFE17B', 6, 4, { life: 320, size: 4 }); // Espirit: gold arrow sparks
                     if (e.c) { // critical hit: extra impact (white-gold flash particles + a second gold ring)
                         burst(px, py, '#FFF1C5', 8, 7); burst(px, py, '#E6AD57', 6, 3);
                         fx.push({ kind: 'ring', x: e.x * S, y: e.y * S, r0: 14, r1: 70, color: '#E6AD57', width: 2, start: now + 40, life: 300 });
@@ -430,12 +457,61 @@
                     const t = el / f.life, r = lerp(f.r0, f.r1, 1 - (1 - t) * (1 - t));
                     g.save(); g.globalAlpha = Math.max(0, 1 - t); g.strokeStyle = f.color; g.lineWidth = f.width;
                     g.beginPath(); g.ellipse(f.x, f.y, r, r * .42, 0, 0, Math.PI * 2); g.stroke(); g.restore();
+                } else if (f.kind === 'crack') { // Markie ground impact: stone cracks + hot glow + ring
+                    const t = el / f.life, fade = 1 - t;
+                    g.save(); g.translate(f.x, f.y);
+                    g.globalAlpha = .55 * fade; g.fillStyle = '#FFC277'; g.globalCompositeOperation = 'lighter';
+                    g.beginPath(); g.ellipse(0, 0, f.r * (.5 + .5 * t), f.r * .36 * (.5 + .5 * t), 0, 0, Math.PI * 2); g.fill();
+                    g.globalCompositeOperation = 'source-over';
+                    g.globalAlpha = Math.min(1, fade * 1.6); g.strokeStyle = '#55616A'; g.lineWidth = f.fin ? 4 : 3;
+                    for (const c of f.cracks) { g.beginPath(); g.moveTo(0, 0); for (const [cx, cy] of c) g.lineTo(cx * f.r, cy * f.r * .42); g.stroke() }
+                    g.strokeStyle = '#FF9657'; g.lineWidth = 1.5; g.globalAlpha = fade;
+                    for (const c of f.cracks) { g.beginPath(); g.moveTo(0, 0); for (const [cx, cy] of c) g.lineTo(cx * f.r, cy * f.r * .42); g.stroke() }
+                    g.restore();
                 } else if (f.kind === 'floor' && A) {
                     A.play(g, f.key, el, f.x, f.y, f.r * 2, f.r * 2 * .5);
                 }
             }
         }
         // Over-unit layer: attack trails, Espirit arrows, sparks, auras that follow a hero.
+        // Noah: arcane energy on every basic attack -- a glowing violet/cyan sweep arc with runes riding it.
+        // Drawn in the swing's rotated frame (+x = aim). Palette #7A5FE0 #637BFF #79E4FF #D8FFFF.
+        function arcaneArc(t, size, fin, now) {
+            const r = size * .42, sweep = 1.1, a0 = -sweep, a1 = -sweep + 2 * sweep * Math.min(1, t * 1.6), fade = 1 - t;
+            g.save();
+            g.globalCompositeOperation = 'lighter';
+            g.lineCap = 'round';
+            g.globalAlpha = .38 * fade; g.strokeStyle = '#7A5FE0'; g.lineWidth = (fin ? 20 : 14);
+            g.beginPath(); g.arc(0, 0, r, a0, a1); g.stroke();
+            g.globalAlpha = .7 * fade; g.strokeStyle = '#53BAFF'; g.lineWidth = fin ? 8 : 5;
+            g.beginPath(); g.arc(0, 0, r, a0, a1); g.stroke();
+            g.globalAlpha = .95 * fade; g.strokeStyle = '#D8FFFF'; g.lineWidth = 2;
+            g.beginPath(); g.arc(0, 0, r, Math.max(a0, a1 - .7), a1); g.stroke();
+            // runes: small rotating diamonds and squares along the arc
+            const n = fin ? 5 : 3;
+            for (let j = 0; j < n; j++) {
+                const an = a0 + (a1 - a0) * (j + .5) / n, rr = r + Math.sin(now / 90 + j) * 6;
+                g.save(); g.translate(Math.cos(an) * rr, Math.sin(an) * rr); g.rotate(now / 160 + j);
+                g.globalAlpha = .9 * fade; g.strokeStyle = j % 2 ? '#79E4FF' : '#A48BFF'; g.lineWidth = 2;
+                const q = fin ? 7 : 5;
+                if (j % 2) g.strokeRect(-q, -q, 2 * q, 2 * q); else { g.beginPath(); g.moveTo(0, -q * 1.3); g.lineTo(q, 0); g.lineTo(0, q * 1.3); g.lineTo(-q, 0); g.closePath(); g.stroke() }
+                g.restore();
+            }
+            g.restore();
+        }
+        // Markie: heavy bronze cleave arc (wide, thick, hot core) -- weight before the sprite slash.
+        function mightyArc(t, size, fin) {
+            const r = size * .36, fade = 1 - t, a1 = -Math.PI * .85 + Math.PI * 1.7 * Math.min(1, t * 2.2);
+            g.save();
+            g.globalCompositeOperation = 'lighter'; g.lineCap = 'round';
+            g.globalAlpha = .45 * fade; g.strokeStyle = '#C98A4B'; g.lineWidth = fin ? 26 : 18;
+            g.beginPath(); g.arc(0, 0, r, -Math.PI * .85, a1); g.stroke();
+            g.globalAlpha = .75 * fade; g.strokeStyle = '#FF9657'; g.lineWidth = fin ? 10 : 7;
+            g.beginPath(); g.arc(0, 0, r, -Math.PI * .85, a1); g.stroke();
+            g.globalAlpha = fade; g.strokeStyle = '#FFF0A4'; g.lineWidth = 3;
+            g.beginPath(); g.arc(0, 0, r, Math.max(-Math.PI * .85, a1 - .9), a1); g.stroke();
+            g.restore();
+        }
         function drawActionFx(view, now, k) {
             for (const f of fx) {
                 const el = now - f.start;
@@ -443,13 +519,29 @@
                     const h = view.heroes[f.i] || f, kit = KIT[f.name];
                     if (!kit) continue;
                     if (f.name === 'ESPIRIT') { // projectile from the bow to the target
-                        const t = Math.min(1, el / f.life);
+                        const t = Math.min(1, el / f.life), t0 = Math.max(0, t - .38);
                         const sx = f.x * S + f.facing * 20, sy = f.y * S - 38, ex = f.tx * S, ey = f.ty * S - 38;
+                        const hx = lerp(sx, ex, t), hy = lerp(sy, ey, t), tx0 = lerp(sx, ex, t0), ty0 = lerp(sy, ey, t0);
+                        // Gold trail + glow (Espirit palette #D3A14B #FFE17B #FFF9D4 #FFB948), additive, no blur.
                         g.save();
-                        g.translate(lerp(sx, ex, t), lerp(sy, ey, t));
+                        g.globalCompositeOperation = 'lighter';
+                        const grad = g.createLinearGradient(tx0, ty0, hx, hy);
+                        grad.addColorStop(0, 'rgba(211,161,75,0)'); grad.addColorStop(1, 'rgba(255,185,72,.85)');
+                        g.strokeStyle = grad; g.lineCap = 'round';
+                        g.lineWidth = 9 * Math.min(k, 1.3); g.beginPath(); g.moveTo(tx0, ty0); g.lineTo(hx, hy); g.stroke();
+                        g.strokeStyle = '#FFF4AD'; g.globalAlpha = .9; g.lineWidth = 2.5;
+                        g.beginPath(); g.moveTo(lerp(tx0, hx, .45), lerp(ty0, hy, .45)); g.lineTo(hx, hy); g.stroke();
+                        g.globalAlpha = .45 + .15 * Math.sin(now / 40); g.fillStyle = '#FFE17B';
+                        g.beginPath(); g.arc(hx, hy, 13 * Math.min(k, 1.3), 0, Math.PI * 2); g.fill();
+                        g.globalAlpha = .9; g.fillStyle = '#FFF9D4'; g.beginPath(); g.arc(hx, hy, 4.5, 0, Math.PI * 2); g.fill();
+                        g.restore();
+                        g.save();
+                        g.translate(hx, hy);
                         g.rotate(Math.atan2(ey - sy, ex - sx));
                         A.loop(g, 'espiritArrow', now, 0, 0, kit.atkW * k);
+                        g.globalCompositeOperation = 'lighter'; g.globalAlpha = .55; A.loop(g, 'espiritArrow', now, 0, 0, kit.atkW * k); // gold-hot redraw
                         g.restore();
+                        if (t < 1 && Math.random() < .5) burst(hx, hy, Math.random() < .5 ? '#FFE17B' : '#FFB948', 1, 1.2, { life: 260, size: 4, grav: .02 });
                     } else {
                         // Directional swing: the sheet faces right; mirror for leftward aims, then rotate to
                         // the 8-way aim (up/down/diagonals). Markie's cleave is 360° so it only mirrors.
@@ -459,8 +551,12 @@
                         if (a.x < -0.01) g.scale(-1, 1);
                         if (f.name !== 'MARKIE') g.rotate(Math.atan2(a.y, Math.abs(a.x) < 0.01 ? 0.0001 : Math.abs(a.x)));
                         const ox = f.name === 'MARKIE' ? 0 : kit.atkW * .28 * Math.min(k, 1.15);
+                        const t = Math.min(1, el / f.life);
+                        if (f.name === 'NOAH') arcaneArc(t, size, fin, now);
+                        else if (f.name === 'MARKIE') mightyArc(t, size, fin, a);
                         A.play(g, kit.atk, el, ox, 0, size);
-                        if (fin) { g.globalAlpha = .5; g.globalCompositeOperation = 'lighter'; A.play(g, kit.atk, el, ox, 0, size * 1.15); }
+                        if (fin || f.name === 'MARKIE') { g.globalAlpha = fin ? .55 : .35; g.globalCompositeOperation = 'lighter'; A.play(g, kit.atk, el, ox, 0, size * (fin ? 1.15 : 1.05)); }
+                        if (f.name === 'DESTINY') { g.globalCompositeOperation = 'lighter'; g.globalAlpha = .35 * (1 - t); g.strokeStyle = '#FFE1A2'; g.lineWidth = 6; g.beginPath(); g.arc(ox * .4, 0, size * .42, -1, 1); g.stroke() }
                         g.restore();
                     }
                 } else if (f.kind === 'sheet' && A) {
