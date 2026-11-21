@@ -345,6 +345,24 @@
                 case 'hit': {
                     flashes.set(e.id, now + 200);
                     const hh = latestHero(e.h);
+                    // Combat 2.0: directional, character-colored impact flashes are applied
+                    // before legacy early returns, so premium animation hits get them too.
+                    // Keep all embellishments on the target, never on hero faces.
+                    if (hh && (e.f || e.c)) {
+                        const palette = {
+                            NOAH: '#b59aff', DESTINY: '#ffe3a0',
+                            MARKIE: '#ffad6e', ESPIRIT: '#a2ffd1'
+                        };
+                        const col = palette[hh.name] || '#fff2b5';
+                        const px = e.x * S, py = e.y * S - 38;
+                        const dx = e.x - hh.x, dy = e.y - hh.y;
+                        const angle = Math.atan2(dy, dx);
+                        fx.push({ kind: 'combatImpact', x: px, y: py, angle,
+                            color: col, strong: !!e.f, start: now, life: e.f ? 310 : 230 });
+                        fx.push({ kind: 'ring', x: e.x * S, y: e.y * S,
+                            r0: 7, r1: e.f ? 56 : 39, color: col,
+                            width: e.f ? 4 : 2, start: now, life: 270 });
+                    }
                     if (anim && hh && hh.name === 'NOAH') { noahImpact(e, now); break }
                     if (anim && hh && heroImpact(e, now, hh)) break;
                     const px = e.x * S, py = e.y * S - 40;
@@ -402,6 +420,17 @@
                     if (!h) break;
                     const r = (e.r || SPECIAL_RADIUS[h.name] || 140) * S;
                     fx.push({ kind: 'special', name: h.name, x: h.x * S, y: h.y * S, r, start: now, life: 700 });
+                    // Each ultimate gets a distinct ground-level signature burst.
+                    const ultimatePalette = {
+                        NOAH: '#aa88ff', DESTINY: '#ffe1a0',
+                        MARKIE: '#ff9355', ESPIRIT: '#80efaf'
+                    };
+                    const uc = ultimatePalette[h.name] || '#fff4b5';
+                    fx.push({ kind: 'ring', x: h.x * S, y: h.y * S,
+                        r0: 12, r1: r * .7, color: uc, width: 5,
+                        start: now, life: 560 });
+                    burst(h.x * S, h.y * S - 14, uc, 12, 4,
+                        { life: 520, size: 4, lift: 1.8 });
                     if (h.name === 'DESTINY' && SH) fx.push({ kind: 'ov', sheet: 'destinyGuard', n: 8, fd: 70, follow: e.h, sc: 2.2 * uiScale(), start: now, life: 560 }); // gold shield + mint heal ring
                     if (h.name === 'DESTINY') sfx('healChime', e.h);
                     addShake(3, 150, now);
@@ -850,6 +879,34 @@
             gg.fillStyle = hgr; gg.fillRect(0, 0, 32, 256);
             pillarCache.set(color, c); return c;
         }
+        function drawCombatImpact(f, now) {
+            const p = (now - f.start) / f.life;
+            if (p < 0 || p > 1) return;
+            const fade = (1 - p) * (1 - p);
+            const length = (f.strong ? 78 : 52) * (0.4 + p * .8);
+            g.save();
+            g.translate(f.x, f.y);
+            g.rotate(f.angle);
+            g.globalCompositeOperation = 'lighter';
+            g.globalAlpha = fade * .9;
+            g.strokeStyle = f.color;
+            g.lineCap = 'round';
+            g.lineWidth = f.strong ? 8 : 5;
+            g.beginPath(); g.moveTo(-length * .45, 0); g.lineTo(length * .55, 0); g.stroke();
+            g.strokeStyle = '#fffaf0'; g.lineWidth = 2.5;
+            g.beginPath(); g.moveTo(-length * .28, 0); g.lineTo(length * .42, 0); g.stroke();
+            // Four outward sparks emphasize force without obstructing the heroes.
+            for (let j = 0; j < 4; j++) {
+                const theta = j * Math.PI / 2 + .4;
+                const radius = 10 + p * (f.strong ? 42 : 27);
+                const x = Math.cos(theta) * radius, y = Math.sin(theta) * radius;
+                g.beginPath(); g.moveTo(x, y);
+                g.lineTo(x + Math.cos(theta) * 10 * fade, y + Math.sin(theta) * 10 * fade);
+                g.stroke();
+            }
+            g.restore();
+        }
+
         function drawFlashFx(f, now, view) {
             const el = now - f.start; if (el < 0) return;
             const t = el / f.life;
@@ -942,6 +999,7 @@
             }
             for (const f of fx) {
                 const el = now - f.start;
+                if (f.kind === 'combatImpact') { drawCombatImpact(f, now); continue }
                 if (f.kind === 'flash' || f.kind === 'shock' || f.kind === 'levelup') { drawFlashFx(f, now, view); continue }
                 if (f.kind === 'ov') { drawOv(f, now, view, k); continue }
                 if (f.kind === 'attack' && f.pose && f.name === 'ESPIRIT') { drawArrow(f, now, k); continue }
