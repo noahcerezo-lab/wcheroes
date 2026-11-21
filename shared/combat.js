@@ -428,6 +428,49 @@ function moveToward(h, tx, ty, speed) {
     return Math.abs(h.x - ox) + Math.abs(h.y - oy) > 0.01;
 }
 
+// AI combat movement: never stand still against a threat.
+//  - approach to the hero's ideal range, then ORBIT the target (circle around it, flipping direction now and then);
+//  - BACK OFF when overlapping any enemy body;
+//  - STUCK (wanted to move but barely did for 8 ticks): sidestep perpendicular for ~0.45 s and flip orbit;
+//  - Espirit keeps her distance and lines up on one of the 8 aim lines so her arrows connect, hopping lines.
+function aiCombatMove(w, h, k, enemy, ed, speed) {
+    const i = w.heroes.indexOf(h), ox = h.x, oy = h.y;
+    if (h.orbitDir === undefined) h.orbitDir = i % 2 ? 1 : -1;
+    if (w.time >= (h.orbitFlipAt || 0)) { h.orbitFlipAt = w.time + 2200 + rng(w) * 1800; if (h.orbitFlipAt > 0 && rng(w) < 0.45) h.orbitDir *= -1 }
+    let tx, ty, spd = speed;
+    // overlap check against every entered enemy
+    let ax = 0, ay = 0, over = false;
+    for (const e of w.enemies) {
+        if (!e.entered) continue;
+        const r = (ENEMY_TYPES[e.type].radius || 12) + 16, d = dist(e, h);
+        if (d < r) { over = true; const dd = d || 0.01; ax += (h.x - e.x) / dd * (r - d + 1); ay += (h.y - e.y) / dd * (r - d + 1) }
+    }
+    if (w.time < (h.escapeUntil || 0)) { tx = h.x + h.escX * 40; ty = h.y + h.escY * 40 }
+    else if (over) { const m = Math.hypot(ax, ay) || 1; tx = h.x + ax / m * 30; ty = h.y + ay / m * 30 }
+    else {
+        const ideal = k.aiIdeal;
+        let phi = Math.atan2(h.y - enemy.y, h.x - enemy.x), rad = ideal;
+        if (h.name === 'ESPIRIT') {
+            if (h.lane === undefined || w.time >= (h.laneAt || 0)) { h.lane = Math.round(phi / (Math.PI / 4)) + (h.lane === undefined ? 0 : h.orbitDir); h.laneAt = w.time + 2400 }
+            phi = h.lane * Math.PI / 4;
+            rad = ideal + 18 * Math.sin(w.time / 600 + i); // drift in and out along the lane
+            if (ed < ideal * 0.6) spd = speed * 1.05; // too close: retreat at full pace
+        } else if (ed <= ideal + 14) { phi += h.orbitDir * 0.55; spd = speed * 0.7 } // orbit at ~70% pace
+        tx = enemy.x + Math.cos(phi) * rad; ty = enemy.y + Math.sin(phi) * rad;
+        const cx = clamp(tx, ARENA.minX + 6, ARENA.maxX - 6), cy = clamp(ty, ARENA.minY + 6, ARENA.maxY - 6);
+        if (Math.abs(cx - tx) + Math.abs(cy - ty) > 12) { h.orbitDir *= -1; if (h.name === 'ESPIRIT') h.laneAt = 0 } // walled in: go round the other way
+        tx = cx; ty = cy;
+    }
+    const want = Math.hypot(tx - h.x, ty - h.y);
+    h.moving = moveToward(h, tx, ty, spd);
+    const moved = Math.hypot(h.x - ox, h.y - oy);
+    h.stuckN = want > 2 && moved < Math.min(0.4, want * 0.5) ? (h.stuckN || 0) + 1 : 0;
+    if (h.stuckN >= 8) { // sideways escape, perpendicular to where we were trying to go
+        const ux = (tx - h.x) / (want || 1), uy = (ty - h.y) / (want || 1), side = rng(w) < 0.5 ? 1 : -1;
+        h.escX = -uy * side; h.escY = ux * side; h.escapeUntil = w.time + 450; h.stuckN = 0; h.orbitDir *= -1;
+    }
+}
+
 // Port of V19 aiTick(): engage the nearest threat, regroup otherwise; plus revive duty (new for co-op).
 function stepAI(w, h, leader) {
     h.moving = false;
@@ -441,10 +484,7 @@ function stepAI(w, h, leader) {
         return;
     }
     if (enemy && ed < S(380)) {
-        const ideal = k.aiIdeal, dx = enemy.x - h.x;
-        if (ed > ideal + 8) h.moving = moveToward(h, enemy.x - Math.sign(dx || 1) * ideal * 0.7, enemy.y, speed);
-        else if (h.name === 'ESPIRIT' && ed < ideal - 25) h.moving = moveToward(h, h.x - Math.sign(dx || 1) * 20, h.y + (enemy.y - h.y) * -0.2, speed * 0.66);
-        else { h.vx = 0; h.vy = 0 }
+        aiCombatMove(w, h, k, enemy, ed, speed);
         h.aim = SIM.dir8Of(enemy.x - h.x, enemy.y - h.y); // AI aims (8-way) at its target
         if (Math.abs(SIM.DIR8[h.aim].x) > 0.01) h.facing = SIM.DIR8[h.aim].x > 0 ? 1 : -1;
         if (attackTargets(w, h).length) performAttack(w, h);
