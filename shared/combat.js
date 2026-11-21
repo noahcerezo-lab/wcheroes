@@ -116,7 +116,7 @@ function createBattle(opts = {}) {
         heroes: ROSTER.HEROES.map((cfg, i) => ({
             name: cfg.name, x: spawn[i][0], y: spawn[i][1], facing: i % 2 ? -1 : 1, aim: i % 2 ? 4 : 0, vx: 0, vy: 0, moving: false, chain: 0,
             hp: cfg.v19.hp, maxHp: cfg.v19.hp, damage: cfg.v19.damage, range: S(cfg.v19.range) * (cfg.name === 'ESPIRIT' ? RULES.espiritRangeMul : 1), cool: cfg.v19.cool,
-            speed: SIM.speedFromV19(cfg.v19.speed), stats: cfg.stats, level: 1,
+            speed: SIM.speedFromV19(cfg.v19.speed), stats: cfg.stats, level: 1, masteryTier: 0,
             base: { hp: cfg.v19.hp, damage: cfg.v19.damage, speed: SIM.speedFromV19(cfg.v19.speed) },
             state: 'alive', reviveMs: 0, attackAt: -1e9, specialAt: -1e9, healAt: 0, attackN: 0, specialN: 0,
             buffUntil: 0, shieldUntil: 0, furyUntil: 0, hasteUntil: 0, wardUntil: 0, synergyUntil: 0, awakenUntil: 0, critChain: 0, wantAttack: false, wantSpecial: false, ai: true, controller: null, seq: 0,
@@ -235,12 +235,25 @@ function performAttack(w, h) {
     const k = KITS[h.name];
     const targets = attackTargets(w, h, fin ? RULES.finisherRangeMul : 1);
     const a = aimOf(h);
+    // Mastery volleys acquire additional distinct targets in a wider arrow fan.
+    if (h.name === 'ESPIRIT' && h.masteryTier > 0) {
+        const count = Math.min(3, 1 + h.masteryTier);
+        const candidates = w.enemies.filter(e => e.hp > 0 && !targets.includes(e) &&
+            inArc(h, e, h.range * (fin ? RULES.finisherRangeMul : 1), 0.68))
+            .sort((x, y) => Math.hypot(x.x - h.x, x.y - h.y) - Math.hypot(y.x - h.x, y.y - h.y));
+        targets.push(...candidates.slice(0, Math.max(0, count - targets.length)));
+    }
     // No 'atk' event: clients animate swings from attackN + chain stage in the snapshot (saves bandwidth).
     for (const e of [...targets]) {
         let dmg = h.damage;
         if (h.name === 'MARKIE') dmg = Math.round(h.damage * (inArc(h, e, h.range * 1.2, k.front) ? k.frontMul : k.sideMul));
         if (fin) dmg = Math.round(dmg * RULES.finisherDamageMul);
-        damageEnemy(w, h, e, dmg, { knock: k.knock * RULES.basicKnockMul * (fin ? RULES.finisherKnockMul : 1), stun: k.stun, dirVec: h.name === 'MARKIE' ? null : a, finisher: fin });
+        const tier = Math.min(2, h.masteryTier || 0);
+        const stun = h.name === 'MARKIE' ? k.stun + tier * 130
+            : h.name === 'DESTINY' ? k.stun + tier * 90 : k.stun;
+        const knock = k.knock * RULES.basicKnockMul * (fin ? RULES.finisherKnockMul : 1)
+            * (h.name === 'NOAH' ? 1 + tier * .18 : 1);
+        damageEnemy(w, h, e, dmg, { knock, stun, dirVec: h.name === 'MARKIE' ? null : a, finisher: fin });
     }
     return true;
 }
@@ -404,13 +417,14 @@ function levelUp(w) {
     w.heroes.forEach((h, i) => {
         if (!alive(h)) return;
         h.level = (h.level || 1) + 1;
+        h.masteryTier = Math.min(2, Math.floor(w.wave / RULES.levelEvery));
         const L = LEVELS.levelStats(h.name, h.level);
         h.maxHp = L.hp; h.damage = L.damage; h.speed = L.speed; h.cool = L.cool;
         h.skillScale = L.skill; h.levelCrit = L.crit;
         h.hp = h.maxHp;
         got.push(i);
     });
-    if (got.length) emit(w, { t: 'lvl', all: got, n: w.wave, lv: Math.max(...got.map(i => w.heroes[i].level)) });
+    if (got.length) emit(w, { t: 'lvl', all: got, n: w.wave, lv: Math.max(...got.map(i => w.heroes[i].level)), mastery: Math.min(2, Math.floor(w.wave / RULES.levelEvery)) });
 }
 
 // ---------------- power-ups ----------------
@@ -604,6 +618,7 @@ function snapshot(w) {
             cs: h.chain, // chain stage of the last swing (2 = finisher)
             cc: h.critChain || 0, // Critical Chain: consecutive crits
             lv: h.level || 1, // hero level (LEVEL UP every 10th wave)
+            mastery: h.masteryTier || 0,
             hp: h.hp, maxHp: h.maxHp, state: h.state === 'alive' ? 0 : 1, rv: h.state === 'downed' ? Math.round(h.reviveMs / RULES.reviveMs * 100) : 0,
             awake: left(w, h.awakenUntil),
             attackN: h.attackN, specialN: h.specialN, buff: w.time < h.buffUntil ? 1 : 0, shield: w.time < h.shieldUntil ? 1 : 0,
