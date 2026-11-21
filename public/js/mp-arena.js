@@ -626,6 +626,30 @@
             g.restore();
         }
 
+        // A persistent boss bar, sourced entirely from the authoritative snapshot.
+        function drawBossBar(view, k) {
+            const boss = view.hud && view.hud.boss;
+            if (!boss) return;
+            const compact = k > 1.15, width = compact ? 300 : 460;
+            const x = (canvas.width - width) / 2, y = compact ? 104 : 126;
+            const hp = Math.max(0, Math.min(1, boss.hp / (boss.max || 1)));
+            g.save();
+            g.fillStyle = 'rgba(12,8,26,.85)';
+            g.fillRect(x - 10, y - 27, width + 20, 55);
+            g.font = 'bold 16px monospace';
+            g.textAlign = 'center';
+            g.fillStyle = '#f1c5ff';
+            g.fillText(boss.name, canvas.width / 2, y - 8);
+            g.fillStyle = '#382744';
+            g.fillRect(x, y, width, 14);
+            g.fillStyle = '#ba60e8';
+            g.fillRect(x, y, width * hp, 14);
+            g.strokeStyle = '#e7b7ff';
+            g.lineWidth = 2;
+            g.strokeRect(x, y, width, 14);
+            g.restore();
+        }
+
         function drawBanners(now, k) {
             const W = canvas.width, compact = k > 1.15;
             for (let j = banners.length - 1; j >= 0; j--) if (now - banners[j].born > banners[j].life) banners.splice(j, 1);
@@ -1205,7 +1229,10 @@
             if (tilt) { g.translate(0, -4); g.rotate(tilt); g.translate(0, 4) }
             if (fade !== undefined) g.globalAlpha = Math.max(0, fade);
             // World-scale telegraph (sheets only hint at it): warden plant ring at the slam radius.
-            if (wind && art.key === 'warden' && A) A.loop(g, 'warning', now, 0, 0, SLAM_R * S * 2 / k, SLAM_R * S / k);
+            if (wind && (art.key === 'warden' || art.key === 'voidEmperor') && A) {
+                const radius = art.key === 'voidEmperor' ? 90 : SLAM_R;
+                A.loop(g, 'warning', now, 0, 0, radius * S * 2 / k, radius * S / k);
+            }
             if (!(env && env.shadow(g, art.key === 'warden' ? 2 : art.w > 90 ? 3 : 1, art.w * .8))) { g.fillStyle = '#0006'; g.beginPath(); g.ellipse(0, 1, art.w * .36, 6, 0, 0, Math.PI * 2); g.fill() }
             const drawFrame = () => {
                 if (!A) return false;
@@ -1222,7 +1249,7 @@
                 g.globalCompositeOperation = 'source-over';
             }
             g.globalAlpha = fade !== undefined ? Math.max(0, fade) : 1;
-            const top = art.key === 'warden' ? -88 : -68;
+            const top = art.key === 'voidEmperor' ? -156 : art.key === 'warden' ? -88 : -68;
             if (hpPct < 100 && fade === undefined) {
                 g.fillStyle = '#292035'; g.fillRect(-20, top, 40, 4);
                 g.fillStyle = '#ff5d73'; g.fillRect(-20, top, 40 * hpPct / 100, 4);
@@ -1285,6 +1312,7 @@
             drawChains(view, now, k);
             g.setTransform(1, 0, 0, 1, 0, 0);
             drawHud(view, room, myId, k, now);
+            drawBossBar(view, k);
             drawBanners(now, k);
             drawGameOver(now, view.hud);
             stats.frames++;
