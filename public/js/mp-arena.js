@@ -1143,6 +1143,64 @@
         // their effects are dimmed (other players 80%, AI 60%) so a clumped squad doesn't turn into soup.
         const LOOKS = { me: { fx: 1, outline: '#ffd279' }, human: { fx: .8, outline: '#0b0914' }, ai: { fx: .6, outline: '#0b0914' } };
         function lookFor(role, color) { const l = LOOKS[role]; l.color = color; return l }
+        // Signature looks: each hero has a readable silhouette accent and distinct energy language.
+        // All effects are cosmetic, deterministic and capped to a handful of canvas paths per hero.
+        const HERO_FINISH = {
+            NOAH: { primary: '#a58bff', light: '#e7ddff', shape: 'runes' },
+            DESTINY: { primary: '#ffd47c', light: '#fff5ce', shape: 'crown' },
+            MARKIE: { primary: '#ff9c58', light: '#ffe2a1', shape: 'embers' },
+            ESPIRIT: { primary: '#74e6a8', light: '#dcffe8', shape: 'leaves' },
+        };
+        function drawHeroFinish(h, i, now, role, k) {
+            if (h.state) return;
+            const skin = HERO_FINISH[h.name];
+            if (!skin) return;
+            const phase = now / 950 + i * 1.7, pulse = (Math.sin(phase * 2) + 1) / 2;
+            const active = h.buff || h.shield || (h.pu && h.pu.some(Boolean));
+            g.save();
+            // A soft colored floor aura, kept beneath the combat silhouette.
+            g.globalAlpha = (active ? .22 : .10) + pulse * .055;
+            g.fillStyle = skin.primary;
+            g.beginPath(); g.ellipse(0, 2, 28 + pulse * 4, 9 + pulse * 2, 0, 0, Math.PI * 2); g.fill();
+            g.globalAlpha = active ? .92 : .66;
+            g.strokeStyle = skin.primary;
+            g.lineWidth = role === 'me' ? 2.5 : 1.7;
+            // Distinct floating insignias beside the shoulders, not over the face.
+            if (skin.shape === 'runes') {
+                for (const side of [-1, 1]) {
+                    const x = side * 37, y = -54 + Math.sin(phase * 2 + side) * 3;
+                    g.save(); g.translate(x, y); g.rotate(phase * .45 * side);
+                    g.strokeRect(-5, -5, 10, 10);
+                    g.beginPath(); g.moveTo(0, -9); g.lineTo(0, 9); g.moveTo(-9, 0); g.lineTo(9, 0); g.stroke();
+                    g.restore();
+                }
+            } else if (skin.shape === 'crown') {
+                g.beginPath(); g.moveTo(-16, -91); g.lineTo(-10, -100); g.lineTo(-3, -93);
+                g.lineTo(0, -104); g.lineTo(4, -93); g.lineTo(11, -100); g.lineTo(16, -91); g.stroke();
+                g.fillStyle = skin.light; g.fillRect(-2, -108, 4, 4);
+            } else if (skin.shape === 'embers') {
+                for (let j = 0; j < 3; j++) {
+                    const x = (j - 1) * 31, y = -39 - ((now / (13 + j * 3) + j * 19) % 42);
+                    g.fillStyle = j === 1 ? skin.light : skin.primary;
+                    g.fillRect(Math.round(x), Math.round(y), 4 + (j === 1 ? 2 : 0), 5);
+                }
+            } else {
+                for (const side of [-1, 1]) {
+                    const x = side * 35, y = -55 + Math.sin(phase * 2 + side) * 6;
+                    g.save(); g.translate(x, y); g.rotate(side * .6 + Math.sin(phase) * .2);
+                    g.beginPath(); g.ellipse(0, 0, 4, 9, .4, 0, Math.PI * 2); g.stroke();
+                    g.beginPath(); g.moveTo(0, -7); g.lineTo(0, 7); g.stroke(); g.restore();
+                }
+            }
+            // A bright, restrained shoulder glint while empowered.
+            if (active) {
+                g.globalAlpha = .65 + pulse * .3; g.strokeStyle = skin.light; g.lineWidth = 2;
+                g.beginPath(); g.moveTo(-27, -65); g.lineTo(-20, -72);
+                g.moveTo(27, -65); g.lineTo(20, -72); g.stroke();
+            }
+            g.restore();
+        }
+
         function drawHero(h, i, now, room, myId, k) {
             const px = h.x * S, py = h.y * S;
             const human = controllerOf(room, i), waiting = reservedOf(room, i);
@@ -1189,7 +1247,8 @@
                 g.restore();
             } else if (anim && anim.hasPose(h.name)) { if (env) env.shadow(g, 1, 46); anim.drawHero(g, h, i, now, k, lookFor(role, color)) }
             else R.drawSprite(g, 0, 0, color, false, h.name, now, entity);
-            if (!h.state && (h.buff || h.shield) && A) A.loop(g, 'buffAura', now, 0, -34, 58, null, false, .85, i * 90); // rally buff / Markie shield
+            if (!h.state && (h.buff || h.shield) && A) A.loop(g, 'buffAura', now, 0, -34, 58, null, false, .85, i * 90);
+            drawHeroFinish(h, i, now, role, k); // rally buff / Markie shield
             // Name + controller label and HP bar above the head (V19 ally style).
             g.fillStyle = '#292035';
             g.fillRect(-22, -86, 44, 5);
