@@ -474,6 +474,21 @@
                         color:'#9ef6ff',start:now,life:180});
                     break;
                 }
+                case 'spiritCommunion': {
+                    const h=latestHero(e.h);
+                    if(h) {
+                        fx.push({kind:'ring',x:h.x*S,y:h.y*S-26,r0:5,r1:42,
+                            color:'#83d9fa',width:3,start:now,life:450});
+                        floatText(h.x*S,h.y*S-76,'SPIRIT +'+e.n,'#a5f0ff',12,750);
+                    }
+                    break;
+                }
+                case 'guardianWard': {
+                    const h=latestHero(e.h);
+                    if(h) fx.push({kind:'ring',x:h.x*S,y:h.y*S-12,r0:14,r1:54,
+                        color:'#c5a4ff',width:4,start:now,life:650});
+                    break;
+                }
                 case 'shamanHeal': {
                     const h = latestHero(e.h);
                     if (h) {
@@ -484,11 +499,11 @@
                     break;
                 }
                 case 'totem': {
-                    fx.push({kind:'ancestralGuardian',follow:e.h,x:e.x*S,y:e.y*S,start:now,life:e.ms||6000});
+                    fx.push({kind:'ancestralGuardian',follow:e.h,x:e.x*S,y:e.y*S,start:now,life:e.ms||6000,mastery:e.mastery||0});
                     break;
                 }
                 case 'totemPulse': {
-                    fx.push({kind:'guardianPulse',follow:e.h,x:e.x*S,y:e.y*S,start:now,life:800});
+                    fx.push({kind:'guardianPulse',follow:e.h,x:e.x*S,y:e.y*S,start:now,life:800,mastery:e.mastery||0});
                     break;
                 }
                 case 'comboHeal': {
@@ -962,7 +977,7 @@
             const h=view.heroes[f.follow],x=h?h.x*S:f.x,y=h?h.y*S:f.y;
             const fade=Math.max(0,Math.min(1,t*7,(1-t)*7)),pulse=f.kind==='guardianPulse';
             g.save();g.translate(x,y);g.globalAlpha=fade;
-            const radius=pulse?55+105*t:92+6*Math.sin(now/320);
+            const radius=pulse?55+(105+(f.mastery>=2?28:0))*t:(92+(f.mastery>=2?22:0))+6*Math.sin(now/320);
             g.strokeStyle=pulse?'#d6b5ff':'#70ebcf';g.lineWidth=pulse?7*(1-t)+1:3;
             g.beginPath();g.ellipse(0,0,radius,radius*.42,0,0,Math.PI*2);g.stroke();
             for(let i=0;i<8;i++){
@@ -973,7 +988,7 @@
             }
             if(!pulse){
                 const bob=Math.sin(now/310)*6;
-                g.translate(0,-92+bob);g.globalAlpha*=.72;
+                g.translate(0,-92+bob);if(f.mastery>=2)g.scale(1.22,1.22);g.globalAlpha*=.72;
                 // Broad spectral shoulders and tapering torso.
                 g.fillStyle='#437e85';g.beginPath();g.moveTo(-56,-16);g.lineTo(-30,-43);
                 g.lineTo(30,-43);g.lineTo(56,-16);g.lineTo(29,58);
