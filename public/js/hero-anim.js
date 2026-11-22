@@ -255,7 +255,7 @@
         const MARKIE_REACH = 10, MARKIE_HAFT = 30, MARKIE_TIP = MARKIE_REACH + MARKIE_HAFT;
         const DESTINY_REACH = 12, DESTINY_BLADE = 40, DESTINY_TIP = DESTINY_REACH + DESTINY_BLADE;
         const REST = { // facing-frame rest angles: [arm, weapon, reach]
-            NOAH: [1.0, 1.15, 12], MARKIE: [1.1, -1.35, 9], DESTINY: [1.3, -1.45, 11], ESPIRIT: [1.15, -1.2, 10],
+            NOAH: [1.0, 1.15, 12], MARKIE: [1.1, -1.35, 9], DESTINY: [1.3, -1.45, 11], ESPIRIT: [1.15, -1.2, 10], SMITESH: [.85, -1.3, 10],
         };
         function swingAngles(a, T) {
             let from = a.theta + a.m * T.from;
@@ -429,6 +429,7 @@
         const ARM = { // [ink, upper sleeve, forearm, hand]
             NOAH: ['#1b1530', '#4b3aa8', '#6a52d0', '#e8aa7f'], MARKIE: ['#1a120d', '#5a3a26', '#7a5236', '#c98d68'],
             DESTINY: ['#1c0d12', '#8f1d2c', '#b8283a', '#e8b08a'], ESPIRIT: ['#0f1a13', '#2f6b45', '#3f8a5a', '#e0a882'],
+            SMITESH: ['#142d38', '#267c78', '#57afa2', '#d5a27d'],
         };
         function drawArm(g, sh, hand, armA, col) {
             const ex = (sh.x + hand.x) / 2 + Math.cos(armA + PI / 2) * 2, ey = (sh.y + hand.y) / 2 + Math.sin(armA + PI / 2) * 2 * SQ;
@@ -444,6 +445,15 @@
             const col = ARM[name] || ARM.NOAH;
             const hand = pt(sh.x, sh.y, P.armA, P.reach, P1);
             if (name === 'ESPIRIT') return drawBow(g, P, sh, hand, look, col);
+            if (name === 'SMITESH') {
+                drawArm(g, sh, hand, P.armA, col);
+                g.strokeStyle = '#203f47'; g.lineWidth = 5;
+                g.beginPath(); g.moveTo(hand.x, hand.y + 25); g.lineTo(hand.x + 2, hand.y - 34); g.stroke();
+                g.strokeStyle = '#b9a2ed'; g.lineWidth = 2;
+                g.beginPath(); g.moveTo(hand.x + 2, hand.y + 24); g.lineTo(hand.x + 2, hand.y - 34); g.stroke();
+                g.fillStyle = '#8fffea'; g.beginPath(); g.arc(hand.x + 2, hand.y - 37, 7 + P.glow * 2, 0, PI * 2); g.fill();
+                return;
+            }
             drawArm(g, sh, hand, P.armA, col);
             if (name === 'MARKIE') drawAxe(g, P, hand, look);
             else if (name === 'DESTINY') drawLongsword(g, P, hand, look);
@@ -591,6 +601,7 @@
             const el = elapsed(a, now);
             if (a.name === 'NOAH') return noahPose(h, a, el, pose);
             if (a.name === 'ESPIRIT') return bowPose(h, a, el, pose);
+            if (a.name === 'SMITESH') { restPose(h, now, s, pose); pose.glow = Math.max(0, 1 - el / 320); return pose; }
             return meleePose(h, a, el, pose);
         }
         function liveAtk(s, h, now) {
@@ -613,6 +624,7 @@
             const P = poseFor(h, a, now, s);
             // Use the same torso silhouette in every pose, including attack recovery.
             if (h.name === 'NOAH') P.relaxedIdle = true;
+            if (h.name === 'SMITESH') { P.armA = h.moving ? 1.05 : .85; P.reach = 10; }
             const f = h.facing === -1 ? -1 : 1;
             P.facingSign = a ? a.facing : f;
             const sh = shoulderOf(f, P, SH);
@@ -713,6 +725,7 @@
             if (a.sheet) return a.name === 'ESPIRIT' ? undefined : sheetFx(g, h, s, a, now, dt, k, look);
             if (a.name === 'NOAH') return noahFx(g, h, s, a, now, dt, k, look, hx, hy);
             if (a.name === 'ESPIRIT') return bowFx(g, h, s, a, now, dt, k, look, hx, hy);
+            if (a.name === 'SMITESH') return;
             return meleeFx(g, h, s, a, now, dt, k, look, hx, hy);
         }
         function noahFx(g, h, s, a, now, dt, k, look, hx, hy) {
@@ -821,7 +834,7 @@
                 p.rot = ang + PI / 2; p.vr = (Math.random() - .5) * .02;
             });
         }
-        function hasPose(name) { return name === 'NOAH' || name === 'MARKIE' || name === 'DESTINY' || name === 'ESPIRIT' }
+        function hasPose(name) { return name === 'NOAH' || name === 'MARKIE' || name === 'DESTINY' || name === 'ESPIRIT' || name === 'SMITESH' }
         const usingSheets = () => !!(SHEETS && !opts.procedural);
         return { usingSheets, onAttack, contactAt, releaseAt, hitStop, onHurt, onLevelUp, drawHero, drawFx, hasPose, stateOf: i => st[i], NOAH_T, MARKIE_T, DESTINY_T, BOW, attackLife, bowRel };
     }
