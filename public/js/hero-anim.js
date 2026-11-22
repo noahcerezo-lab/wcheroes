@@ -175,6 +175,12 @@
             const hurt = now - s.hurtAt;
             if (hurt < 260) { const u = 1 - hurt / 260; out.lean -= .2 * u * u; out.bdx -= 2 * u }
             out.relaxedIdle = h.name === 'NOAH' && !h.moving;
+            if (h.name === 'NOAH' && !h.moving) {
+                out.fdx = 2.5; out.bdx = -2.5;
+                out.crouch = .5;
+                out.bladeA = toWorld(1.32, f);
+                out.armA = toWorld(1.05, f);
+            }
             out.axeSide = f;
             return out;
         }
@@ -554,7 +560,9 @@
             const s = heroState(i);
             const a = liveAtk(s, h, now);
             // Keep Noah's idle stance and Espirit's shooting pose anatomically readable.
-            const forcePose = (h.name === 'NOAH' && !a && !h.moving) || (h.name === 'ESPIRIT' && !!a);
+            // Prefer consistent pose geometry for Noah's idle and Espirit's bow,
+            // rather than swapping back to baked-arm or reversed-bow sheet frames.
+            const forcePose = (h.name === 'NOAH' && !a && !h.moving) || h.name === 'ESPIRIT';
             if (!forcePose && SHEETS && !opts.procedural && drawSheetHero(g, h, s, a, now, look)) return null;
             const P = poseFor(h, a, now, s);
             const f = h.facing === -1 ? -1 : 1;
