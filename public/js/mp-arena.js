@@ -35,9 +35,10 @@
         MARKIE: { atk: 'markieCleave', atkW: 76 * 2.2, spc: 'markieQuake', range: 51 },
         ESPIRIT: { atk: 'espiritArrow', atkW: 60, spc: 'espiritStorm', range: 546 },
         SMITESH: { atk: 'espiritArrow', atkW: 60, spc: 'espiritStorm', range: 650 },
+        DONNA: { atk: 'espiritArrow', atkW: 70, spc: 'espiritStorm', range: 137 },
         DAVE: { atk: 'markieAxe', atkW: 170, spc: 'markieWhirl', range: 90 }, // long-range magic, independent of Espirit's arrow art
     };
-    const SPECIAL_RADIUS = { NOAH: 140, DESTINY: 120, MARKIE: 107, ESPIRIT: 227, SMITESH: 133 }; // fallback; events carry r
+    const SPECIAL_RADIUS = { NOAH: 140, DESTINY: 120, MARKIE: 107, ESPIRIT: 227, SMITESH: 133, DONNA: 120 }; // fallback; events carry r
     const SLAM_R = 55; // Temple Warden shockwave radius (world units)
     // Power-ups (shared/combat.js PICKUP_KINDS order) and buff colors. pu[] in snapshots = FURY, HASTE, WARD, SYNERGY.
     const PICKUP = [
@@ -489,7 +490,7 @@
                     // Each ultimate gets a distinct ground-level signature burst.
                     const ultimatePalette = {
                         NOAH: '#aa88ff', DESTINY: '#ffe1a0',
-                        MARKIE: '#ff9355', ESPIRIT: '#80efaf', SMITESH: '#8fffea', DAVE: '#ffb66e'
+                        MARKIE: '#ff9355', ESPIRIT: '#80efaf', SMITESH: '#8fffea', DAVE: '#ffb66e', DONNA: '#b2f48b'
                     };
                     const uc = ultimatePalette[h.name] || '#fff4b5';
                     fx.push({ kind: 'ring', x: h.x * S, y: h.y * S,
