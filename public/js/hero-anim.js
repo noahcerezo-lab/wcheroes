@@ -94,7 +94,7 @@
             const skipRaise = h.name === 'ESPIRIT' && prev && prev.name === 'ESPIRIT' && now - prev.start < bowEnd(prev) + 120;
             const st0 = Math.max(0, Math.min(2, stage | 0)), dir = SHEETS ? SHEETS.dirOf(h.aim, facing) : 'E';
             // Espirit uses the direction-correct procedural draw so the bow faces the target.
-            const sheet = h.name !== 'ESPIRIT' && !!(SHEETS && !opts.procedural && SHEETS.ready(sheetKeyFor(h.name, st0, dir)));
+            const sheet = h.name !== 'ESPIRIT' && h.name !== 'SMITESH' && !!(SHEETS && !opts.procedural && SHEETS.ready(sheetKeyFor(h.name, st0, dir)));
             s.atk = { name: h.name, stage: st0, start: now, theta, m, facing, holdAt: 0, holdMs: 0, shockDone: false, contactDone: false, skipRaise, sfxRel: false, sheet, dir };
             s.shardAcc = 0;
             return s.atk;
