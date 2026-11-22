@@ -12,7 +12,7 @@
     'use strict';
     const SIM = window.WCHSim, ROSTER = WCHHeroes.HEROES, STORE_KEY = 'wch.session';
     const params = new URLSearchParams(location.search);
-    const socket = io({ reconnectionDelay: 500, reconnectionDelayMax: 3000 });
+    const socket = io({ reconnection: true, reconnectionAttempts: Infinity, reconnectionDelay: 500, reconnectionDelayMax: 5000, timeout: 20000 });
     const $ = id => document.getElementById(id);
     let room = null, world = null, me = null; // me = {playerId, token, code}
     let seq = 0, pending = [], predicted = null, predictedFor = null, visualOffset = { x: 0, y: 0 }, lastLocalMove = 0;
@@ -145,10 +145,17 @@
         else note('Back in the lobby' + (e?.by ? ' — ' + e.by + ' ended the round.' : '.'));
     });
     socket.on('session:replaced', () => { me = null; room = null; world = null; arena.reset(); show('entry'); note('This game was opened in another tab or window.') });
-    socket.on('disconnect', () => {
+    socket.on('disconnect', reason => {
         $('status').textContent = 'Disconnected — reconnecting…';
-        if (room) { $('conn').classList.remove('hidden'); note('Connection lost — reconnecting…') }
+        if (room) { $('conn').classList.remove('hidden'); note('Connection lost (' + reason + ') — reconnecting…') }
     });
+    socket.io.on('reconnect_error', () => { if (room) $('status').textContent = 'Trying to reconnect…'; });
+    // iOS Safari may suspend sockets when switching apps or locking the screen.
+    // Wake the transport promptly instead of waiting for a stale heartbeat timeout.
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && !socket.connected) socket.connect();
+    });
+    window.addEventListener('pageshow', () => { if (!socket.connected) socket.connect(); });
     socket.on('connect', () => {
         $('status').textContent = 'Connected';
         resume(); // first load (refresh) or after a drop
