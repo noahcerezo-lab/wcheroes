@@ -1854,10 +1854,10 @@
                 }
             });
             if (enemyMotion.size > 64) { const live = new Set((view.enemies || []).map(e => e[0])); for (const id of enemyMotion.keys()) if (!live.has(id)) enemyMotion.delete(id) }
-            if (!desktopLowFx || stats.frames % 2 === 0) safeFx('buffs', () => drawBuffs(view, now, k));
+            safeFx('buffs', () => drawBuffs(view, now, k));
             safeFx('action/special', () => drawActionFx(view, now, k, dt));
-            if (!desktopLowFx || stats.frames % 2 === 0) safeFx('particles', () => drawParticles(now));
-            if (o && (!desktopLowFx || stats.frames % 2 === 0)) { o.draw(g); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over' }
+            safeFx('particles', () => drawParticles(now));
+            if (o) { o.draw(g); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over' }
             safeFx('numbers', () => drawNumbers(now));
             safeFx('chains', () => drawChains(view, now, k));
             g.setTransform(1, 0, 0, 1, 0, 0);
