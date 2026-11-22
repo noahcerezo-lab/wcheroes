@@ -451,6 +451,16 @@
                     if (e.n >= 10) fx.push({ kind: 'sheet', key: 'healAura', follow: e.h, w: 72, start: now, life: A ? A.duration('healAura') : 540 });
                     break;
                 }
+                case 'druidAnimal': {
+                    // Target-accurate cosmetic attack, independent of hero attack counter.
+                    if(Number.isFinite(e.tx)&&Number.isFinite(e.ty)) fx.push({kind:'petStrike',name:'DONNA',pet:e.kind||0,boost:!!e.boosted,x:e.x*S,y:e.y*S,tx:e.tx*S,ty:e.ty*S,start:now,life:460});
+                    break;
+                }
+                case 'druidAwaken': {
+                    const h=latestHero(e.h);
+                    if(h) fx.push({kind:'wildheart',follow:e.h,pet:e.kind||0,x:h.x*S,y:h.y*S,r:180*S,start:now,life:1200});
+                    break;
+                }
                 case 'cyclone': {
                     for(let j=0;j<4;j++) fx.push({kind:'ring',x:e.x*S,y:e.y*S,r0:16+j*10,r1:150+j*8,color:j%2?'#f3c275':'#e05a4d',width:5-j*.6,start:now+j*70,life:700});
                     floatText(e.x*S,e.y*S-95,'BLADE CYCLONE','#ffd39c',15,900);
@@ -486,14 +496,14 @@
                     const h = latestHero(e.h);
                     if (!h) break;
                     const r = (e.r || SPECIAL_RADIUS[h.name] || 140) * S;
-                    fx.push({ kind: 'special', name: h.name, x: h.x * S, y: h.y * S, r, start: now, life: 700 });
+                    if (h.name !== 'DONNA') fx.push({ kind: 'special', name: h.name, x: h.x * S, y: h.y * S, r, start: now, life: 700 });
                     // Each ultimate gets a distinct ground-level signature burst.
                     const ultimatePalette = {
                         NOAH: '#aa88ff', DESTINY: '#ffe1a0',
                         MARKIE: '#ff9355', ESPIRIT: '#80efaf', SMITESH: '#8fffea', DAVE: '#ffb66e', DONNA: '#b2f48b'
                     };
                     const uc = ultimatePalette[h.name] || '#fff4b5';
-                    fx.push({ kind: 'ring', x: h.x * S, y: h.y * S,
+                    if(h.name !== 'DONNA') fx.push({ kind: 'ring', x: h.x * S, y: h.y * S,
                         r0: 12, r1: r * .7, color: uc, width: 5,
                         start: now, life: 560 });
                     burst(h.x * S, h.y * S - 14, uc, 12, 4,
@@ -508,7 +518,7 @@
                     const h = latestHero(e.h);
                     if (!h) break;
                     const col = HERO_FINISH[h.name]?.primary || heroCfg(h.name).color;
-                    fx.push({ kind: 'ring', x: h.x * S, y: h.y * S, r0: 8, r1: 100, color: col, width: 5, start: now, life: 720 });
+                    if(h.name !== 'DONNA') fx.push({ kind: 'ring', x: h.x * S, y: h.y * S, r0: 8, r1: 100, color: col, width: 5, start: now, life: 720 });
                     burst(h.x * S, h.y * S - 45, col, 18, 5);
                     floatText(h.x * S, h.y * S - 135, 'AWAKENED', col, 19, 1200);
                     if (isMine(e.h)) addShake(4, 220, now);
@@ -863,11 +873,58 @@
             }
             return out;
         }
+        function drawWildheart(f, now) {
+            const t=Math.min(1,(now-f.start)/f.life),fade=Math.min(1,t*5)*Math.min(1,(1-t)*3);
+            const rad=f.r*(.35+.65*Math.min(1,t*2));
+            g.save();g.translate(f.x,f.y);g.globalCompositeOperation='lighter';
+            g.globalAlpha=.18*fade;g.fillStyle='#57ff89';g.beginPath();g.ellipse(0,0,rad,rad*.38,0,0,Math.PI*2);g.fill();
+            g.globalAlpha=.9*fade;g.lineWidth=4;g.strokeStyle='#c8ffa4';
+            g.beginPath();g.ellipse(0,0,rad,rad*.38,0,0,Math.PI*2);g.stroke();
+            g.lineWidth=2;g.strokeStyle='#5bdb86';
+            g.beginPath();g.ellipse(0,0,rad*.78,rad*.29,0,0,Math.PI*2);g.stroke();
+            for(let j=0;j<12;j++){
+                const a=j*Math.PI/6+now/2500,x=Math.cos(a)*rad*.89,y=Math.sin(a)*rad*.34;
+                g.save();g.translate(x,y);g.rotate(a+Math.PI/2);
+                g.fillStyle=j%3===0?'#f7e4a3':'#b5ff9a';
+                g.beginPath();g.moveTo(0,-10);g.lineTo(6,0);g.lineTo(0,10);g.lineTo(-6,0);g.closePath();g.fill();g.restore();
+            }
+            // Eight enormous vines grow outward, curl upward and flower.
+            for(let j=0;j<8;j++){
+                const a=j*Math.PI/4,rr=rad*.78;
+                g.save();g.rotate(a);g.lineWidth=5;g.strokeStyle='#4fbe67';
+                g.beginPath();g.moveTo(0,0);g.bezierCurveTo(rr*.35,-30,rr*.65,25,rr,0);g.stroke();
+                g.fillStyle='#aaff9b';g.beginPath();g.ellipse(rr*.72,-9,13,6,-.6,0,Math.PI*2);g.fill();
+                g.fillStyle='#fff0bb';g.beginPath();g.arc(rr,0,5,0,Math.PI*2);g.fill();g.restore();
+            }
+            g.restore();
+        }
+        function drawPetStrike(f,now) {
+            const t=Math.min(1,(now-f.start)/f.life),fade=1-t;
+            const palette=['#ffce83','#a4f9d0','#d2a5ff','#e9ffae'];
+            const color=palette[Math.min(3,f.pet)],dx=f.tx-f.x,dy=f.ty-f.y;
+            g.save();g.globalCompositeOperation='lighter';g.globalAlpha=fade;
+            // Fox: firefly dart; wolf: spectral claw; bear: crushing shockwave;
+            // stag: radiant antler bolt. All visible at maximum pet range.
+            if(f.pet===2){
+                g.strokeStyle=color;g.lineWidth=f.boost?9:6;
+                g.beginPath();g.arc(f.tx,f.ty-22,(20+t*36)*(f.boost?1.3:1),0,Math.PI*2);g.stroke();
+                for(let j=0;j<3;j++){g.beginPath();g.moveTo(f.tx-20+j*14,f.ty-55);g.lineTo(f.tx-12+j*14,f.ty-8);g.stroke();}
+            }else{
+                const q=Math.min(1,t*2.1),x=f.x+dx*q,y=f.y+dy*q-32;
+                g.strokeStyle=color;g.lineWidth=(f.boost?12:7)*(1-t*.5);
+                g.beginPath();g.moveTo(f.x,f.y-22);g.quadraticCurveTo((f.x+f.tx)/2,(f.y+f.ty)/2-65,x,y);g.stroke();
+                g.fillStyle='#f7ffe0';g.beginPath();g.arc(x,y,f.boost?12:8,0,Math.PI*2);g.fill();
+                if(f.pet===1){g.strokeStyle='#dcfff0';g.lineWidth=4;for(let j=-1;j<=1;j++){g.beginPath();g.moveTo(x+j*10-5,y-15);g.lineTo(x+j*10+7,y+12);g.stroke();}}
+                if(f.pet===3){g.strokeStyle='#edffb0';g.lineWidth=3;g.beginPath();g.moveTo(x,y);g.lineTo(x-17,y-18);g.moveTo(x,y);g.lineTo(x+17,y-18);g.stroke();}
+            }
+            g.restore();
+        }
         // Floor layer (drawn under units): special rings, slam impacts, revive rings. Never X-flipped.
         function drawFloorFx(now) {
             for (const f of fx) {
                 const el = now - f.start;
                 if (el < 0) continue; // delayed effect (e.g. the crit's second ring) not started yet
+                if (f.kind === 'wildheart') { drawWildheart(f,now); continue; }
                 if (f.kind === 'bossTarget') {
                     const p = Math.max(0, Math.min(1, el / f.life));
                     g.save();
@@ -1197,6 +1254,7 @@
             }
             for (const f of fx) {
                 const el = now - f.start;
+                if (f.kind === 'petStrike') { drawPetStrike(f,now); continue }
                 if (f.kind === 'combatImpact') { drawCombatImpact(f, now); continue }
                 if (f.kind === 'flash' || f.kind === 'shock' || f.kind === 'levelup') { drawFlashFx(f, now, view); continue }
                 if (f.kind === 'ov') { drawOv(f, now, view, k); continue }
