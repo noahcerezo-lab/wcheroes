@@ -1683,6 +1683,13 @@
             drawBossBar(view, k);
             drawBanners(now, k);
             drawGameOver(now, view.hud);
+            if (renderFailures.size) {
+                g.save(); g.setTransform(1,0,0,1,0,0);
+                g.fillStyle = 'rgba(42,18,42,.92)'; g.fillRect(12, canvas.height-44, 420, 31);
+                g.fillStyle = '#ffd6b1'; g.font = 'bold 15px monospace';
+                g.fillText('Sprite error: ' + [...renderFailures].join(', ').slice(0,38), 20, canvas.height-23);
+                g.restore();
+            }
             stats.frames++;
             lastWork = performance.now() - now; // CPU time this frame took (drives adaptive density)
         }
