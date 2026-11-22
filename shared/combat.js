@@ -417,14 +417,14 @@ function levelUp(w) {
     w.heroes.forEach((h, i) => {
         if (!alive(h)) return;
         h.level = (h.level || 1) + 1;
-        h.masteryTier = Math.min(2, Math.floor(w.wave / RULES.levelEvery));
+        h.masteryTier = Math.min(2, Math.floor(h.level / 10));
         const L = LEVELS.levelStats(h.name, h.level);
         h.maxHp = L.hp; h.damage = L.damage; h.speed = L.speed; h.cool = L.cool;
         h.skillScale = L.skill; h.levelCrit = L.crit;
         h.hp = h.maxHp;
         got.push(i);
     });
-    if (got.length) emit(w, { t: 'lvl', all: got, n: w.wave, lv: Math.max(...got.map(i => w.heroes[i].level)), mastery: Math.min(2, Math.floor(w.wave / RULES.levelEvery)) });
+    if (got.length) emit(w, { t: 'lvl', all: got, n: w.wave, lv: Math.max(...got.map(i => w.heroes[i].level)), mastery: Math.max(...got.map(i => w.heroes[i].masteryTier)) });
 }
 
 // ---------------- power-ups ----------------
