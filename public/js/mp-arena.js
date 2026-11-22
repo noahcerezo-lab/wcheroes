@@ -191,7 +191,7 @@
                 if (h.attackN > prev.a) {
                     // Swing direction = the hero's 8-way aim; stage 2 = chain finisher (bigger effect).
                     const f = { kind: 'attack', i, name: h.name, start: now, life: 300, facing: h.facing === -1 ? -1 : 1, aim: aimVec(h.aim, h.facing), stage: h.cs || 0, x: h.x, y: h.y };
-                    if (h.name === 'ESPIRIT' || h.name === 'SMITESH') {
+                    if (h.name === 'ESPIRIT' || h.name === 'SMITESH' || h.name === 'DONNA') {
                         const hits = ev.filter(e => e.t === 'hit' && e.h === i);
                         const hit = hits[0];
                         f.mastery = Math.min(2, h.mastery || 0);
@@ -201,7 +201,7 @@
                         f.ty = hit ? hit.y : h.y + f.aim.y * maxRange;
                         f.life = Math.max(120, Math.hypot(f.tx - h.x, f.ty - h.y) * S / 3.2);
                     }
-                    if (h.name === 'SMITESH') {
+                    if (h.name === 'SMITESH' || h.name === 'DONNA') {
                         // A bolt launches on the cast frame and travels visibly to the actual
                         // server-selected target, or the full aim range on a miss.
                         f.rel = now + 100;
@@ -1141,6 +1141,49 @@
             }
             g.restore();
         }
+        // Donna's THORNBURST: large readable emerald seed comet, rotating thorn
+        // leaves, curling vine trail and a flower-bloom impact. Purely cosmetic.
+        function drawThornburst(f, now, k) {
+            const elapsed=now-f.rel;
+            if(elapsed<0 || elapsed>f.flight+170) return;
+            const t=Math.min(1,Math.max(0,elapsed/f.flight));
+            const sx=f.x*S+f.aim.x*23*k, sy=f.y*S-55*k;
+            const ex=f.tx*S, ey=f.ty*S-38*k;
+            const x=lerp(sx,ex,t),y=lerp(sy,ey,t)-Math.sin(t*Math.PI)*13;
+            const size=(f.stage===2?1.5:1.15)*Math.min(k,1.4);
+            g.save();g.globalCompositeOperation='lighter';g.lineCap='round';
+            if(elapsed<=f.flight){
+                // Layered curved vine trail with luminous vein and leaf motes.
+                for(let j=0;j<3;j++){
+                    const back=Math.max(0,t-(.12+j*.07));
+                    const bx=lerp(sx,ex,back),by=lerp(sy,ey,back)-Math.sin(back*Math.PI)*13;
+                    g.globalAlpha=[.23,.5,.95][j];g.strokeStyle=['#2bcf6a','#75f99a','#edffb5'][j];
+                    g.lineWidth=[24,11,3.5][j]*size;
+                    g.beginPath();g.moveTo(bx,by);g.quadraticCurveTo((bx+x)/2,(by+y)/2-6,x,y);g.stroke();
+                }
+                g.translate(x,y);g.rotate(Math.atan2(ey-sy,ex-sx));
+                g.globalAlpha=.35;g.fillStyle='#55f777';g.beginPath();g.arc(0,0,24*size,0,Math.PI*2);g.fill();
+                g.globalAlpha=1;g.fillStyle='#f5ffd0';g.beginPath();g.arc(0,0,8*size,0,Math.PI*2);g.fill();
+                for(let j=0;j<5;j++){
+                    const a=now/160+j*Math.PI*2/5,px=Math.cos(a)*17*size,py=Math.sin(a)*13*size;
+                    g.save();g.translate(px,py);g.rotate(a);
+                    g.fillStyle=j%2?'#b6ff72':'#53ec8e';
+                    g.beginPath();g.moveTo(-8*size,0);g.quadraticCurveTo(0,-8*size,9*size,0);g.quadraticCurveTo(0,7*size,-8*size,0);g.fill();
+                    g.restore();
+                }
+            }else{
+                const fade=1-(elapsed-f.flight)/170;
+                g.translate(ex,ey);g.globalAlpha=Math.max(0,fade);
+                g.strokeStyle='#c5ff9e';g.lineWidth=4*size;
+                g.beginPath();g.arc(0,0,(18+(1-fade)*36)*size,0,Math.PI*2);g.stroke();
+                for(let j=0;j<8;j++){
+                    const a=j*Math.PI/4,rr=(18+(1-fade)*31)*size;
+                    g.save();g.translate(Math.cos(a)*rr,Math.sin(a)*rr);g.rotate(a);
+                    g.fillStyle=j%2?'#7cff9b':'#fff2a6';g.fillRect(-5*size,-2*size,10*size,4*size);g.restore();
+                }
+            }
+            g.restore();
+        }
         function drawActionFx(view, now, k, dt) {
             if (anim) {
                 const room = opts.getRoom(), myId = opts.getMyId();
@@ -1157,6 +1200,7 @@
                 if (f.kind === 'combatImpact') { drawCombatImpact(f, now); continue }
                 if (f.kind === 'flash' || f.kind === 'shock' || f.kind === 'levelup') { drawFlashFx(f, now, view); continue }
                 if (f.kind === 'ov') { drawOv(f, now, view, k); continue }
+                if (f.kind === 'attack' && f.name === 'DONNA') { drawThornburst(f, now, k); continue }
                 if (f.kind === 'attack' && f.name === 'SMITESH') { drawSpiritBolt(f, now, k); continue }
                 if (f.kind === 'attack' && f.pose && f.name === 'ESPIRIT') { drawArrow(f, now, k); continue }
                 if (f.kind === 'attack' && f.pose) continue; // drawn by hero-anim (blade-path crescent / sheets)
