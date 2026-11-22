@@ -232,7 +232,7 @@
         // ---------- Espirit: archery (raise, draw, nock + hold, release, string recoil, recover) ----------
         // Espirit fires every ~180 ms while held, so the full read (raise/draw/hold) is ~105 ms; chained shots ~75 ms.
         const BOW = { raise: 30, draw: 60, hold: 15, recoil: 110, recover: 140, speed: 2.1 /* screen px per ms */ };
-        const DEFS = { NOAH: NOAH_T, MARKIE: MARKIE_T, DESTINY: DESTINY_T, DAVE: MARKIE_T };
+        const DEFS = { NOAH: NOAH_T, MARKIE: MARKIE_T, DESTINY: DESTINY_T, DAVE: MARKIE_T, DONNA: MARKIE_T };
         // Sheet timelines: ms per frame per combo stage, the contact frame (impact is shown at its start; the
         // Arcane Breaker connects on frame 3 so it can lead the server's hit by about a frame) and hit-stop.
         const SH_T = {
@@ -268,6 +268,11 @@
         const WEIGHT = {
             // Dave's fourfold attacks share a tested melee timing structure but use
             // lighter body movement; the four separate weapon arms animate in drawDaveArms.
+            DONNA: [
+                { lean:.04, twist:.12, crouch:1, step:1.4, reachA:5, reachS:10 },
+                { lean:.05, twist:.18, crouch:1, step:1.8, reachA:5, reachS:10 },
+                { lean:.06, twist:.24, crouch:1.5, step:2, reachA:6, reachS:11 }
+            ],
             DAVE: [
                 { lean:.08, twist:.35, crouch:1.5, step:2.2, reachA:7, reachS:13 },
                 { lean:.1, twist:.48, crouch:2, step:2.8, reachA:7, reachS:13 },
@@ -437,6 +442,7 @@
             NOAH: ['#1b1530', '#4b3aa8', '#6a52d0', '#e8aa7f'], MARKIE: ['#1a120d', '#5a3a26', '#7a5236', '#c98d68'],
             DESTINY: ['#1c0d12', '#8f1d2c', '#b8283a', '#e8b08a'], ESPIRIT: ['#0f1a13', '#2f6b45', '#3f8a5a', '#e0a882'],
             SMITESH: ['#142d38', '#267c78', '#57afa2', '#d5a27d'],
+            DONNA: ['#25462e', '#447c4b', '#9bc76c', '#dfad83'],
             DAVE: ['#211a29', '#4b2c39', '#ae343c', '#c9875f'],
         };
         function drawArm(g, sh, hand, armA, col) {
