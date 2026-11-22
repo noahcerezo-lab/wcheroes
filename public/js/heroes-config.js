@@ -56,6 +56,13 @@
             blurb: 'Four arms, twin Eskrima sticks, twin knives, and a devastating blade cyclone.',
             fill: { STR: .92, AGI: .84, INT: .25, VIT: .72, LUK: .48 },
             v19: { hp: 175, speed: 3.85, damage: 25, range: 90, cool: 245, special: 'BLADE CYCLONE' }
+        },
+        {
+            id: 'DONNA', slot: '7TH', name: 'DONNA', cls: 'WILDHEART DRUID',
+            color: '#78b75b', accent: '#f2dc87',
+            blurb: 'Nature magic, healing blossoms, and wolf, hawk and bear companions.',
+            fill: { STR: .32, AGI: .46, INT: .88, VIT: .64, LUK: .49 },
+            v19: { hp: 135, speed: 3.4, damage: 22, range: 205, cool: 360, special: 'CALL OF THE WILD' }
         }
     ];
     const STAT_KEYS = ['STR', 'AGI', 'INT', 'VIT', 'LUK'];
