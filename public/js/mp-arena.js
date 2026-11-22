@@ -188,7 +188,10 @@
                     // Swing direction = the hero's 8-way aim; stage 2 = chain finisher (bigger effect).
                     const f = { kind: 'attack', i, name: h.name, start: now, life: 300, facing: h.facing === -1 ? -1 : 1, aim: aimVec(h.aim, h.facing), stage: h.cs || 0, x: h.x, y: h.y };
                     if (h.name === 'ESPIRIT') {
-                        const hit = ev.find(e => e.t === 'hit' && e.h === i);
+                        const hits = ev.filter(e => e.t === 'hit' && e.h === i);
+                        const hit = hits[0];
+                        f.mastery = Math.min(2, h.mastery || 0);
+                        f.volley = hits.slice(0, 1 + f.mastery).map(e => ({ x: e.x, y: e.y }));
                         f.tx = hit ? hit.x : h.x + f.aim.x * KIT.ESPIRIT.range;
                         f.ty = hit ? hit.y : h.y + f.aim.y * KIT.ESPIRIT.range;
                         f.life = Math.max(120, Math.hypot(f.tx - h.x, f.ty - h.y) * S / 3.2);
@@ -345,6 +348,15 @@
                 case 'hit': {
                     flashes.set(e.id, now + 200);
                     const hh = latestHero(e.h);
+                    // Mastery impacts are enemy-centered: never overlay hero heads.
+                    if (hh && hh.mastery) {
+                        const mc = { NOAH:'#b99aff', DESTINY:'#ffe4a8', MARKIE:'#ff9a64', ESPIRIT:'#9df7b9' }[hh.name];
+                        if (mc && (e.f || hh.name === 'MARKIE' || hh.name === 'DESTINY')) {
+                            fx.push({ kind:'ring', x:e.x*S, y:e.y*S,
+                                r0:5, r1:24 + hh.mastery*13, color:mc,
+                                width:1.5 + hh.mastery, start:now, life:240 });
+                        }
+                    }
                     // Combat 2.0: directional, character-colored impact flashes are applied
                     // before legacy early returns, so premium animation hits get them too.
                     // Keep all embellishments on the target, never on hero faces.
@@ -499,6 +511,10 @@
                         floatText(u.x * S, u.y * S - 130, 'Lv ' + (u.lv || e.lv), '#FFE9A8', 20, 1400);
                     }
                     banners.push({ str: 'LEVEL UP • Lv ' + e.lv, color: '#FFD36D', born: now, life: 2200 });
+                    if (e.mastery) {
+                        const rank = e.mastery === 1 ? 'I' : 'II';
+                        banners.push({ str: 'MASTERY ' + rank + ' UNLOCKED', color: '#a7f3d0', born: now + 450, life: 2600 });
+                    }
                     stats.levelUps = (stats.levelUps || 0) + 1;
                     sfx('levelUp');
                     break;
@@ -985,6 +1001,24 @@
             if (!(SH && SH.draw(g, 'arrowGlow', Math.floor(now / 50) % 6, false, sc)) && A) A.loop(g, 'espiritArrow', now, 0, 0, KIT.ESPIRIT.atkW * k);
             g.restore();
             if (Math.random() < .4) emitO('arrowTrail', hx, hy, ang + Math.PI, 1, OC.ESPIRIT);
+            // Additional visible arrows correspond to additional server-authoritative targets.
+            // If no secondary enemy exists, show a harmless parallel arrow (never fake a hit).
+            const n = 1 + (f.mastery || 0);
+            for (let j = 1; j < n; j++) {
+                const dest = f.volley && f.volley[j];
+                const offset = (j % 2 ? 1 : -1) * Math.ceil(j / 2) * 13 * Math.min(k, 1.3);
+                const tx = dest ? dest.x * S : ex, ty = dest ? dest.y * S - 38 * k : ey + offset;
+                const x = lerp(sx, tx, t), y = lerp(sy + offset * .5, ty, t);
+                const px = lerp(sx, tx, t0), py = lerp(sy + offset * .5, ty, t0);
+                const a = Math.atan2(ty - (sy + offset * .5), tx - sx);
+                g.save(); g.globalCompositeOperation = 'lighter';
+                g.strokeStyle = '#b9ffd6'; g.globalAlpha = .7; g.lineWidth = 2.5;
+                g.beginPath(); g.moveTo(px, py); g.lineTo(x, y); g.stroke();
+                g.translate(Math.round(x), Math.round(y)); g.rotate(a);
+                g.fillStyle = '#eaffee'; g.fillRect(-10, -2, 18, 4);
+                g.beginPath(); g.moveTo(12, 0); g.lineTo(3, -5); g.lineTo(3, 5); g.closePath(); g.fill();
+                g.restore();
+            }
         }
         function drawActionFx(view, now, k, dt) {
             if (anim) {
