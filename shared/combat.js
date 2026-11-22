@@ -424,7 +424,7 @@ function levelUp(w) {
         h.hp = h.maxHp;
         got.push(i);
     });
-    if (got.length) emit(w, { t: 'lvl', all: got, n: w.wave, lv: Math.max(...got.map(i => w.heroes[i].level)), mastery: Math.max(...got.map(i => w.heroes[i].masteryTier)) });
+    if (got.length) emit(w, { t: 'lvl', all: got, n: w.wave, lv: Math.max(...got.map(i => w.heroes[i].level)), mastery: Math.max(0, ...got.filter(i => w.heroes[i].level % 10 === 0).map(i => w.heroes[i].masteryTier)) });
 }
 
 // ---------------- power-ups ----------------
