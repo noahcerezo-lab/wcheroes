@@ -441,38 +441,44 @@
             g.beginPath(); g.moveTo(sh.x, sh.y); g.lineTo(ex, ey); g.stroke();
             g.strokeStyle = col[2]; g.beginPath(); g.moveTo(ex, ey); g.lineTo(hand.x, hand.y); g.stroke();
         }
+        function drawDaveArms(g, P, look, facing, layer) {
+            // Arms attach to fixed torso shoulders, not the single-weapon shoulder.
+            // Draw the far pair behind the torso and near pair in front, so the
+            // four limbs cannot float over the face or disappear behind the body.
+            const attacking = P.glow > 0;
+            const sweep = attacking ? Math.sin((1 - P.glow) * Math.PI * 3) * .55 : 0;
+            const sway = P.bob * .15;
+            const arms = [
+                { x:-17, y:-36+sway, a:2.1+sweep, stick:true, far:true },
+                { x: 17, y:-36+sway, a:1.0-sweep, stick:true, far:false },
+                { x:-18, y:-22+sway, a:2.4-sweep*.75, stick:false, far:true },
+                { x: 18, y:-22+sway, a:.75+sweep*.75, stick:false, far:false }
+            ];
+            g.save();
+            g.lineCap = 'round'; g.lineJoin = 'round';
+            for (const arm of arms) {
+                if ((layer === 'back') !== arm.far) continue;
+                const x = arm.x * facing, y = arm.y;
+                const angle = facing === -1 ? Math.PI - arm.a : arm.a;
+                const ex = x + Math.cos(angle) * 16;
+                const ey = y + Math.sin(angle) * 16 * SQ;
+                const tx = ex + Math.cos(angle) * (arm.stick ? 26 : 20);
+                const ty = ey + Math.sin(angle) * (arm.stick ? 26 : 20) * SQ;
+                g.strokeStyle='#1d1827';g.lineWidth=10;
+                g.beginPath();g.moveTo(x,y);g.lineTo(ex,ey);g.stroke();
+                g.strokeStyle=arm.far?'#86583f':'#c38b62';g.lineWidth=6;g.stroke();
+                g.strokeStyle='#211823';g.lineWidth=arm.stick?8:7;
+                g.beginPath();g.moveTo(ex,ey);g.lineTo(tx,ty);g.stroke();
+                g.strokeStyle=arm.stick?'#d9a660':'#dce7ec';g.lineWidth=arm.stick?5:4;g.stroke();
+                g.fillStyle='#d5a37b';g.beginPath();g.arc(ex,ey,4,0,PI*2);g.fill();
+            }
+            g.restore();
+        }
         function drawArmAndSword(g, P, sh, look, name) {
             name = name || 'NOAH';
             const col = ARM[name] || ARM.NOAH;
             const hand = pt(sh.x, sh.y, P.armA, P.reach, P1);
-            if (name === 'DAVE') {
-                // Four distinct limbs: upper pair with Eskrima sticks, lower pair with knives.
-                // Same arm geometry and torso for idle, run, attack and recovery.
-                const swing = P.glow > 0 ? Math.sin(P.glow * 9) * .65 : 0;
-                const arms = [
-                    {x:sh.x-12,y:sh.y-4,a:P.armA-.65+swing,stick:true},
-                    {x:sh.x+13,y:sh.y-4,a:-P.armA+.55-swing,stick:true},
-                    {x:sh.x-14,y:sh.y+15,a:2.35-swing,stick:false},
-                    {x:sh.x+15,y:sh.y+15,a:.8+swing,stick:false}
-                ];
-                for(const arm of arms) {
-                    const end=pt(arm.x,arm.y,arm.a,19,P2);
-                    g.strokeStyle='#231b2b';g.lineWidth=9;g.lineCap='round';
-                    g.beginPath();g.moveTo(arm.x,arm.y);g.lineTo(end.x,end.y);g.stroke();
-                    g.strokeStyle='#bd835e';g.lineWidth=6;g.stroke();
-                    if(arm.stick) {
-                        const tip=pt(end.x,end.y,arm.a,30,P1);
-                        g.strokeStyle='#271923';g.lineWidth=9;g.beginPath();g.moveTo(end.x,end.y);g.lineTo(tip.x,tip.y);g.stroke();
-                        g.strokeStyle='#d5a05b';g.lineWidth=5;g.stroke();
-                        g.fillStyle='#f5d184';g.fillRect(tip.x-2,tip.y-2,4,4);
-                    } else {
-                        const tip=pt(end.x,end.y,arm.a,23,P1);
-                        g.strokeStyle='#dbe6e9';g.lineWidth=7;g.beginPath();g.moveTo(end.x,end.y);g.lineTo(tip.x,tip.y);g.stroke();
-                        g.strokeStyle='#fff6d8';g.lineWidth=2;g.stroke();
-                    }
-                }
-                return;
-            }
+            if (name === 'DAVE') return drawDaveArms(g, P, look, P.facingSign || 1, 'front');
             if (name === 'ESPIRIT') return drawBow(g, P, sh, hand, look, col);
             if (name === 'SMITESH') {
                 drawArm(g, sh, hand, P.armA, col);
@@ -662,15 +668,19 @@
             const behind = h.name !== 'ESPIRIT' && Math.sin(P.bladeA) < -0.55 && (!a || (h.name === 'MARKIE' && elapsed(a, now) < timing(a).a));
             g.fillStyle = '#0b0914aa'; // stronger ground shadow under the feet
             g.beginPath(); g.ellipse(0, 2, h.name === 'MARKIE' ? 22 : 19, 5.5, 0, 0, PI * 2); g.fill();
-            if (behind) drawArmAndSword(g, P, sh, look, h.name);
+            if (h.name === 'DAVE') drawDaveArms(g, P, look, f, 'back');
+            else if (behind) drawArmAndSword(g, P, sh, look, h.name);
             drawBody(g, h, i, now, look, P);
-            if (!behind) drawArmAndSword(g, P, sh, look, h.name);
+            if (h.name === 'DAVE') drawDaveArms(g, P, look, f, 'front');
+            else if (!behind) drawArmAndSword(g, P, sh, look, h.name);
             // level-up glow on the body for 1.2 s
             const lv = now - s.lvAt;
             if (lv >= 0 && lv < 1200) {
                 const u = lv / 1200;
                 g.globalCompositeOperation = 'lighter'; g.globalAlpha = .55 * (1 - u);
-                g.drawImage(silhouette(R.makePoseArt(h.name, 0, theme), look.color || '#ffd36d'), -W / 2 * f, -H, W * f, H);
+                g.save(); g.scale(f, 1);
+                g.drawImage(silhouette(R.makePoseArt(h.name, 0, theme), look.color || '#ffd36d'), -W / 2, -H, W, H);
+                g.restore();
                 g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
             }
             return P;
