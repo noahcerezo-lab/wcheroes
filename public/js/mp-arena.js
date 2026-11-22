@@ -475,11 +475,12 @@
                     }
                     break;
                 }
-                case 'totem':
+                case 'totem': {
+                    fx.push({kind:'ancestralGuardian',follow:e.h,x:e.x*S,y:e.y*S,start:now,life:e.ms||6000});
+                    break;
+                }
                 case 'totemPulse': {
-                    fx.push({ kind: 'ring', x: e.x*S, y: e.y*S,
-                        r0: 15, r1: e.t === 'totem' ? 125 : 90,
-                        color: '#a3f9e6', width: 4, start: now, life: 680 });
+                    fx.push({kind:'guardianPulse',follow:e.h,x:e.x*S,y:e.y*S,start:now,life:800});
                     break;
                 }
                 case 'comboHeal': {
@@ -496,14 +497,14 @@
                     const h = latestHero(e.h);
                     if (!h) break;
                     const r = (e.r || SPECIAL_RADIUS[h.name] || 140) * S;
-                    if (h.name !== 'DONNA' && h.name !== 'DAVE') fx.push({ kind: 'special', name: h.name, x: h.x * S, y: h.y * S, r, start: now, life: 700 });
+                    if (h.name !== 'DONNA' && h.name !== 'DAVE' && h.name !== 'SMITESH') fx.push({ kind: 'special', name: h.name, x: h.x * S, y: h.y * S, r, start: now, life: 700 });
                     // Each ultimate gets a distinct ground-level signature burst.
                     const ultimatePalette = {
                         NOAH: '#aa88ff', DESTINY: '#ffe1a0',
                         MARKIE: '#ff9355', ESPIRIT: '#80efaf', SMITESH: '#8fffea', DAVE: '#ffb66e', DONNA: '#b2f48b'
                     };
                     const uc = ultimatePalette[h.name] || '#fff4b5';
-                    if(h.name !== 'DONNA' && h.name !== 'DAVE') fx.push({ kind: 'ring', x: h.x * S, y: h.y * S,
+                    if(h.name !== 'DONNA' && h.name !== 'DAVE' && h.name !== 'SMITESH') fx.push({ kind: 'ring', x: h.x * S, y: h.y * S,
                         r0: 12, r1: r * .7, color: uc, width: 5,
                         start: now, life: 560 });
                     burst(h.x * S, h.y * S - 14, uc, 12, 4,
@@ -946,6 +947,53 @@
             }
             g.restore();
         }
+        // Smitesh's Ancestral Guardian: towering translucent spirit with ritual
+        // mask and floating rune circle. Single persistent effect; no new sprites.
+        function drawAncestralGuardian(f,now,view) {
+            const t=(now-f.start)/f.life;if(t<0||t>1)return;
+            const h=view.heroes[f.follow],x=h?h.x*S:f.x,y=h?h.y*S:f.y;
+            const fade=Math.max(0,Math.min(1,t*7,(1-t)*7)),pulse=f.kind==='guardianPulse';
+            g.save();g.translate(x,y);g.globalAlpha=fade;
+            const radius=pulse?55+105*t:92+6*Math.sin(now/320);
+            g.strokeStyle=pulse?'#d6b5ff':'#70ebcf';g.lineWidth=pulse?7*(1-t)+1:3;
+            g.beginPath();g.ellipse(0,0,radius,radius*.42,0,0,Math.PI*2);g.stroke();
+            for(let i=0;i<8;i++){
+                const a=i*Math.PI/4+now/3000,rx=Math.cos(a)*radius,ry=Math.sin(a)*radius*.42;
+                g.save();g.translate(rx,ry);g.rotate(a);
+                g.fillStyle=i%2?'#b9a1ff':'#8fffe0';g.fillRect(-5,-2,10,4);g.fillRect(-2,-7,4,14);
+                g.restore();
+            }
+            if(!pulse){
+                const bob=Math.sin(now/310)*6;
+                g.translate(0,-92+bob);g.globalAlpha*=.72;
+                // Broad spectral shoulders and tapering torso.
+                g.fillStyle='#437e85';g.beginPath();g.moveTo(-56,-16);g.lineTo(-30,-43);
+                g.lineTo(30,-43);g.lineTo(56,-16);g.lineTo(29,58);
+                g.lineTo(0,90);g.lineTo(-29,58);g.closePath();g.fill();
+                g.strokeStyle='#9dffe6';g.lineWidth=4;
+                g.beginPath();g.moveTo(-38,-9);g.lineTo(-20,39);g.lineTo(0,63);
+                g.lineTo(20,39);g.lineTo(38,-9);g.stroke();
+                // Spirit mask and bright eyes.
+                g.fillStyle='#d7e9db';g.beginPath();g.moveTo(-23,-74);g.lineTo(23,-74);
+                g.lineTo(28,-49);g.lineTo(0,-22);g.lineTo(-28,-49);g.closePath();g.fill();
+                g.fillStyle='#322e52';g.fillRect(-18,-61,12,7);g.fillRect(6,-61,12,7);
+                g.fillStyle='#75ffdc';g.fillRect(-15,-60,7,4);g.fillRect(8,-60,7,4);
+                g.fillStyle='#9674c5';g.fillRect(-4,-44,8,13);
+                // Ethereal branching horns.
+                g.strokeStyle='#c2b1ef';g.lineWidth=7;g.lineCap='round';
+                for(const side of [-1,1]){
+                    g.beginPath();g.moveTo(side*18,-73);g.lineTo(side*42,-104);
+                    g.lineTo(side*48,-133);g.stroke();
+                    g.beginPath();g.moveTo(side*39,-102);g.lineTo(side*64,-114);g.stroke();
+                }
+                for(let i=0;i<6;i++){
+                    const a=now/650+i*Math.PI/3;
+                    g.fillStyle=i%2?'#b5a0f5':'#89ffe3';
+                    g.fillRect(Math.cos(a)*65-3,Math.sin(a)*28-5,6,10);
+                }
+            }
+            g.restore();
+        }
         // Dave's signature Q: four individually readable swords orbit a vertical
         // crimson-and-gold cyclone. Pure canvas paths, no sprite or particle spam.
         function drawDaveCyclone(f,now,view) {
@@ -1323,6 +1371,7 @@
             }
             for (const f of fx) {
                 const el = now - f.start;
+                if (f.kind === 'ancestralGuardian' || f.kind === 'guardianPulse') { drawAncestralGuardian(f,now,view); continue }
                 if (f.kind === 'daveCyclone') { drawDaveCyclone(f,now,view); continue }
                 if (f.kind === 'worldTree') { drawWorldTree(f,now,view); continue }
                 if (f.kind === 'petStrike') { drawPetStrike(f,now); continue }
