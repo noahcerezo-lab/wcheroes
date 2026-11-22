@@ -536,13 +536,23 @@ function stepPassives(w) {
             const kind = Math.min(3, Math.floor(((h.level || 1) - 1) / 10));
             h.animalKind = kind;
             const intervals = [1500, 1300, 1800, 1600];
+            const petDamage = [10, 16, 24, 32]; // base damage before temporary buffs
             if (w.time - h.animalAt >= intervals[kind]) {
                 h.animalAt = w.time;
                 const reach = [150, 170, 145, 195][kind];
                 const targets = w.enemies.filter(e => e.hp > 0 && dist(e, h) < reach).sort((a, b) => dist(a, h) - dist(b, h));
                 const boosted = w.time < (h.animalBoostUntil || 0);
-                for (const e of targets.slice(0, kind === 2 || kind === 3 ? 2 : 1))
-                    damageEnemy(w, h, e, [4, 7, 11, 14][kind] * (boosted ? 2 : 1), { knock: kind === 2 ? 12 : 4 });
+                // Every pet strike damages its primary target and briefly stuns
+                // nearby enemies. Each enemy is hit once per pet attack tick.
+                const primary = targets.slice(0, kind === 2 || kind === 3 ? 2 : 1);
+                const affected = new Set();
+                for (const target of primary) {
+                    for (const e of [...w.enemies]) {
+                        if (e.hp <= 0 || affected.has(e.id) || dist(e, target) > 42) continue;
+                        affected.add(e.id);
+                        damageEnemy(w, h, e, Math.round(petDamage[kind] * (e === target ? 1 : 0.45) * (boosted ? 2 : 1)), { knock: kind === 2 ? 12 : 4, stun: 500 });
+                    }
+                }
                 if (kind === 3) for (const u of w.heroes) if (alive(u) && dist(u, h) < 115) healHero(w, u, 3, h);
                 if (targets.length) for (const e of targets.slice(0, kind === 2 || kind === 3 ? 2 : 1)) emit(w, { t: 'druidAnimal', h: w.heroes.indexOf(h), kind, x: Math.round(h.x), y: Math.round(h.y), tx: Math.round(e.x), ty: Math.round(e.y), boosted });
             }
