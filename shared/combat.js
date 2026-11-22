@@ -311,7 +311,13 @@ function performSpecial(w, h) {
     if (h.name === 'SMITESH') {
         h.totemUntil = w.time + 6000;
         h.totemAt = w.time - 1000;
-        emit(w, { t: 'totem', h: i, x: Math.round(h.x), y: Math.round(h.y), ms: 6000 });
+        const tier = h.masteryTier || 0;
+        // Mastery II: Ancestral Ascension wards nearby allies for 3 seconds.
+        if (tier >= 2) for (const u of w.heroes) if (alive(u) && dist(u,h) <= 145) {
+            u.wardUntil = Math.max(u.wardUntil || 0, w.time + 3000);
+            emit(w,{t:'guardianWard',h:w.heroes.indexOf(u),from:i});
+        }
+        emit(w, { t: 'totem', h: i, x: Math.round(h.x), y: Math.round(h.y), ms: 6000, mastery:tier });
     }
     if (h.name === 'MARKIE') { // taunt + damage soak
         h.shieldUntil = w.time + k.shieldMs;
@@ -569,9 +575,20 @@ function stepPassives(w) {
             }
             if (w.time < h.totemUntil && w.time - h.totemAt >= 1000) {
                 h.totemAt = w.time;
-                for (const u of w.heroes) if (alive(u) && dist(u, h) <= 135) healHero(w, u, 7, h);
+                const tier = h.masteryTier || 0;
+                const allies = w.heroes.filter(u => alive(u) && dist(u,h) <= 135);
+                for (const u of allies) healHero(w, u, tier >= 2 ? 11 : 7, h);
+                // Mastery I: an additional ancestral spirit seeks the most wounded
+                // ally in range each pulse (5 bonus HP), without double-proccing.
+                if (tier >= 1) {
+                    const injured = allies.filter(u => u.hp < u.maxHp).sort((a,b) => a.hp/a.maxHp - b.hp/b.maxHp);
+                    if (injured.length) {
+                        const target = injured[0], n = healHero(w,target,tier >= 2 ? 8 : 5,h);
+                        if (n) emit(w,{t:'spiritCommunion',h:w.heroes.indexOf(target),from:w.heroes.indexOf(h),n});
+                    }
+                }
                 for (const e of [...w.enemies]) if (dist(e, h) <= 95) damageEnemy(w, h, e, Math.round(h.damage * .45), { knock: 3 });
-                emit(w, { t: 'totemPulse', h: w.heroes.indexOf(h), x: Math.round(h.x), y: Math.round(h.y) });
+                emit(w, { t: 'totemPulse', h: w.heroes.indexOf(h), x: Math.round(h.x), y: Math.round(h.y), mastery:tier });
             }
         }
         if (h.state === 'downed') {
