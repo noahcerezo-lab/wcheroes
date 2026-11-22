@@ -48,7 +48,7 @@
             color: '#40bfae', accent: '#bda2ff',
             blurb: 'Spirit bolts, ancestral healing, and a restorative spirit totem.',
             fill: { STR: .25, AGI: .56, INT: .95, VIT: .48, LUK: .62 },
-            v19: { hp: 115, speed: 3.5, damage: 21, range: 330, cool: 300, special: 'SPIRIT TOTEM' }
+            v19: { hp: 115, speed: 3.5, damage: 21, range: 650, cool: 450, special: 'SPIRIT TOTEM' }
         }
     ];
     const STAT_KEYS = ['STR', 'AGI', 'INT', 'VIT', 'LUK'];
