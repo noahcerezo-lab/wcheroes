@@ -82,6 +82,7 @@ const publicRoom = r => ({
         id: p.id, name: p.name, hero: p.hero, ready: p.ready, connected: p.connected,
         graceLeftMs: p.connected ? 0 : Math.max(0, RECONNECT_GRACE_MS - (Date.now() - p.disconnectedAt))
     })),
+    activeRoster: r.activeRoster || [0, 1, 2, 3],
     slots: HEROES.map((hero, i) => {
         const owner = playersOf(r).find(p => p.hero === i);
         return { hero, controller: owner && owner.connected ? owner.name : 'AI', human: !!(owner && owner.connected), reservedFor: owner && !owner.connected ? owner.name : null };
@@ -168,7 +169,11 @@ function join(socket, r, name, ack) {
 }
 
 function initialWorld(r) {
-    r.world = COMBAT.createBattle({ seed: COMBAT_SEED ?? crypto.randomBytes(4).readUInt32LE(0), firstWaveDelayMs: FIRST_WAVE_DELAY_MS, enemyDamageMul: ENEMY_DAMAGE_MUL });
+    // Four battlefield slots: prioritize the heroes selected by human players,
+    // then fill remaining positions with unselected AI heroes.
+    const chosen = [...new Set(playersOf(r).map(p => p.hero))];
+    r.activeRoster = [...chosen, ...HEROES.map((_, i) => i).filter(i => !chosen.includes(i))].slice(0, 4);
+    r.world = COMBAT.createBattle({ heroIndices: r.activeRoster, seed: COMBAT_SEED ?? crypto.randomBytes(4).readUInt32LE(0), firstWaveDelayMs: FIRST_WAVE_DELAY_MS, enemyDamageMul: ENEMY_DAMAGE_MUL });
     r.world.round = r.round;
     r.overAt = 0;
     syncControllers(r);
@@ -262,7 +267,8 @@ io.on('connection', socket => {
         const seq = Number(data.seq);
         if (!Number.isInteger(seq) || seq <= p.lastSeq || seq > p.lastSeq + 100000) return; // stale, duplicate or bogus
         p.lastSeq = seq;
-        const h = r.world.heroes[p.hero];
+        const h = r.world.heroes[r.activeRoster.indexOf(p.hero)];
+        if (!h) return;
         if (!takeToken(p.bucket, INPUT_RATE, INPUT_BURST)) { p.dropped++; return } // acked (seq advanced) but not applied
         if (h.state !== 'alive' || r.world.over) return; // downed heroes wait for a revive
         const move = SIM.normalizeMove(data.x, data.y);
@@ -280,6 +286,7 @@ io.on('connection', socket => {
 function endBattle(r, info) {
     r.phase = 'lobby';
     r.world = null;
+    r.activeRoster = null;
     r.overAt = 0;
     for (const v of playersOf(r)) v.ready = false;
     io.to(r.code).emit('battle:end', info);
@@ -290,7 +297,8 @@ function endBattle(r, info) {
 function syncControllers(r) {
     const w = r.world, humans = connectedPlayers(r);
     w.heroes.forEach((h, i) => {
-        const p = humans.find(v => v.hero === i), owner = playersOf(r).find(v => v.hero === i);
+        const selectedHero = r.activeRoster[i];
+        const p = humans.find(v => v.hero === selectedHero), owner = playersOf(r).find(v => v.hero === selectedHero);
         h.seq = owner ? owner.lastSeq : 0;
         h.controller = p ? p.id : null;
         h.ai = !p;
