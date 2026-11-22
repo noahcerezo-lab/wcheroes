@@ -466,6 +466,14 @@
                     floatText(e.x*S,e.y*S-95,'BLADE CYCLONE','#ffd39c',15,900);
                     break;
                 }
+                case 'spiritSplash': {
+                    // Small teal-blue impact bloom; no sustained particles or blur.
+                    fx.push({kind:'ring',x:e.x*S,y:e.y*S-20,r0:8,r1:e.r*S,
+                        color:'#56d8eb',width:4,start:now,life:340});
+                    fx.push({kind:'flash',x:e.x*S,y:e.y*S-20,r:25,
+                        color:'#9ef6ff',start:now,life:180});
+                    break;
+                }
                 case 'shamanHeal': {
                     const h = latestHero(e.h);
                     if (h) {
