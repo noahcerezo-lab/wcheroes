@@ -174,6 +174,7 @@
             }
             const hurt = now - s.hurtAt;
             if (hurt < 260) { const u = 1 - hurt / 260; out.lean -= .2 * u * u; out.bdx -= 2 * u }
+            out.relaxedIdle = h.name === 'NOAH' && !h.moving;
             out.axeSide = f;
             return out;
         }
@@ -335,7 +336,29 @@
                     g.translate(ox + P.twist * 1.2, WAIST + P.crouch + P.bob + oy);
                     g.rotate(P.lean);
                     g.scale(1 - Math.abs(P.twist) * .1, 1);
-                    g.drawImage(img, 0, 0, 96, legSrcY, -W / 2, -legSrcY * PX, W, legSrcY * PX);
+                    if (h.name === 'NOAH' && P.relaxedIdle) {
+                        // The original pose art has BOTH arms baked into its torso pixels.
+                        // Changing the separate weapon arm cannot remove those raised arms.
+                        // Keep the head/hair, but crop the upper-body sprite to the central
+                        // robe and paint new, lowered sleeves instead.
+                        const headH = 45, bodyTop = 45, bodyW = 40, bodyX = 28;
+                        g.drawImage(img, 0, 0, 96, headH,
+                            -W / 2, -legSrcY * PX, W, headH * PX);
+                        g.drawImage(img, bodyX, bodyTop, bodyW, legSrcY - bodyTop,
+                            -bodyW * PX / 2, -(legSrcY - bodyTop) * PX,
+                            bodyW * PX, (legSrcY - bodyTop) * PX);
+                        // Narrow shoulder guards and a relaxed non-weapon arm, below head level.
+                        g.fillStyle = pass === 0 ? outline : '#30246c';
+                        g.fillRect(-15, -22, 7, 15);
+                        g.fillRect(9, -22, 6, 15);
+                        g.fillStyle = pass === 0 ? outline : '#6553bc';
+                        g.fillRect(-13, -20, 4, 12);
+                        g.fillRect(10, -20, 3, 11);
+                        g.fillStyle = pass === 0 ? outline : '#d6a17d';
+                        g.fillRect(-12, -8, 3, 4);
+                    } else {
+                        g.drawImage(img, 0, 0, 96, legSrcY, -W / 2, -legSrcY * PX, W, legSrcY * PX);
+                    }
                     g.restore();
                 }
             }
