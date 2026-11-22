@@ -1346,6 +1346,7 @@
         // slow, spawn fewer cosmetic particles / ambient motes (down to 35%), and recover slowly when smooth.
         // Phones (small canvas) start at 75%. Never affects gameplay, the sim, or prediction.
         let lastWork = 0, emaDt = 16.7, emaWork = 4, densityAt = 0, densityInit = false;
+        let desktopLowFx = false, recoveredAt = 0;
         function adaptDensity(now, dt) {
             if (!densityInit) { densityInit = true; pool.density = uiScale() > 1.15 ? .75 : 1 }
             emaDt += (dt - emaDt) * .08; emaWork += (lastWork - emaWork) * .08;
@@ -1354,6 +1355,14 @@
             densityAt = now;
             if (emaDt > 20 || emaWork > 12) pool.density = Math.max(.35, pool.density - .08);
             else if (emaDt < 17.6 && emaWork < 7) pool.density = Math.min(1, pool.density + .03);
+            // Desktop canvases cover many more physical pixels; degrade cosmetics
+            // before dropping gameplay frames. Hysteresis prevents quality flicker.
+            if (uiScale() <= 1.15) {
+                if (emaWork > 13 || emaDt > 24) { desktopLowFx = true; recoveredAt = now; }
+                else if (desktopLowFx && emaWork < 7 && emaDt < 18 && now - recoveredAt > 2500) desktopLowFx = false;
+            } else desktopLowFx = false;
+            if (desktopLowFx) pool.density = Math.min(pool.density, .4);
+            stats.lowFx = desktopLowFx;
             stats.density = pool.density;
         }
         // Attack lighting: a brief additive pool of the hero's colour on the floor while they swing / shoot.
@@ -1845,10 +1854,10 @@
                 }
             });
             if (enemyMotion.size > 64) { const live = new Set((view.enemies || []).map(e => e[0])); for (const id of enemyMotion.keys()) if (!live.has(id)) enemyMotion.delete(id) }
-            safeFx('buffs', () => drawBuffs(view, now, k));
+            if (!desktopLowFx || stats.frames % 2 === 0) safeFx('buffs', () => drawBuffs(view, now, k));
             safeFx('action/special', () => drawActionFx(view, now, k, dt));
-            safeFx('particles', () => drawParticles(now));
-            if (o) { o.draw(g); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over' }
+            if (!desktopLowFx || stats.frames % 2 === 0) safeFx('particles', () => drawParticles(now));
+            if (o && (!desktopLowFx || stats.frames % 2 === 0)) { o.draw(g); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over' }
             safeFx('numbers', () => drawNumbers(now));
             safeFx('chains', () => drawChains(view, now, k));
             g.setTransform(1, 0, 0, 1, 0, 0);
@@ -1870,7 +1879,7 @@
         function start() { if (!running) { running = true; requestAnimationFrame(frame) } }
         function stop() { running = false }
 
-        return { push, reset, start, stop, sample, stats, interpolating: interpEnabled, fxCounts: () => ({ fx: fx.length, parts: pool.count, oparts: ofx ? ofx.particles.count : 0, sheets: SH ? SH.progress().loaded : 0, density: pool.density, texts: texts.length, banners: banners.length, art: A ? A.loadedCount() : 0, shakes: shake.count, reducedMotion: reducedMotion() }), pickupsShown: () => { const v = sample(performance.now()); return v ? (v.pk || []).length : 0 }, chainOf: i => chains[i] ? chains[i].n : 0, lastAttackFx: name => { const f = [...fx].reverse().find(v => v.kind === 'attack' && (!name || v.name === name)); return f ? { name: f.name, aim: f.aim, stage: f.stage } : null } };
+        return { push, reset, start, stop, sample, stats, interpolating: interpEnabled, fxCounts: () => ({ fx: fx.length, parts: pool.count, oparts: ofx ? ofx.particles.count : 0, sheets: SH ? SH.progress().loaded : 0, density: pool.density, desktopLowFx, frameMs: stats.frameMs, workMs: stats.workMs, texts: texts.length, banners: banners.length, art: A ? A.loadedCount() : 0, shakes: shake.count, reducedMotion: reducedMotion() }), pickupsShown: () => { const v = sample(performance.now()); return v ? (v.pk || []).length : 0 }, chainOf: i => chains[i] ? chains[i].n : 0, lastAttackFx: name => { const f = [...fx].reverse().find(v => v.kind === 'attack' && (!name || v.name === name)); return f ? { name: f.name, aim: f.aim, stage: f.stage } : null } };
     }
 
     root.WCHArena = { createArena, TICK_MS, INTERP_DELAY_MS };
