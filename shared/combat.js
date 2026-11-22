@@ -538,13 +538,13 @@ function stepPassives(w) {
             const intervals = [1500, 1300, 1800, 1600];
             if (w.time - h.animalAt >= intervals[kind]) {
                 h.animalAt = w.time;
-                const reach = [75, 95, 80, 115][kind];
+                const reach = [150, 170, 145, 195][kind];
                 const targets = w.enemies.filter(e => e.hp > 0 && dist(e, h) < reach).sort((a, b) => dist(a, h) - dist(b, h));
                 const boosted = w.time < (h.animalBoostUntil || 0);
                 for (const e of targets.slice(0, kind === 2 || kind === 3 ? 2 : 1))
                     damageEnemy(w, h, e, [4, 7, 11, 14][kind] * (boosted ? 2 : 1), { knock: kind === 2 ? 12 : 4 });
                 if (kind === 3) for (const u of w.heroes) if (alive(u) && dist(u, h) < 115) healHero(w, u, 3, h);
-                if (targets.length) emit(w, { t: 'druidAnimal', h: w.heroes.indexOf(h), kind, x: Math.round(h.x), y: Math.round(h.y) });
+                if (targets.length) for (const e of targets.slice(0, kind === 2 || kind === 3 ? 2 : 1)) emit(w, { t: 'druidAnimal', h: w.heroes.indexOf(h), kind, x: Math.round(h.x), y: Math.round(h.y), tx: Math.round(e.x), ty: Math.round(e.y), boosted });
             }
         }
         if (h.name === 'SMITESH' && alive(h)) {
