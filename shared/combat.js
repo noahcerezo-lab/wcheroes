@@ -118,7 +118,7 @@ function createBattle(opts = {}) {
             hp: cfg.v19.hp, maxHp: cfg.v19.hp, damage: cfg.v19.damage, range: S(cfg.v19.range) * (cfg.name === 'ESPIRIT' ? RULES.espiritRangeMul : 1), cool: cfg.v19.cool,
             speed: SIM.speedFromV19(cfg.v19.speed), stats: cfg.stats, level: 1, masteryTier: 0,
             base: { hp: cfg.v19.hp, damage: cfg.v19.damage, speed: SIM.speedFromV19(cfg.v19.speed) },
-            state: 'alive', reviveMs: 0, attackAt: -1e9, specialAt: -1e9, healAt: 0, attackN: 0, specialN: 0,
+            state: 'alive', reviveMs: 0, attackAt: -1e9, specialAt: -1e9, healAt: 0, attackN: 0, specialN: 0, destinyComboHits: 0, destinyComboHealAt: -1e9,
             buffUntil: 0, shieldUntil: 0, furyUntil: 0, hasteUntil: 0, wardUntil: 0, synergyUntil: 0, awakenUntil: 0, critChain: 0, wantAttack: false, wantSpecial: false, ai: true, controller: null, seq: 0,
         })),
         enemies: [],
@@ -244,6 +244,7 @@ function performAttack(w, h) {
         targets.push(...candidates.slice(0, Math.max(0, count - targets.length)));
     }
     // No 'atk' event: clients animate swings from attackN + chain stage in the snapshot (saves bandwidth).
+    let connectedHits = 0;
     for (const e of [...targets]) {
         let dmg = h.damage;
         if (h.name === 'MARKIE') dmg = Math.round(h.damage * (inArc(h, e, h.range * 1.2, k.front) ? k.frontMul : k.sideMul));
@@ -254,6 +255,19 @@ function performAttack(w, h) {
         const knock = k.knock * RULES.basicKnockMul * (fin ? RULES.finisherKnockMul : 1)
             * (h.name === 'NOAH' ? 1 + tier * .18 : 1);
         damageEnemy(w, h, e, dmg, { knock, stun, dirVec: h.name === 'MARKIE' ? null : a, finisher: fin });
+        connectedHits++;
+    }
+    // Destiny: every third successful basic-attack swing heals her for 5% max HP.
+    // Multiple enemies hit by a sweep count as one swing, not multiple triggers.
+    // The 1.5s internal cooldown prevents fast attack-speed buffs from spamming heals.
+    if (h.name === 'DESTINY' && connectedHits > 0) {
+        h.destinyComboHits = (h.destinyComboHits || 0) + 1;
+        if (h.destinyComboHits >= 3 && w.time - h.destinyComboHealAt >= 1500) {
+            h.destinyComboHits = 0;
+            h.destinyComboHealAt = w.time;
+            const n = healHero(w, h, Math.max(1, Math.round(h.maxHp * .05)), h);
+            if (n > 0) emit(w, { t: 'comboHeal', h: w.heroes.indexOf(h), n });
+        }
     }
     return true;
 }
