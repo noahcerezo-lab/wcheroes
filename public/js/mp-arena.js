@@ -427,6 +427,16 @@
                     if (e.n >= 10) fx.push({ kind: 'sheet', key: 'healAura', follow: e.h, w: 72, start: now, life: A ? A.duration('healAura') : 540 });
                     break;
                 }
+                case 'comboHeal': {
+                    const h = latestHero(e.h);
+                    if (!h) break;
+                    fx.push({ kind: 'ring', x: h.x * S, y: h.y * S,
+                        r0: 9, r1: 43, color: '#9cf5c7', width: 3,
+                        start: now, life: 460 });
+                    burst(h.x * S, h.y * S - 25, '#b5ffe1', 7, 2,
+                        { life: 430, size: 3 });
+                    break;
+                }
                 case 'spc': {
                     const h = latestHero(e.h);
                     if (!h) break;
