@@ -458,7 +458,7 @@
                 }
                 case 'druidAwaken': {
                     const h=latestHero(e.h);
-                    if(h) fx.push({kind:'wildheart',follow:e.h,pet:e.kind||0,x:h.x*S,y:h.y*S,r:180*S,start:now,life:1200});
+                    if(h) fx.push({kind:'worldTree',follow:e.h,pet:e.kind||0,x:h.x*S,y:h.y*S,start:now,life:1500});
                     break;
                 }
                 case 'cyclone': {
@@ -919,6 +919,33 @@
             }
             g.restore();
         }
+        // Wildheart signature: a towering spectral World Tree erupts above Donna.
+        // Drawn over units, unlike Espirit's floor-bound arrow storm.
+        function drawWorldTree(f,now,view) {
+            const h=view.heroes[f.follow];if(!h)return;
+            const t=Math.min(1,(now-f.start)/f.life),grow=Math.min(1,t*3),fade=Math.min(1,(1-t)*4);
+            const x=h.x*S,y=h.y*S-12;
+            g.save();g.translate(x,y);g.globalCompositeOperation='lighter';g.globalAlpha=fade;
+            const height=170*grow;
+            g.strokeStyle='#4a9b5b';g.lineWidth=17;g.lineCap='round';
+            g.beginPath();g.moveTo(0,0);g.bezierCurveTo(-24,-height*.35,22,-height*.65,0,-height);g.stroke();
+            g.strokeStyle='#d2ff9e';g.lineWidth=5;g.beginPath();g.moveTo(0,0);g.bezierCurveTo(-24,-height*.35,22,-height*.65,0,-height);g.stroke();
+            for(let j=0;j<9;j++){
+                const a=j*Math.PI*2/9+now/1800,rr=(45+18*Math.sin(j*3))*grow;
+                const bx=Math.cos(a)*rr,by=-height*.8+Math.sin(a)*rr*.7;
+                g.strokeStyle='#81ed85';g.lineWidth=5;
+                g.beginPath();g.moveTo(0,-height*.65);g.quadraticCurveTo(bx*.4,by-18,bx,by);g.stroke();
+                g.fillStyle=j%2?'#a5ff7b':'#f5df96';
+                g.beginPath();g.ellipse(bx,by,20*grow,10*grow,a,0,Math.PI*2);g.fill();
+            }
+            g.fillStyle='#efffca';g.beginPath();g.arc(0,-height,14*grow,0,Math.PI*2);g.fill();
+            for(let j=0;j<12;j++){
+                const a=j*Math.PI*2/12+now/600,rr=(40+90*t)*grow;
+                g.fillStyle=j%3?'#a5ff8e':'#ffe7a2';
+                g.beginPath();g.arc(Math.cos(a)*rr,-40-height*.4+Math.sin(a)*rr*.65,3.5,0,Math.PI*2);g.fill();
+            }
+            g.restore();
+        }
         // Floor layer (drawn under units): special rings, slam impacts, revive rings. Never X-flipped.
         function drawFloorFx(now) {
             for (const f of fx) {
@@ -1254,6 +1281,7 @@
             }
             for (const f of fx) {
                 const el = now - f.start;
+                if (f.kind === 'worldTree') { drawWorldTree(f,now,view); continue }
                 if (f.kind === 'petStrike') { drawPetStrike(f,now); continue }
                 if (f.kind === 'combatImpact') { drawCombatImpact(f, now); continue }
                 if (f.kind === 'flash' || f.kind === 'shock' || f.kind === 'levelup') { drawFlashFx(f, now, view); continue }
@@ -1565,7 +1593,7 @@
 
         // Lightweight pixel-art companions follow Donna visually; all damage stays server-authoritative.
         function drawDruidPet(h, i, now) {
-            if (h.name !== 'DONNA' || h.state || !Number.isInteger(h.pet) || h.pet < 0) return;
+            if (h.name !== 'DONNA' || (h.state && h.state !== 'alive') || !Number.isInteger(h.pet) || h.pet < 0) return;
             const kind = Math.min(3, h.pet), t = now / 1000;
             const px = h.x * S + (h.facing === -1 ? 48 : -48) + Math.sin(t * 2 + i) * 7;
             const py = h.y * S + 9 + Math.cos(t * 3 + i) * 3;
