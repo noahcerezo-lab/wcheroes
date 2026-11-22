@@ -476,6 +476,18 @@
                     addShake(5, 380, now);
                     break;
                 }
+                case 'boss:phase': {
+                    banners.push({ str: 'VOID EMPEROR • PHASE II', color: '#ff9bc7', born: now, life: 2400 });
+                    fx.push({ kind: 'ring', x: e.x*S, y: e.y*S, r0: 20, r1: 145,
+                        color: '#ff77c4', width: 6, start: now, life: 850 });
+                    addShake(4, 300, now);
+                    break;
+                }
+                case 'boss:warning': {
+                    fx.push({ kind: 'bossTarget', x: e.x*S, y: e.y*S, r: e.r*S,
+                        start: now, life: e.ms });
+                    break;
+                }
                 case 'boss:target': {
                     fx.push({ kind: 'bossTarget', x: e.x * S, y: e.y * S, r: e.r * S, start: now, life: e.ms });
                     break;
@@ -524,6 +536,14 @@
                     if (e.mastery) {
                         const rank = e.mastery === 1 ? 'I' : 'II';
                         banners.push({ str: 'MASTERY ' + rank + ' UNLOCKED', color: '#a7f3d0', born: now + 450, life: 2600 });
+                        const abilities = { ESPIRIT: 'MULTI-ARROW VOLLEY', MARKIE: 'CRUSHING STUN',
+                            NOAH: 'ARCANE KNOCKBACK', DESTINY: 'RADIANT STAGGER' };
+                        for (const j of e.all || []) {
+                            const hero = latestHero(j);
+                            if (hero && hero.mastery === e.mastery)
+                                floatText(hero.x*S, hero.y*S - 160, abilities[hero.name] || 'MASTERY',
+                                    heroCfg(hero.name).color, 17, 1900);
+                        }
                     }
                     stats.levelUps = (stats.levelUps || 0) + 1;
                     sfx('levelUp');
@@ -671,7 +691,7 @@
                 const y = y0 + 4 + i * rowH + rowH / 2, human = controllerOf(room, i), me = human && human.id === myId;
                 g.fillStyle = heroCfg(h.name).color; g.fillRect(x0 + 6, y - 4, 7, 7);
                 g.fillStyle = me ? '#ffd279' : human ? '#fff2c9' : '#a8f0c6';
-                g.fillText(h.name + ' ' + (h.lv || 1) + (me ? '★' : human ? '' : ' AI'), x0 + 17, y);
+                g.fillText(h.name + ' ' + (h.lv || 1) + (h.mastery ? ' M' + h.mastery : '') + (me ? '★' : human ? '' : ' AI'), x0 + 17, y);
                 g.fillStyle = '#292035'; g.fillRect(x0 + 92, y - 3, 50, 6);
                 g.fillStyle = h.state ? '#8a3a4a' : (h.hp / (h.maxHp || 100) < .3 ? '#f0a05a' : '#72dba3');
                 g.fillRect(x0 + 92, y - 3, 50 * Math.max(0, (h.hp || 0) / (h.maxHp || 100)), 6);
@@ -690,6 +710,8 @@
                 g.textAlign = 'left'; g.font = 'bold 10px monospace';
                 const pill = (str, col, frac) => { const w = g.measureText(str).width + 12; g.fillStyle = 'rgba(14,12,28,.62)'; g.fillRect(px, py, w, 15); if (frac !== undefined) { g.fillStyle = col; g.fillRect(px, py + 13, w * frac, 2) } g.fillStyle = col; g.fillText(str, px + 6, py + 8); px += w + 4 };
                 pill(cd ? 'SPECIAL ' + (cd / 10).toFixed(1) + 's' : 'SPECIAL READY', cd ? '#c9b8e8' : '#9ef0c0');
+                if (h.name === 'DESTINY') pill('HEAL ' + (h.comboHealHits || 0) + '/3', '#a7f3d0', (h.comboHealHits || 0) / 3);
+                if (h.mastery) pill('MASTERY ' + (h.mastery === 1 ? 'I' : 'II'), '#ffe1a0');
                 const pu = h.pu || [];
                 for (let j = 0; j < 4; j++) if (pu[j]) pill(BUFF[j].label + ' ' + (pu[j] / 10).toFixed(0) + 's', BUFF[j].core, Math.min(1, pu[j] / BUFF_MAX[j]));
             }
