@@ -94,7 +94,7 @@
             const skipRaise = h.name === 'ESPIRIT' && prev && prev.name === 'ESPIRIT' && now - prev.start < bowEnd(prev) + 120;
             const st0 = Math.max(0, Math.min(2, stage | 0)), dir = SHEETS ? SHEETS.dirOf(h.aim, facing) : 'E';
             // Espirit uses the direction-correct procedural draw so the bow faces the target.
-            const sheet = h.name !== 'ESPIRIT' && h.name !== 'SMITESH' && h.name !== 'DAVE' && !!(SHEETS && !opts.procedural && SHEETS.ready(sheetKeyFor(h.name, st0, dir)));
+            const sheet = h.name !== 'ESPIRIT' && h.name !== 'SMITESH' && h.name !== 'DAVE' && h.name !== 'DONNA' && !!(SHEETS && !opts.procedural && SHEETS.ready(sheetKeyFor(h.name, st0, dir)));
             s.atk = { name: h.name, stage: st0, start: now, theta, m, facing, holdAt: 0, holdMs: 0, shockDone: false, contactDone: false, skipRaise, sfxRel: false, sheet, dir };
             s.shardAcc = 0;
             return s.atk;
@@ -255,7 +255,7 @@
         const MARKIE_REACH = 10, MARKIE_HAFT = 30, MARKIE_TIP = MARKIE_REACH + MARKIE_HAFT;
         const DESTINY_REACH = 12, DESTINY_BLADE = 40, DESTINY_TIP = DESTINY_REACH + DESTINY_BLADE;
         const REST = { // facing-frame rest angles: [arm, weapon, reach]
-            NOAH: [1.0, 1.15, 12], MARKIE: [1.1, -1.35, 9], DESTINY: [1.3, -1.45, 11], ESPIRIT: [1.15, -1.2, 10], SMITESH: [.85, -1.3, 10], DAVE: [.9, -1.6, 13],
+            NOAH: [1.0, 1.15, 12], MARKIE: [1.1, -1.35, 9], DESTINY: [1.3, -1.45, 11], ESPIRIT: [1.15, -1.2, 10], SMITESH: [.85, -1.3, 10], DONNA: [.85, -1.3, 10], DAVE: [.9, -1.6, 13],
         };
         function swingAngles(a, T) {
             let from = a.theta + a.m * T.from;
@@ -487,7 +487,7 @@
             const hand = pt(sh.x, sh.y, P.armA, P.reach, P1);
             if (name === 'DAVE') return drawDaveArms(g, P, look, P.facingSign || 1, 'front');
             if (name === 'ESPIRIT') return drawBow(g, P, sh, hand, look, col);
-            if (name === 'SMITESH') {
+            if (name === 'SMITESH' || name === 'DONNA') {
                 drawArm(g, sh, hand, P.armA, col);
                 g.strokeStyle = '#203f47'; g.lineWidth = 5;
                 g.beginPath(); g.moveTo(hand.x, hand.y + 25); g.lineTo(hand.x + 2, hand.y - 34); g.stroke();
@@ -643,7 +643,7 @@
             const el = elapsed(a, now);
             if (a.name === 'NOAH') return noahPose(h, a, el, pose);
             if (a.name === 'ESPIRIT') return bowPose(h, a, el, pose);
-            if (a.name === 'SMITESH') { restPose(h, now, s, pose); pose.glow = Math.max(0, 1 - el / 320); return pose; }
+            if (a.name === 'SMITESH' || a.name === 'DONNA') { restPose(h, now, s, pose); pose.glow = Math.max(0, 1 - el / 320); return pose; }
             return meleePose(h, a, el, pose);
         }
         function liveAtk(s, h, now) {
@@ -667,7 +667,7 @@
             // Use the same torso silhouette in every pose, including attack recovery.
             if (h.name === 'NOAH') P.relaxedIdle = true;
             if (h.name === 'DAVE') { P.glow = a ? Math.max(.15, 1 - elapsed(a, now) / 500) : 0; P.armA = h.moving ? 1.15 : .85; }
-            if (h.name === 'SMITESH') { P.armA = h.moving ? 1.05 : .85; P.reach = 10; }
+            if (h.name === 'SMITESH' || h.name === 'DONNA') { P.armA = h.moving ? 1.05 : .85; P.reach = 10; }
             const f = h.facing === -1 ? -1 : 1;
             P.facingSign = a ? a.facing : f;
             const sh = shoulderOf(f, P, SH);
@@ -772,7 +772,7 @@
             if (a.sheet) return a.name === 'ESPIRIT' ? undefined : sheetFx(g, h, s, a, now, dt, k, look);
             if (a.name === 'NOAH') return noahFx(g, h, s, a, now, dt, k, look, hx, hy);
             if (a.name === 'ESPIRIT') return bowFx(g, h, s, a, now, dt, k, look, hx, hy);
-            if (a.name === 'SMITESH') return;
+            if (a.name === 'SMITESH' || a.name === 'DONNA') return;
             return meleeFx(g, h, s, a, now, dt, k, look, hx, hy);
         }
         function noahFx(g, h, s, a, now, dt, k, look, hx, hy) {
@@ -881,7 +881,7 @@
                 p.rot = ang + PI / 2; p.vr = (Math.random() - .5) * .02;
             });
         }
-        function hasPose(name) { return name === 'NOAH' || name === 'MARKIE' || name === 'DESTINY' || name === 'ESPIRIT' || name === 'SMITESH' || name === 'DAVE' }
+        function hasPose(name) { return name === 'NOAH' || name === 'MARKIE' || name === 'DESTINY' || name === 'ESPIRIT' || name === 'SMITESH' || name === 'DAVE' || name === 'DONNA' }
         const usingSheets = () => !!(SHEETS && !opts.procedural);
         return { usingSheets, onAttack, contactAt, releaseAt, hitStop, onHurt, onLevelUp, drawHero, drawFx, hasPose, stateOf: i => st[i], NOAH_T, MARKIE_T, DESTINY_T, BOW, attackLife, bowRel };
     }
