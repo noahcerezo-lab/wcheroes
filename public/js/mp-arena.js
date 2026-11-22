@@ -33,9 +33,10 @@
         NOAH: { atk: 'noahCrescent', atkW: 110 * 2, spc: 'noahNova', range: 113 },
         DESTINY: { atk: 'destinySlash', atkW: 83 * 1.6, spc: 'destinyRally', range: 55 },
         MARKIE: { atk: 'markieCleave', atkW: 76 * 2.2, spc: 'markieQuake', range: 51 },
-        ESPIRIT: { atk: 'espiritArrow', atkW: 60, spc: 'espiritStorm', range: 546 }, // 2x V19 reach (server RULES.espiritRangeMul)
+        ESPIRIT: { atk: 'espiritArrow', atkW: 60, spc: 'espiritStorm', range: 546 },
+        SMITESH: { atk: 'espiritArrow', atkW: 60, spc: 'espiritStorm', range: 330 }, // 2x V19 reach (server RULES.espiritRangeMul)
     };
-    const SPECIAL_RADIUS = { NOAH: 140, DESTINY: 120, MARKIE: 107, ESPIRIT: 227 }; // fallback; events carry r
+    const SPECIAL_RADIUS = { NOAH: 140, DESTINY: 120, MARKIE: 107, ESPIRIT: 227, SMITESH: 133 }; // fallback; events carry r
     const SLAM_R = 55; // Temple Warden shockwave radius (world units)
     // Power-ups (shared/combat.js PICKUP_KINDS order) and buff colors. pu[] in snapshots = FURY, HASTE, WARD, SYNERGY.
     const PICKUP = [
@@ -56,7 +57,7 @@
         for (const k in files) { const im = new Image(); im.onload = () => { OV[k] = im }; im.src = 'assets/overhaul/' + files[k] + '.png' }
     })();
     // Level-up sheet pre-tinted per hero once (multiply by the hero's primary, alpha kept; hot core stays white).
-    const LEVELUP_TINT = { NOAH: ['#7A5FE0', '#83B8FF'], DESTINY: ['#F5C65D', '#D8434F'], MARKIE: ['#FF9657', '#C98A4B'], ESPIRIT: ['#5CCE8A', '#F5D477'] };
+    const LEVELUP_TINT = { NOAH: ['#7A5FE0', '#83B8FF'], DESTINY: ['#F5C65D', '#D8434F'], MARKIE: ['#FF9657', '#C98A4B'], ESPIRIT: ['#5CCE8A', '#F5D477'], SMITESH: ['#40bfae', '#bda2ff'] };
     const tinted = {};
     function tintedLevelup(name) {
         if (tinted[name]) return tinted[name];
@@ -435,6 +436,22 @@
                     if (e.n >= 10) fx.push({ kind: 'sheet', key: 'healAura', follow: e.h, w: 72, start: now, life: A ? A.duration('healAura') : 540 });
                     break;
                 }
+                case 'shamanHeal': {
+                    const h = latestHero(e.h);
+                    if (h) {
+                        fx.push({ kind: 'ring', x: h.x*S, y: h.y*S, r0: 8, r1: 40,
+                            color: '#8fffea', width: 3, start: now, life: 470 });
+                        floatText(h.x*S, h.y*S-90, 'ANCESTRAL +' + e.n, '#b9fff1', 12, 800);
+                    }
+                    break;
+                }
+                case 'totem':
+                case 'totemPulse': {
+                    fx.push({ kind: 'ring', x: e.x*S, y: e.y*S,
+                        r0: 15, r1: e.t === 'totem' ? 125 : 90,
+                        color: '#a3f9e6', width: 4, start: now, life: 680 });
+                    break;
+                }
                 case 'comboHeal': {
                     const h = latestHero(e.h);
                     if (!h) break;
@@ -453,7 +470,7 @@
                     // Each ultimate gets a distinct ground-level signature burst.
                     const ultimatePalette = {
                         NOAH: '#aa88ff', DESTINY: '#ffe1a0',
-                        MARKIE: '#ff9355', ESPIRIT: '#80efaf'
+                        MARKIE: '#ff9355', ESPIRIT: '#80efaf', SMITESH: '#8fffea'
                     };
                     const uc = ultimatePalette[h.name] || '#fff4b5';
                     fx.push({ kind: 'ring', x: h.x * S, y: h.y * S,
@@ -601,8 +618,8 @@
             const cw = canvas.clientWidth || canvas.width;
             return Math.max(1, Math.min(1.7, 900 / cw));
         }
-        const controllerOf = (room, i) => room && room.players.find(p => p.hero === i && p.connected);
-        const reservedOf = (room, i) => room && room.players.find(p => p.hero === i && !p.connected);
+        const controllerOf = (room, i) => room && room.players.find(p => p.hero === ((room.activeRoster || [0,1,2,3])[i]) && p.connected);
+        const reservedOf = (room, i) => room && room.players.find(p => p.hero === ((room.activeRoster || [0,1,2,3])[i]) && !p.connected);
 
         // ---------- HUD ----------
         function drawHud(view, room, myId, k, now) {
