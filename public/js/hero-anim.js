@@ -93,7 +93,8 @@
             // Espirit: a shot right after the previous one skips the raise (bow is already up), so rapid fire stays readable.
             const skipRaise = h.name === 'ESPIRIT' && prev && prev.name === 'ESPIRIT' && now - prev.start < bowEnd(prev) + 120;
             const st0 = Math.max(0, Math.min(2, stage | 0)), dir = SHEETS ? SHEETS.dirOf(h.aim, facing) : 'E';
-            const sheet = !!(SHEETS && !opts.procedural && SHEETS.ready(sheetKeyFor(h.name, st0, dir)));
+            // Espirit uses the direction-correct procedural draw so the bow faces the target.
+            const sheet = h.name !== 'ESPIRIT' && !!(SHEETS && !opts.procedural && SHEETS.ready(sheetKeyFor(h.name, st0, dir)));
             s.atk = { name: h.name, stage: st0, start: now, theta, m, facing, holdAt: 0, holdMs: 0, shockDone: false, contactDone: false, skipRaise, sfxRel: false, sheet, dir };
             s.shardAcc = 0;
             return s.atk;
@@ -167,6 +168,8 @@
                 out.bob = Math.sin(now / 450) * .6;
                 out.armA = toWorld(R0[0], f); out.bladeA = toWorld(R0[1] + Math.sin(now / 700) * .04, f); out.reach = R0[2];
                 if (h.name === 'ESPIRIT') out.bladeA = out.armA;
+                // Noah rests his sword low at his side instead of holding both arms overhead.
+                if (h.name === 'NOAH') { out.armA = toWorld(.95, f); out.bladeA = toWorld(1.25, f); out.reach = 12; }
                 if (h.name === 'MARKIE') out.crouch = 1; // heavy stance
             }
             const hurt = now - s.hurtAt;
@@ -243,7 +246,7 @@
         const MARKIE_REACH = 10, MARKIE_HAFT = 30, MARKIE_TIP = MARKIE_REACH + MARKIE_HAFT;
         const DESTINY_REACH = 12, DESTINY_BLADE = 40, DESTINY_TIP = DESTINY_REACH + DESTINY_BLADE;
         const REST = { // facing-frame rest angles: [arm, weapon, reach]
-            NOAH: [1.25, -1.0, 11], MARKIE: [1.1, -1.35, 9], DESTINY: [1.3, -1.45, 11], ESPIRIT: [1.15, -1.2, 10],
+            NOAH: [1.0, 1.15, 12], MARKIE: [1.1, -1.35, 9], DESTINY: [1.3, -1.45, 11], ESPIRIT: [1.15, -1.2, 10],
         };
         function swingAngles(a, T) {
             let from = a.theta + a.m * T.from;
@@ -446,8 +449,9 @@
             const a = P.armA, ax = Math.cos(a), ay = Math.sin(a) * SQ, nx = -Math.sin(a), ny = Math.cos(a) * SQ;
             const L = 15; // half bow length
             // limb tips curve back toward the archer (recurve)
-            BT.x = hand.x + nx * L - ax * 4; BT.y = hand.y + ny * L - ay * 4;
-            BB.x = hand.x - nx * L - ax * 4; BB.y = hand.y - ny * L - ay * 4;
+            // Recurve tips face the target; the string and draw hand remain behind the grip.
+            BT.x = hand.x + nx * L + ax * 4; BT.y = hand.y + ny * L + ay * 4;
+            BB.x = hand.x - nx * L + ax * 4; BB.y = hand.y - ny * L + ay * 4;
             const pull = P.draw * 15; // string pull distance
             const vib = P.recoil > 0 ? Math.sin(P.recoil * 40) * 2.2 * P.recoil : 0;
             const sx = hand.x - ax * (3 + pull) + ax * vib, sy = hand.y - ay * (3 + pull) + ay * vib; // string nock point
@@ -458,7 +462,7 @@
             // bow limbs
             g.lineCap = 'round';
             g.strokeStyle = '#0f1a13'; g.lineWidth = 4;
-            g.beginPath(); g.moveTo(BT.x, BT.y); g.quadraticCurveTo(hand.x + nx * 9 + ax * 5, hand.y + ny * 9 + ay * 5, hand.x, hand.y); g.quadraticCurveTo(hand.x - nx * 9 + ax * 5, hand.y - ny * 9 + ay * 5, BB.x, BB.y); g.stroke();
+            g.beginPath(); g.moveTo(BT.x, BT.y); g.quadraticCurveTo(hand.x + nx * 9 - ax * 5, hand.y + ny * 9 - ay * 5, hand.x, hand.y); g.quadraticCurveTo(hand.x - nx * 9 - ax * 5, hand.y - ny * 9 - ay * 5, BB.x, BB.y); g.stroke();
             g.strokeStyle = '#8a5a2b'; g.lineWidth = 2.4; g.stroke();
             g.strokeStyle = '#F5D477'; g.lineWidth = 1; g.beginPath(); g.moveTo(hand.x + nx * 3, hand.y + ny * 3); g.lineTo(hand.x - nx * 3, hand.y - ny * 3); g.stroke(); // gold grip wrap
             // string
@@ -526,7 +530,9 @@
         function drawHero(g, h, i, now, k, look) {
             const s = heroState(i);
             const a = liveAtk(s, h, now);
-            if (SHEETS && !opts.procedural && drawSheetHero(g, h, s, a, now, look)) return null;
+            // Keep Noah's idle stance and Espirit's shooting pose anatomically readable.
+            const forcePose = (h.name === 'NOAH' && !a && !h.moving) || (h.name === 'ESPIRIT' && !!a);
+            if (!forcePose && SHEETS && !opts.procedural && drawSheetHero(g, h, s, a, now, look)) return null;
             const P = poseFor(h, a, now, s);
             const f = h.facing === -1 ? -1 : 1;
             P.facingSign = a ? a.facing : f;
