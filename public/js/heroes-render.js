@@ -298,36 +298,43 @@
     // High-detail 96x128 source sprites: 4x the source pixels, same on-screen height.
     // 32-bit-era-inspired lighting, cloth textures, layered armor and unique silhouettes.
     function shamanArt(frame) {
-        // Canonical 96x128 pixel-art body; the animation renderer animates its limbs.
-        const c = document.createElement('canvas');
-        c.width = 96; c.height = 128;
-        const g = c.getContext('2d');
-        g.imageSmoothingEnabled = false;
-        const r = (x,y,w,h,color) => { g.fillStyle=color; g.fillRect(x,y,w,h) };
-        const poly = (points,color) => {
-            g.fillStyle=color; g.beginPath(); g.moveTo(...points[0]);
-            for(const p of points.slice(1)) g.lineTo(...p);
-            g.closePath(); g.fill();
-        };
-        // Split boots and flowing ceremonial mantle.
-        r(30,92,15,33,'#172b38'); r(52,92,15,33,'#172b38');
-        r(29,116+frame,18,8,'#2e8d83'); r(51,116-frame,18,8,'#2e8d83');
-        poly([[27,48],[69,48],[82,99],[61,110],[48,97],[34,110],[15,99]],'#193e4b');
-        poly([[31,54],[65,54],[68,91],[57,98],[48,89],[37,98],[27,91]],'#348d84');
-        r(42,61,12,30,'#214c66'); r(46,64,4,23,'#8de9d6');
-        r(33,85,30,5,'#b9a2e8'); r(44,84,9,7,'#f2d8a4');
-        // Face, brows, long dark hair and headband.
-        r(32,15,33,40,'#172736');
-        r(36,22,26,28,'#d5a27d'); r(39,34,5,3,'#2a2531'); r(54,34,5,3,'#2a2531');
-        r(45,43,7,2,'#a66c63');
-        r(31,17,35,9,'#16252d'); r(34,14,27,5,'#263f48');
-        r(36,24,25,4,'#bca4f2'); r(46,23,6,6,'#d8fff5');
-        r(28,27,8,34,'#1b3138'); r(62,27,8,33,'#1b3138');
-        // Sleeves, bracelets, and shoulder embroidery.
-        r(23,54,11,24,'#215b63'); r(63,54,11,24,'#215b63');
-        r(25,57,7,5,'#ad93df'); r(65,57,7,5,'#ad93df');
-        r(26,75,7,5,'#d2a884'); r(65,75,7,5,'#d2a884');
-        r(34,51,28,4,'#b9a2e8');
+        // Ancestral ritual shaman: antler crown, bone mask, jade charms and layered
+        // ceremonial mantle. Kept within the canonical 96x128 animation sprite.
+        const c=document.createElement('canvas');c.width=96;c.height=128;
+        const g=c.getContext('2d');g.imageSmoothingEnabled=false;
+        const r=(x,y,w,h,col)=>{g.fillStyle=col;g.fillRect(x,y,w,h)};
+        const poly=(pts,col)=>{g.fillStyle=col;g.beginPath();g.moveTo(...pts[0]);for(const p of pts.slice(1))g.lineTo(...p);g.closePath();g.fill()};
+        const line=(pts,col,w=3)=>{g.strokeStyle=col;g.lineWidth=w;g.beginPath();g.moveTo(...pts[0]);for(const p of pts.slice(1))g.lineTo(...p);g.stroke()};
+        // Split greaves, embroidered robe and broad spirit-fur shoulders.
+        r(31,93,14,30,'#192b34');r(52,93,14,30,'#192b34');
+        r(29,118+frame,18,7,'#496b66');r(50,118-frame,19,7,'#496b66');
+        poly([[26,48],[70,48],[81,105],[64,111],[48,100],[31,111],[15,105]],'#182d3a');
+        poly([[32,53],[64,53],[70,98],[57,104],[48,91],[39,104],[25,98]],'#325d61');
+        poly([[43,56],[53,56],[58,98],[48,90],[38,98]],'#6d527d');
+        for(let j=0;j<4;j++){r(28+j*11,90+(j%2)*4,5,3,'#86e8c6');r(30+j*11,97+(j%2)*3,3,3,'#b8a1d9')}
+        poly([[18,49],[32,42],[43,53],[31,70],[17,65]],'#bdc2b0');
+        poly([[78,49],[64,42],[53,53],[65,70],[79,65]],'#bdc2b0');
+        r(20,55,12,27,'#304a52');r(64,55,12,27,'#304a52');
+        r(22,76,10,7,'#a77d62');r(64,76,10,7,'#a77d62');
+        r(26,58,5,6,'#6ff3cb');r(65,58,5,6,'#6ff3cb');
+        // Hair and warm face beneath a bone-white ritual mask.
+        r(30,19,36,40,'#172530');r(34,24,28,30,'#bd876b');
+        r(27,30,9,32,'#182530');r(61,30,9,32,'#182530');
+        poly([[34,21],[62,21],[65,35],[58,44],[48,40],[38,44],[31,35]],'#ddd5b6');
+        r(38,31,7,4,'#192b35');r(52,31,7,4,'#192b35');
+        r(40,31,4,2,'#85ffdd');r(54,31,4,2,'#85ffdd');
+        poly([[48,35],[43,43],[53,43]],'#53646b');
+        r(45,47,6,5,'#9b68ae');r(43,51,10,3,'#75e6c9');
+        // Tall branching antlers establish a silhouette unlike Donna's.
+        r(35,17,26,6,'#574c52');r(43,13,10,8,'#77e7cb');
+        line([[37,22],[29,9],[26,2]],'#dfd4b4',5);
+        line([[29,12],[19,10],[16,4]],'#dfd4b4',4);
+        line([[59,22],[67,9],[70,2]],'#dfd4b4',5);
+        line([[67,12],[77,10],[80,4]],'#dfd4b4',4);
+        // Ritual necklaces and luminous spirit sigils.
+        r(33,53,30,4,'#c5a778');r(45,55,7,13,'#8bffe0');
+        r(37,67,4,4,'#ba9be2');r(55,67,4,4,'#ba9be2');
+        r(43,82,10,5,'#b3d5c1');r(46,83,4,4,'#4bd7b6');
         return c;
     }
     function daveArt(frame) {
