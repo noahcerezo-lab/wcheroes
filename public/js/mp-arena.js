@@ -882,7 +882,11 @@
                     const key = KIT[f.name] && KIT[f.name].spc;
                     const w = f.r * 2; // world radius wins over the 64px motif
                     const sq = f.name === 'NOAH' ? .5 : 1; // nova is drawn as a round rune; lay it on the floor
-                    const drawn = A && A.play(g, key, el * (A.duration(key) / f.life), f.x, f.y, w, w * sq);
+                    // Unsupported/missing special sheets must never abort a frame.
+                    // Dave uses his own procedural cyclone rather than Markie's sheet.
+                    const duration = A && key && f.name !== 'DAVE' ? A.duration(key) : 0;
+                    const drawn = duration > 0 && Number.isFinite(duration) &&
+                        A.play(g, key, el * (duration / f.life), f.x, f.y, w, w * sq);
                     if (!drawn) { // fallback ring while sheets load
                         const t = el / f.life, color = heroCfg(f.name).color;
                         g.save(); g.globalAlpha = Math.max(0, .9 * (1 - t)); g.strokeStyle = color; g.lineWidth = 7;
@@ -1600,6 +1604,20 @@
         }
 
         const renderFailures = new Set();
+        function safeFx(stage, draw) {
+            g.save();
+            try { draw(); }
+            catch (err) {
+                if (!renderFailures.has(stage)) {
+                    renderFailures.add(stage);
+                    console.error('[WCH] FX render failed: ' + stage, err);
+                }
+            } finally {
+                g.restore();
+                g.globalAlpha = 1;
+                g.globalCompositeOperation = 'source-over';
+            }
+        }
         function frame() {
             if (!running) return;
             requestAnimationFrame(frame);
@@ -1630,7 +1648,7 @@
             if (!(env && env.draw(g, now, dt, view.zone || 0, pool.density))) R.drawArena(g, now, view.zone || 0);
             drawAttackLight(view, now);
             // Layering (combat-vfx.md): floor rings -> units -> slashes/projectiles -> sparks -> numbers -> HUD/combo.
-            drawFloorFx(now);
+            safeFx('floor/special', () => drawFloorFx(now));
             drawDestinyAura(view, now);
             drawPickups(view, now, k);
             const units = view.heroes.map((h, i) => ({ y: h.y, h, i }));
@@ -1672,12 +1690,12 @@
                 }
             });
             if (enemyMotion.size > 64) { const live = new Set((view.enemies || []).map(e => e[0])); for (const id of enemyMotion.keys()) if (!live.has(id)) enemyMotion.delete(id) }
-            drawBuffs(view, now, k);
-            drawActionFx(view, now, k, dt);
-            drawParticles(now);
+            safeFx('buffs', () => drawBuffs(view, now, k));
+            safeFx('action/special', () => drawActionFx(view, now, k, dt));
+            safeFx('particles', () => drawParticles(now));
             if (o) { o.draw(g); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over' }
-            drawNumbers(now);
-            drawChains(view, now, k);
+            safeFx('numbers', () => drawNumbers(now));
+            safeFx('chains', () => drawChains(view, now, k));
             g.setTransform(1, 0, 0, 1, 0, 0);
             drawHud(view, room, myId, k, now);
             drawBossBar(view, k);
@@ -1687,7 +1705,7 @@
                 g.save(); g.setTransform(1,0,0,1,0,0);
                 g.fillStyle = 'rgba(42,18,42,.92)'; g.fillRect(12, canvas.height-44, 420, 31);
                 g.fillStyle = '#ffd6b1'; g.font = 'bold 15px monospace';
-                g.fillText('Sprite error: ' + [...renderFailures].join(', ').slice(0,38), 20, canvas.height-23);
+                g.fillText('Render error: ' + [...renderFailures].join(', ').slice(0,38), 20, canvas.height-23);
                 g.restore();
             }
             stats.frames++;
