@@ -262,7 +262,19 @@ function performAttack(w, h) {
             : h.name === 'DESTINY' ? k.stun + tier * 90 : k.stun;
         const knock = k.knock * RULES.basicKnockMul * (fin ? RULES.finisherKnockMul : 1)
             * (h.name === 'NOAH' ? 1 + tier * .18 : 1);
+        // Smitesh's spirit bolt splashes for 35% of the direct hit's damage
+        // in a compact radius. The primary target is excluded; each nearby
+        // enemy is hit once, with no chaining or additional projectile.
+        const spiritImpact = h.name === 'SMITESH' ? {x:e.x,y:e.y} : null;
         damageEnemy(w, h, e, dmg, { knock, stun, dirVec: h.name === 'MARKIE' ? null : a, finisher: fin });
+        if (spiritImpact) {
+            const radius = S(68), splashDamage = Math.max(1, Math.round(dmg * .35));
+            for (const other of [...w.enemies]) {
+                if (other === e || other.hp <= 0 || Math.hypot(other.x - spiritImpact.x, (other.y - spiritImpact.y) * 1.2) > radius) continue;
+                damageEnemy(w, h, other, splashDamage, {knock:2});
+            }
+            emit(w, {t:'spiritSplash',h:w.heroes.indexOf(h),x:Math.round(spiritImpact.x),y:Math.round(spiritImpact.y),r:radius});
+        }
         connectedHits++;
         if (h.name === 'DAVE') { h.weaponFlow = Math.min(5, (h.weaponFlow || 0) + 1); h.weaponFlowAt = w.time; }
     }
