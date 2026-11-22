@@ -462,7 +462,7 @@
                     break;
                 }
                 case 'cyclone': {
-                    for(let j=0;j<4;j++) fx.push({kind:'ring',x:e.x*S,y:e.y*S,r0:16+j*10,r1:150+j*8,color:j%2?'#f3c275':'#e05a4d',width:5-j*.6,start:now+j*70,life:700});
+                    fx.push({kind:'daveCyclone',follow:e.h,x:e.x*S,y:e.y*S,start:now,life:1050});
                     floatText(e.x*S,e.y*S-95,'BLADE CYCLONE','#ffd39c',15,900);
                     break;
                 }
@@ -496,14 +496,14 @@
                     const h = latestHero(e.h);
                     if (!h) break;
                     const r = (e.r || SPECIAL_RADIUS[h.name] || 140) * S;
-                    if (h.name !== 'DONNA') fx.push({ kind: 'special', name: h.name, x: h.x * S, y: h.y * S, r, start: now, life: 700 });
+                    if (h.name !== 'DONNA' && h.name !== 'DAVE') fx.push({ kind: 'special', name: h.name, x: h.x * S, y: h.y * S, r, start: now, life: 700 });
                     // Each ultimate gets a distinct ground-level signature burst.
                     const ultimatePalette = {
                         NOAH: '#aa88ff', DESTINY: '#ffe1a0',
                         MARKIE: '#ff9355', ESPIRIT: '#80efaf', SMITESH: '#8fffea', DAVE: '#ffb66e', DONNA: '#b2f48b'
                     };
                     const uc = ultimatePalette[h.name] || '#fff4b5';
-                    if(h.name !== 'DONNA') fx.push({ kind: 'ring', x: h.x * S, y: h.y * S,
+                    if(h.name !== 'DONNA' && h.name !== 'DAVE') fx.push({ kind: 'ring', x: h.x * S, y: h.y * S,
                         r0: 12, r1: r * .7, color: uc, width: 5,
                         start: now, life: 560 });
                     burst(h.x * S, h.y * S - 14, uc, 12, 4,
@@ -946,6 +946,48 @@
             }
             g.restore();
         }
+        // Dave's signature Q: four individually readable swords orbit a vertical
+        // crimson-and-gold cyclone. Pure canvas paths, no sprite or particle spam.
+        function drawDaveCyclone(f,now,view) {
+            const elapsed=now-f.start;if(elapsed<0||elapsed>f.life)return;
+            const t=elapsed/f.life,fade=Math.min(1,t*6,(1-t)*4);
+            const h=view.heroes[f.follow];const x=h?h.x*S:f.x,y=h?h.y*S:f.y;
+            const spin=t*Math.PI*8,spread=32+115*Math.sin(Math.min(1,t*1.8)*Math.PI/2);
+            g.save();g.translate(x,y);g.globalAlpha=Math.max(0,fade);
+            // Ground vortex, distinct from the generic expanding special rings.
+            g.strokeStyle='#e76a4d';g.lineWidth=5;g.beginPath();
+            g.ellipse(0,0,spread,spread*.38,spin*.15,0,Math.PI*2);g.stroke();
+            g.strokeStyle='#ffdf8a';g.lineWidth=2;g.beginPath();
+            g.ellipse(0,0,spread*.78,spread*.29,-spin*.18,0,Math.PI*2);g.stroke();
+            for(let j=0;j<4;j++){
+                const a=spin+j*Math.PI/2,r=spread*(.73+.13*Math.sin(t*11+j));
+                const sx=Math.cos(a)*r,sy=Math.sin(a)*r*.4-44-17*Math.sin(t*9+j);
+                g.save();g.translate(sx,sy);g.rotate(a+Math.PI/2);
+                // Each blade has a dark edge, hot steel core, guard and pommel.
+                g.strokeStyle='#8f2b31';g.lineWidth=15;g.lineCap='round';
+                g.beginPath();g.moveTo(0,22);g.lineTo(0,-65);g.stroke();
+                g.strokeStyle='#fff1b5';g.lineWidth=8;g.beginPath();
+                g.moveTo(0,17);g.lineTo(0,-60);g.stroke();
+                g.fillStyle='#fff8df';g.beginPath();g.moveTo(-5,-57);g.lineTo(0,-81);g.lineTo(5,-57);g.fill();
+                g.strokeStyle='#ff8e54';g.lineWidth=7;g.beginPath();g.moveTo(-17,14);g.lineTo(17,14);g.stroke();
+                g.strokeStyle='#583342';g.lineWidth=6;g.beginPath();g.moveTo(0,15);g.lineTo(0,37);g.stroke();
+                g.fillStyle='#ffd77e';g.beginPath();g.arc(0,39,5,0,Math.PI*2);g.fill();
+                g.restore();
+                // Fast curved slash trails behind each sword.
+                g.strokeStyle=j%2?'#ffc36a':'#ff694f';g.lineWidth=9;g.globalAlpha=fade*.65;
+                g.beginPath();g.ellipse(0,-44,Math.max(5,r),Math.max(3,r*.4),0,a-.65,a);g.stroke();
+                g.globalAlpha=fade;
+            }
+            // Vertical energy column that winds upward through the spinning blades.
+            for(let j=0;j<3;j++){
+                const a=spin+j*2.1;g.strokeStyle=j===1?'#ffe5a0':'#ee674e';g.lineWidth=j===1?3:6;
+                g.beginPath();for(let n=0;n<=12;n++){
+                    const u=n/12,rr=spread*(1-u*.65)*.5,xx=Math.cos(a+u*9)*rr,yy=-u*145;
+                    if(!n)g.moveTo(xx,yy);else g.lineTo(xx,yy);
+                }g.stroke();
+            }
+            g.restore();
+        }
         // Floor layer (drawn under units): special rings, slam impacts, revive rings. Never X-flipped.
         function drawFloorFx(now) {
             for (const f of fx) {
@@ -1281,6 +1323,7 @@
             }
             for (const f of fx) {
                 const el = now - f.start;
+                if (f.kind === 'daveCyclone') { drawDaveCyclone(f,now,view); continue }
                 if (f.kind === 'worldTree') { drawWorldTree(f,now,view); continue }
                 if (f.kind === 'petStrike') { drawPetStrike(f,now); continue }
                 if (f.kind === 'combatImpact') { drawCombatImpact(f, now); continue }
