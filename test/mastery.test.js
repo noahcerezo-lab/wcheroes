@@ -7,12 +7,12 @@ function battle() {
   w.heroes.forEach(h => { h.ai=false; h.stats={...h.stats,LUK:0}; });
   return w;
 }
-test('wave-10 and wave-20 clears unlock mastery I and II for surviving heroes',()=>{
+test('hero levels 10 and 20 unlock mastery I and II for surviving heroes',()=>{
   const w=battle();
-  w.wave=10; C.levelUp(w);
+  w.wave=90; w.heroes.forEach(h=>h.level=9); C.levelUp(w);
   assert.equal(w.heroes[3].masteryTier,1);
   assert.equal(C.snapshot(w).heroes[3].mastery,1);
-  w.wave=20; C.levelUp(w);
+  w.wave=190; w.heroes.forEach(h=>h.level=19); C.levelUp(w);
   assert.equal(w.heroes[3].masteryTier,2);
   assert.equal(C.snapshot(w).heroes[3].mastery,2);
 });
