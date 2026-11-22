@@ -350,22 +350,38 @@
         return c;
     }
     function donnaArt(frame) {
+        // Donna is a moonlit forest priestess, not a shaman/ranger: wide ivory
+        // wing-like mantle, enormous leaf skirt, golden antlers and floating wisps.
         const c=document.createElement('canvas'); c.width=96; c.height=128;
         const g=c.getContext('2d'); g.imageSmoothingEnabled=false;
         const r=(x,y,w,h,color)=>{g.fillStyle=color;g.fillRect(x,y,w,h)};
         const poly=(p,color)=>{g.fillStyle=color;g.beginPath();g.moveTo(...p[0]);for(const a of p.slice(1))g.lineTo(...a);g.closePath();g.fill()};
-        // Emerald robes, ivory mantle, chestnut hair and a living flower crown.
-        r(29,93,16,31,'#304b32');r(53,93,16,31,'#304b32');
-        r(28,119+frame,18,7,'#927449');r(52,119-frame,18,7,'#927449');
-        poly([[27,50],[68,50],[81,101],[64,112],[48,98],[31,112],[16,101]],'#244d34');
-        poly([[32,54],[64,54],[68,91],[48,100],[28,91]],'#478c54');
-        r(45,57,7,39,'#b4d779');r(42,79,14,7,'#e4c76c');
-        r(30,18,37,42,'#553325');r(27,30,10,44,'#553325');r(61,29,9,43,'#553325');
-        r(36,23,26,29,'#dfad83');r(39,34,5,3,'#4a302a');r(54,34,5,3,'#4a302a');r(44,45,11,3,'#a65f55');
-        r(32,19,32,8,'#67402d');r(34,17,9,5,'#6fa957');r(47,14,10,6,'#dfe7a1');r(58,18,8,5,'#79ad5b');
-        r(25,55,10,23,'#376f43');r(63,55,10,23,'#376f43');
-        r(26,76,8,5,'#dfad83');r(65,76,8,5,'#dfad83');
-        r(34,52,29,5,'#d6d2a3');r(45,53,7,6,'#e7d27e');
+        const glow='#d9f9b3', gold='#f2d58a';
+        // Flowing leaf gown reaches beyond the feet, unlike Smitesh's narrow robe.
+        r(35,104,11,19,'#3a5538');r(53,104,11,19,'#3a5538');
+        poly([[36,62],[62,62],[75,93],[89,120],[61,125],[48,115],[34,125],[7,120],[22,92]],'#163d31');
+        poly([[39,65],[58,65],[71,100],[79,118],[52,112],[46,120],[20,118],[27,99]],'#327e5a');
+        poly([[47,68],[55,68],[60,110],[49,119],[40,110]],'#80b876');
+        for(let j=0;j<5;j++)poly([[16+j*14,112],[23+j*14,97],[29+j*14,117]],j%2?'#4e9b66':'#9ac47d');
+        // A dramatic pale shawl/leaf wings distinguish her silhouette at game scale.
+        poly([[36,49],[21,53],[4,73],[21,69],[12,87],[37,70],[48,75],[60,70],[84,87],[74,68],[93,73],[76,53],[62,49]],'#d9d3ac');
+        poly([[35,54],[16,69],[35,66],[47,78],[61,66],[79,69],[62,54]],'#a7c69a');
+        r(39,56,19,28,'#39734d');r(46,58,6,26,gold);
+        r(43,72,13,7,'#e7d29b');r(47,70,5,8,glow);
+        // Chestnut flowing hair framing her face.
+        r(29,18,39,48,'#56372c');r(25,34,10,43,'#67412f');r(64,34,10,43,'#67412f');
+        r(35,23,28,31,'#e1b18c');r(39,36,5,3,'#42312b');r(54,36,5,3,'#42312b');
+        r(43,47,12,3,'#a9665a');r(31,20,36,8,'#6c4936');
+        // Antler crown with gold branches, flowers and glowing rune.
+        r(40,7,3,17,gold);r(56,7,3,17,gold);
+        r(31,5,12,3,gold);r(57,5,12,3,gold);
+        r(32,1,3,10,gold);r(65,1,3,10,gold);
+        r(37,12,5,3,gold);r(57,12,5,3,gold);
+        r(34,22,29,5,'#4c955b');r(46,18,7,9,glow);
+        r(25,56,10,19,'#e2b28d');r(65,56,10,19,'#e2b28d');
+        // Firefly spirit orbs drifting alongside her mantle.
+        r(9,48+frame*2,5,5,glow);r(84,42-frame*2,5,5,'#eaf8c5');
+        r(12,46+frame*2,2,2,'#ffffff');r(85,43-frame*2,2,2,'#ffffff');
         return c;
     }
     function makeHDArt(name, frame) {

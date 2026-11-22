@@ -493,7 +493,21 @@
             const hand = pt(sh.x, sh.y, P.armA, P.reach, P1);
             if (name === 'DAVE') return drawDaveArms(g, P, look, P.facingSign || 1, 'front');
             if (name === 'ESPIRIT') return drawBow(g, P, sh, hand, look, col);
-            if (name === 'SMITESH' || name === 'DONNA') {
+            if (name === 'DONNA') {
+                drawArm(g, sh, hand, P.armA, col);
+                // Twisted living wood staff with gold crescent and emerald bloom.
+                const x=hand.x+3, y=hand.y;
+                g.lineCap='round'; g.strokeStyle='#593c29'; g.lineWidth=7;
+                g.beginPath();g.moveTo(x-2,y+27);g.quadraticCurveTo(x+7,y-5,x,y-39);g.stroke();
+                g.strokeStyle='#9bc16c';g.lineWidth=2;
+                g.beginPath();g.moveTo(x+1,y+24);g.quadraticCurveTo(x-6,y-6,x+1,y-35);g.stroke();
+                g.strokeStyle='#f4dc94';g.lineWidth=3;
+                g.beginPath();g.arc(x,y-44,13,-Math.PI*.75,Math.PI*.75);g.stroke();
+                g.fillStyle='#8fff9c';g.beginPath();g.arc(x+2,y-45,8+P.glow*3,0,PI*2);g.fill();
+                g.fillStyle='#f4ffe3';g.beginPath();g.arc(x+2,y-45,3,0,PI*2);g.fill();
+                return;
+            }
+            if (name === 'SMITESH') {
                 drawArm(g, sh, hand, P.armA, col);
                 g.strokeStyle = '#203f47'; g.lineWidth = 5;
                 g.beginPath(); g.moveTo(hand.x, hand.y + 25); g.lineTo(hand.x + 2, hand.y - 34); g.stroke();
