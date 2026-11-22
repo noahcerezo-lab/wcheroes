@@ -232,7 +232,7 @@
         // ---------- Espirit: archery (raise, draw, nock + hold, release, string recoil, recover) ----------
         // Espirit fires every ~180 ms while held, so the full read (raise/draw/hold) is ~105 ms; chained shots ~75 ms.
         const BOW = { raise: 30, draw: 60, hold: 15, recoil: 110, recover: 140, speed: 2.1 /* screen px per ms */ };
-        const DEFS = { NOAH: NOAH_T, MARKIE: MARKIE_T, DESTINY: DESTINY_T };
+        const DEFS = { NOAH: NOAH_T, MARKIE: MARKIE_T, DESTINY: DESTINY_T, DAVE: MARKIE_T };
         // Sheet timelines: ms per frame per combo stage, the contact frame (impact is shown at its start; the
         // Arcane Breaker connects on frame 3 so it can lead the server's hit by about a frame) and hit-stop.
         const SH_T = {
@@ -266,6 +266,13 @@
         }
         // Generic melee pose with per-hero weight. w = {lean, twist, crouch, step, reachA, reachS}
         const WEIGHT = {
+            // Dave's fourfold attacks share a tested melee timing structure but use
+            // lighter body movement; the four separate weapon arms animate in drawDaveArms.
+            DAVE: [
+                { lean:.08, twist:.35, crouch:1.5, step:2.2, reachA:7, reachS:13 },
+                { lean:.1, twist:.48, crouch:2, step:2.8, reachA:7, reachS:13 },
+                { lean:.12, twist:.6, crouch:2.5, step:3.2, reachA:8, reachS:14 }
+            ],
             MARKIE: [{ lean: .2, twist: .85, crouch: 4, step: 3, reachA: 6, reachS: MARKIE_REACH }, { lean: .2, twist: .95, crouch: 4, step: 3, reachA: 6, reachS: MARKIE_REACH }, { lean: .26, twist: .6, crouch: 6, step: 4, reachA: 5, reachS: MARKIE_REACH }],
             DESTINY: [{ lean: .08, twist: .3, crouch: 1.5, step: 4, reachA: 6, reachS: DESTINY_REACH + 6 }, { lean: .08, twist: .5, crouch: 1.5, step: 2.5, reachA: 8, reachS: DESTINY_REACH }, { lean: .12, twist: .7, crouch: 2.5, step: 3, reachA: 7, reachS: DESTINY_REACH }],
         };
