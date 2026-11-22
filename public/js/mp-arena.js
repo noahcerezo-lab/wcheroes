@@ -59,7 +59,7 @@
         for (const k in files) { const im = new Image(); im.onload = () => { OV[k] = im }; im.src = 'assets/overhaul/' + files[k] + '.png' }
     })();
     // Level-up sheet pre-tinted per hero once (multiply by the hero's primary, alpha kept; hot core stays white).
-    const LEVELUP_TINT = { NOAH: ['#7A5FE0', '#83B8FF'], DESTINY: ['#F5C65D', '#D8434F'], MARKIE: ['#FF9657', '#C98A4B'], ESPIRIT: ['#5CCE8A', '#F5D477'], SMITESH: ['#40bfae', '#bda2ff'], DAVE: ['#e05a4d', '#f3c275'] };
+    const LEVELUP_TINT = { NOAH: ['#7A5FE0', '#83B8FF'], DESTINY: ['#F5C65D', '#D8434F'], MARKIE: ['#FF9657', '#C98A4B'], ESPIRIT: ['#5CCE8A', '#F5D477'], SMITESH: ['#20b9cc', '#83bce8'], DAVE: ['#e05a4d', '#f3c275'] };
     const tinted = {};
     function tintedLevelup(name) {
         if (tinted[name]) return tinted[name];
@@ -501,7 +501,7 @@
                     // Each ultimate gets a distinct ground-level signature burst.
                     const ultimatePalette = {
                         NOAH: '#aa88ff', DESTINY: '#ffe1a0',
-                        MARKIE: '#ff9355', ESPIRIT: '#80efaf', SMITESH: '#8fffea', DAVE: '#ffb66e', DONNA: '#b2f48b'
+                        MARKIE: '#ff9355', ESPIRIT: '#80efaf', SMITESH: '#68ddea', DAVE: '#ffb66e', DONNA: '#b2f48b'
                     };
                     const uc = ultimatePalette[h.name] || '#fff4b5';
                     if(h.name !== 'DONNA' && h.name !== 'DAVE' && h.name !== 'SMITESH') fx.push({ kind: 'ring', x: h.x * S, y: h.y * S,
