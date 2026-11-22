@@ -611,6 +611,8 @@
             // Preserve their independent combat FX, but never replace the hero body.
             // (The body and weapon below now animate from the same canonical art.)
             const P = poseFor(h, a, now, s);
+            // Use the same torso silhouette in every pose, including attack recovery.
+            if (h.name === 'NOAH') P.relaxedIdle = true;
             const f = h.facing === -1 ? -1 : 1;
             P.facingSign = a ? a.facing : f;
             const sh = shoulderOf(f, P, SH);
