@@ -83,6 +83,7 @@ const KITS = {
     MARKIE: { attack: 'cleave', front: 0.55, frontMul: 1.5, sideMul: 0.7, knock: 19, stun: 140, specialName: 'EARTHSHATTER', specialRadius: S(160), specialMul: 4, specialStun: 600, tauntMs: 4000, shieldMs: 3000, shieldMul: 0.45, aiIdeal: S(48) },
     ESPIRIT: { attack: 'arrow', arc: 0.24, knock: 10, stun: 0, specialName: 'ARROW STORM', specialRadius: S(340), specialMul: 3, aiIdeal: 150 },
     SMITESH: { attack: 'spirit', arc: 0.48, knock: 7, stun: 0, specialName: 'SPIRIT TOTEM', specialRadius: S(200), specialMul: 1.5, aiIdeal: 125 },
+    DAVE: { attack: 'fourfold', arc: 1.4, knock: 10, stun: 70, specialName: 'BLADE CYCLONE', specialRadius: S(165), specialMul: 3.2, specialKnock: 24, aiIdeal: 48 },
 };
 
 // Sheet stats -> small modifiers. LUK = crit chance, VIT = damage taken.
@@ -121,7 +122,7 @@ function createBattle(opts = {}) {
             hp: cfg.v19.hp, maxHp: cfg.v19.hp, damage: cfg.v19.damage, range: S(cfg.v19.range) * (cfg.name === 'ESPIRIT' ? RULES.espiritRangeMul : 1), cool: cfg.v19.cool,
             speed: SIM.speedFromV19(cfg.v19.speed), stats: cfg.stats, level: 1, masteryTier: 0,
             base: { hp: cfg.v19.hp, damage: cfg.v19.damage, speed: SIM.speedFromV19(cfg.v19.speed) },
-            state: 'alive', reviveMs: 0, attackAt: -1e9, specialAt: -1e9, healAt: 0, attackN: 0, specialN: 0, destinyComboHits: 0, destinyComboHealAt: -1e9, shamanHealAt: -1e9, totemUntil: 0, totemAt: -1e9,
+            state: 'alive', reviveMs: 0, attackAt: -1e9, specialAt: -1e9, healAt: 0, attackN: 0, specialN: 0, destinyComboHits: 0, destinyComboHealAt: -1e9, weaponFlow: 0, weaponFlowAt: -1e9, shamanHealAt: -1e9, totemUntil: 0, totemAt: -1e9,
             buffUntil: 0, shieldUntil: 0, furyUntil: 0, hasteUntil: 0, wardUntil: 0, synergyUntil: 0, awakenUntil: 0, critChain: 0, wantAttack: false, wantSpecial: false, ai: true, controller: null, seq: 0,
         }); }),
         enemies: [],
@@ -216,7 +217,7 @@ function attackTargets(w, h, rangeMul = 1) {
         const lane = w.enemies.filter(e => inArc(h, e, range, k.arc)).sort((a, b) => dist(a, h) - dist(b, h));
         return lane.slice(0, 1); // single arrow, nearest in the lane
     }
-    if (h.name === 'MARKIE') return w.enemies.filter(e => inReach(h, e, range));
+    if (h.name === 'MARKIE' || h.name === 'DAVE') return w.enemies.filter(e => inReach(h, e, range));
     return w.enemies.filter(e => inArc(h, e, range, k.arc));
 }
 
@@ -227,7 +228,8 @@ function nextChainStage(w, h, cool) {
 
 function performAttack(w, h) {
     if (!alive(h) || w.over) return false;
-    const cool = (h.ai ? h.cool * RULES.aiAttackCooldownMul : h.cool) * (w.time < h.hasteUntil ? RULES.hasteCooldownMul : 1);
+    const flow = h.name === 'DAVE' ? Math.max(.72, 1 - Math.min(5, h.weaponFlow || 0) * .055) : 1;
+    const cool = (h.ai ? h.cool * RULES.aiAttackCooldownMul : h.cool) * flow * (w.time < h.hasteUntil ? RULES.hasteCooldownMul : 1);
     const recovery = h.chain === 2 ? cool * RULES.finisherRecoveryMul : 0; // brief pause after a finisher
     if (w.time - h.attackAt < cool + recovery) return false;
     const stage = nextChainStage(w, h, cool + recovery);
@@ -246,11 +248,13 @@ function performAttack(w, h) {
             .sort((x, y) => Math.hypot(x.x - h.x, x.y - h.y) - Math.hypot(y.x - h.x, y.y - h.y));
         targets.push(...candidates.slice(0, Math.max(0, count - targets.length)));
     }
+    if (h.name === 'DAVE' && w.time - h.weaponFlowAt > 1300) h.weaponFlow = 0;
     // No 'atk' event: clients animate swings from attackN + chain stage in the snapshot (saves bandwidth).
     let connectedHits = 0;
     for (const e of [...targets]) {
         let dmg = h.damage;
         if (h.name === 'MARKIE') dmg = Math.round(h.damage * (inArc(h, e, h.range * 1.2, k.front) ? k.frontMul : k.sideMul));
+        if (h.name === 'DAVE') dmg = Math.round(h.damage * 1.12);
         if (fin) dmg = Math.round(dmg * RULES.finisherDamageMul);
         const tier = Math.min(2, h.masteryTier || 0);
         const stun = h.name === 'MARKIE' ? k.stun + tier * 130
@@ -259,6 +263,7 @@ function performAttack(w, h) {
             * (h.name === 'NOAH' ? 1 + tier * .18 : 1);
         damageEnemy(w, h, e, dmg, { knock, stun, dirVec: h.name === 'MARKIE' ? null : a, finisher: fin });
         connectedHits++;
+        if (h.name === 'DAVE') { h.weaponFlow = Math.min(5, (h.weaponFlow || 0) + 1); h.weaponFlowAt = w.time; }
     }
     // Destiny: every third successful basic-attack swing heals her for 5% max HP.
     // Multiple enemies hit by a sweep count as one swing, not multiple triggers.
@@ -292,6 +297,7 @@ function performSpecial(w, h) {
     if (h.name === 'DESTINY') { // team heal + damage buff (leadership)
         for (const u of w.heroes) if (alive(u) && dist(u, h) < k.rallyRadius) { healHero(w, u, k.rallyHeal, h); u.buffUntil = w.time + k.buffMs; emit(w, { t: 'buff', h: w.heroes.indexOf(u) }) }
     }
+    if (h.name === 'DAVE') emit(w, { t: 'cyclone', h: i, x: Math.round(h.x), y: Math.round(h.y) });
     if (h.name === 'SMITESH') {
         h.totemUntil = w.time + 6000;
         h.totemAt = w.time - 1000;
