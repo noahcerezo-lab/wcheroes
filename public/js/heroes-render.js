@@ -19,8 +19,8 @@
         x.fillStyle = c;
         x.fillRect(Math.round(a), Math.round(b), w, h)
     }
-    const HERO_NAMES = ['NOAH', 'MARKIE', 'DESTINY', 'ESPIRIT', 'SMITESH', 'DAVE'];
-    const HERO_COLORS = ['#637bff', '#e8a14b', '#e45d76', '#5cce8a', '#40bfae', '#e05a4d']; // V19 order (NOAH, MARKIE, DESTINY, ESPIRIT)
+    const HERO_NAMES = ['NOAH', 'MARKIE', 'DESTINY', 'ESPIRIT', 'SMITESH', 'DAVE', 'DONNA'];
+    const HERO_COLORS = ['#637bff', '#e8a14b', '#e45d76', '#5cce8a', '#40bfae', '#e05a4d', '#78b75b']; // V19 order (NOAH, MARKIE, DESTINY, ESPIRIT)
     const ARENA_NAMES = ['MOONLIT TEMPLE', 'EMBER FORTRESS', 'SPIRIT SANCTUARY', 'CELESTIAL VOID'];
     const art = {};
 
@@ -349,7 +349,27 @@
         r(28,56,7,4,'#d6ac6d');r(63,56,7,4,'#d6ac6d');
         return c;
     }
+    function donnaArt(frame) {
+        const c=document.createElement('canvas'); c.width=96; c.height=128;
+        const g=c.getContext('2d'); g.imageSmoothingEnabled=false;
+        const r=(x,y,w,h,color)=>{g.fillStyle=color;g.fillRect(x,y,w,h)};
+        const poly=(p,color)=>{g.fillStyle=color;g.beginPath();g.moveTo(...p[0]);for(const a of p.slice(1))g.lineTo(...a);g.closePath();g.fill()};
+        // Emerald robes, ivory mantle, chestnut hair and a living flower crown.
+        r(29,93,16,31,'#304b32');r(53,93,16,31,'#304b32');
+        r(28,119+frame,18,7,'#927449');r(52,119-frame,18,7,'#927449');
+        poly([[27,50],[68,50],[81,101],[64,112],[48,98],[31,112],[16,101]],'#244d34');
+        poly([[32,54],[64,54],[68,91],[48,100],[28,91]],'#478c54');
+        r(45,57,7,39,'#b4d779');r(42,79,14,7,'#e4c76c');
+        r(30,18,37,42,'#553325');r(27,30,10,44,'#553325');r(61,29,9,43,'#553325');
+        r(36,23,26,29,'#dfad83');r(39,34,5,3,'#4a302a');r(54,34,5,3,'#4a302a');r(44,45,11,3,'#a65f55');
+        r(32,19,32,8,'#67402d');r(34,17,9,5,'#6fa957');r(47,14,10,6,'#dfe7a1');r(58,18,8,5,'#79ad5b');
+        r(25,55,10,23,'#376f43');r(63,55,10,23,'#376f43');
+        r(26,76,8,5,'#dfad83');r(65,76,8,5,'#dfad83');
+        r(34,52,29,5,'#d6d2a3');r(45,53,7,6,'#e7d27e');
+        return c;
+    }
     function makeHDArt(name, frame) {
+        if (name === 'DONNA') return donnaArt(frame);
         if (name === 'DAVE') return daveArt(frame);
         if (name === 'SMITESH') return shamanArt(frame);
         const base = makeArt(name, frame),
