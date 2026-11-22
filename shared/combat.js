@@ -371,14 +371,23 @@ function stepEnemies(w) {
             e.y += (target.y - e.y) / d * Math.min(e.speed, d - want + 0.5);
             keepInside(e);
         }
-        if (e.type === ENEMY_INDEX.voidEmperor && w.time - e.at >= t.atkMs && d <= 250) {
+        if (e.type === ENEMY_INDEX.voidEmperor && !e.phaseTwo && e.hp <= e.max * .5) {
+            e.phaseTwo = true;
+            e.windUntil = 0;
+            e.aim = null;
+            e.at = w.time;
+            emit(w, { t: 'boss:phase', id: e.id, x: Math.round(e.x), y: Math.round(e.y), phase: 2 });
+        }
+        const bossCooldown = e.type === ENEMY_INDEX.voidEmperor && e.phaseTwo ? t.atkMs * .78 : t.atkMs;
+        if (e.type === ENEMY_INDEX.voidEmperor && w.time - e.at >= bossCooldown && d <= 250) {
             e.at = w.time;
             e.attackCount = (e.attackCount || 0) + 1;
             e.attackMode = e.attackCount % 2 === 0 ? 'target' : 'slam';
-            e.windUntil = w.time + (e.attackMode === 'target' ? 1100 : t.windMs);
+            e.windUntil = w.time + (e.attackMode === 'target' ? (e.phaseTwo ? 850 : 1100) : (e.phaseTwo ? Math.round(t.windMs * .8) : t.windMs));
+            if (e.attackMode === 'slam') emit(w, { t: 'boss:warning', id: e.id, x: Math.round(e.x), y: Math.round(e.y), r: t.slamR, ms: e.windUntil - w.time });
             if (e.attackMode === 'target') {
                 e.aim = { x: Math.round(target.x), y: Math.round(target.y) };
-                emit(w, { t: 'boss:target', id: e.id, x: e.aim.x, y: e.aim.y, r: 58, ms: 1100 });
+                emit(w, { t: 'boss:target', id: e.id, x: e.aim.x, y: e.aim.y, r: 58, ms: e.windUntil - w.time });
             }
         } else if (e.type !== ENEMY_INDEX.voidEmperor && inRange && w.time - e.at >= t.atkMs) { e.at = w.time; e.windUntil = w.time + t.windMs }
     }
@@ -641,6 +650,7 @@ function snapshot(w) {
             mastery: h.masteryTier || 0,
             hp: h.hp, maxHp: h.maxHp, state: h.state === 'alive' ? 0 : 1, rv: h.state === 'downed' ? Math.round(h.reviveMs / RULES.reviveMs * 100) : 0,
             awake: left(w, h.awakenUntil),
+            comboHealHits: h.destinyComboHits || 0,
             attackN: h.attackN, specialN: h.specialN, buff: w.time < h.buffUntil ? 1 : 0, shield: w.time < h.shieldUntil ? 1 : 0,
             cd: Math.max(0, Math.round((h.specialAt + RULES.specialCooldownMs - w.time) / 100)), // special cooldown, 0.1 s
             spd: moveSpeed(w, h), // effective move speed (HASTE) so client prediction matches the server exactly
