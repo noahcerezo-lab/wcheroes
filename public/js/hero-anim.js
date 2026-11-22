@@ -174,7 +174,9 @@
             }
             const hurt = now - s.hurtAt;
             if (hurt < 260) { const u = 1 - hurt / 260; out.lean -= .2 * u * u; out.bdx -= 2 * u }
-            out.relaxedIdle = h.name === 'NOAH' && !h.moving;
+            // The canonical Noah silhouette is used in movement too, so the
+            // baked-in raised arms never reappear when he starts running.
+            out.relaxedIdle = h.name === 'NOAH';
             if (h.name === 'NOAH' && !h.moving) {
                 out.fdx = 2.5; out.bdx = -2.5;
                 out.crouch = .5;
@@ -342,7 +344,49 @@
                     g.translate(ox + P.twist * 1.2, WAIST + P.crouch + P.bob + oy);
                     g.rotate(P.lean);
                     g.scale(1 - Math.abs(P.twist) * .1, 1);
-                    if (h.name === 'NOAH' && P.relaxedIdle) {
+                    if (h.name === 'DESTINY') {
+                        // Canonical Destiny silhouette for EVERY animation state.
+                        // Keep her existing face, hair, gold-and-crimson palette and boots,
+                        // but remove the wide, rectangular baked-in torso/shoulder art.
+                        const headH = 47, bodyTop = 47;
+                        g.drawImage(img, 0, 0, 96, headH,
+                            -W / 2, -legSrcY * PX, W, headH * PX);
+                        // Slim fitted cuirass with a defined waist and flared armored skirt.
+                        const skin = pass === 0 ? outline : '#e8b08a';
+                        const edge = pass === 0 ? outline : '#4d1c35';
+                        const gold = pass === 0 ? outline : '#e8c66b';
+                        const red = pass === 0 ? outline : '#a92d4a';
+                        const cream = pass === 0 ? outline : '#fff0cb';
+                        const top = -(legSrcY - bodyTop) * PX;
+                        g.fillStyle = edge;
+                        g.beginPath();
+                        g.moveTo(-12, top); g.lineTo(12, top);
+                        g.lineTo(9, top + 17); g.lineTo(11, top + 26);
+                        g.lineTo(17, 0); g.lineTo(-17, 0);
+                        g.lineTo(-11, top + 26); g.lineTo(-9, top + 17);
+                        g.closePath(); g.fill();
+                        g.fillStyle = red;
+                        g.beginPath();
+                        g.moveTo(-9, top + 3); g.lineTo(9, top + 3);
+                        g.lineTo(6, top + 17); g.lineTo(9, top + 26);
+                        g.lineTo(12, -2); g.lineTo(-12, -2);
+                        g.lineTo(-9, top + 26); g.lineTo(-6, top + 17);
+                        g.closePath(); g.fill();
+                        g.fillStyle = gold;
+                        g.fillRect(-8, top + 4, 16, 3);
+                        g.fillRect(-7, top + 17, 14, 3);
+                        g.fillRect(-3, top + 7, 6, 8);
+                        g.fillStyle = cream; g.fillRect(-2, top + 8, 4, 5);
+                        // Tapered shoulder plates and arms resting below her face.
+                        g.fillStyle = edge;
+                        g.fillRect(-15, top + 2, 6, 13);
+                        g.fillRect(9, top + 2, 6, 13);
+                        g.fillStyle = gold;
+                        g.fillRect(-13, top + 3, 4, 5);
+                        g.fillRect(9, top + 3, 4, 5);
+                        g.fillStyle = skin;
+                        g.fillRect(-12, top + 14, 3, 4);
+                    } else if (h.name === 'NOAH' && P.relaxedIdle) {
                         // The original pose art has BOTH arms baked into its torso pixels.
                         // Changing the separate weapon arm cannot remove those raised arms.
                         // Keep the head/hair, but crop the upper-body sprite to the central
@@ -562,9 +606,13 @@
             // Keep Noah's idle stance and Espirit's shooting pose anatomically readable.
             // Prefer consistent pose geometry for Noah's idle and Espirit's bow,
             // rather than swapping back to baked-arm or reversed-bow sheet frames.
-            const forcePose = (h.name === 'NOAH' && !a && !h.moving) || h.name === 'ESPIRIT';
-            if (!forcePose && SHEETS && !opts.procedural && drawSheetHero(g, h, s, a, now, look)) return null;
+            // One consistent character body for idle, run, hurt and attack.
+            // Premium action sheets previously changed proportions and outfits mid-motion.
+            // Preserve their independent combat FX, but never replace the hero body.
+            // (The body and weapon below now animate from the same canonical art.)
             const P = poseFor(h, a, now, s);
+            // Use the same torso silhouette in every pose, including attack recovery.
+            if (h.name === 'NOAH') P.relaxedIdle = true;
             const f = h.facing === -1 ? -1 : 1;
             P.facingSign = a ? a.facing : f;
             const sh = shoulderOf(f, P, SH);
