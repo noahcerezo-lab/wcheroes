@@ -9,10 +9,10 @@ function battle() {
 }
 test('hero levels 10 and 20 unlock mastery I and II for surviving heroes',()=>{
   const w=battle();
-  w.wave=90; w.heroes.forEach(h=>h.level=9); C.levelUp(w);
+  w.wave=20; w.heroes.forEach(h=>h.level=9); C.levelUp(w);
   assert.equal(w.heroes[3].masteryTier,1);
   assert.equal(C.snapshot(w).heroes[3].mastery,1);
-  w.wave=190; w.heroes.forEach(h=>h.level=19); C.levelUp(w);
+  w.wave=40; w.heroes.forEach(h=>h.level=19); C.levelUp(w);
   assert.equal(w.heroes[3].masteryTier,2);
   assert.equal(C.snapshot(w).heroes[3].mastery,2);
 });
@@ -36,4 +36,24 @@ test('Markie mastery extends basic-attack stun duration',()=>{
     durations.push(e.stunUntil-w.time);
   }
   assert.deepEqual(durations,[140,270,400]);
+});
+
+test('clearing waves reaches level 5 at 10, level 10 at 20, and level 20 at 40',()=>{
+  const w=battle();
+  for(let wave=1;wave<=40;wave++){
+    w.wave=wave;
+    w.waveState='fighting';
+    w.toSpawn=0;
+    w.enemies=[];
+    C.step(w);
+    if(wave===10) assert.equal(w.heroes[3].level,5);
+    if(wave===20) {
+      assert.equal(w.heroes[3].level,10);
+      assert.equal(w.heroes[3].masteryTier,1);
+    }
+    if(wave===40) {
+      assert.equal(w.heroes[3].level,20);
+      assert.equal(w.heroes[3].masteryTier,2);
+    }
+  }
 });

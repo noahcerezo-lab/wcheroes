@@ -407,11 +407,17 @@ function stepWaves(w) {
         for (const h of w.heroes) if (alive(h)) h.hp = Math.min(h.maxHp, h.hp + RULES.waveClearHeal);
         emit(w, { t: 'clear', n: w.wave });
         w.hooks.onWaveCleared?.(w, w.wave);
-        if (w.wave % RULES.levelEvery === 0) { levelUp(w); w.hooks.onUpgrade?.(w, w.wave) }
+        // Level every two cleared waves starting at wave 4:
+        // wave 10 -> Lv 5, wave 20 -> Lv 10, wave 40 -> Lv 20.
+        // Keep RULES.levelEvery=10 for boss encounters.
+        if (w.wave >= 4 && w.wave % 2 === 0) {
+            levelUp(w);
+            w.hooks.onUpgrade?.(w, w.wave);
+        }
     }
 }
 
-// LEVEL UP (every 10th wave cleared): living heroes gain a level, stats and a full heal.
+// LEVEL UP (every second cleared wave from wave 4): living heroes gain a level, stats and a full heal.
 function levelUp(w) {
     const got = [];
     w.heroes.forEach((h, i) => {
