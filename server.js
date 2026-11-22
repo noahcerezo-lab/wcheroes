@@ -29,7 +29,7 @@ const ROSTER = require('./public/js/heroes-config.js');
 const COMBAT = require('./shared/combat.js');
 
 const PORT = Number(process.env.PORT || 3000);
-const RECONNECT_GRACE_MS = Number(process.env.RECONNECT_GRACE_MS || 45000);
+const RECONNECT_GRACE_MS = Number(process.env.RECONNECT_GRACE_MS || 120000);
 const MAX_ROOMS = Number(process.env.MAX_ROOMS || 500);
 const INPUT_RATE = 22; // inputs per second refilled (client sends 20/s)
 const INPUT_BURST = 8; // short bursts allowed (network jitter can bunch inputs)
@@ -42,10 +42,11 @@ const COMBAT_SEED = process.env.COMBAT_SEED ? Number(process.env.COMBAT_SEED) : 
 
 const app = express();
 const server = http.createServer(app);
-// Faster dead-connection detection than the defaults (25s + 20s) so AI takes over sooner.
+// Mobile Safari can pause JS/network while backgrounded or under load. Give heartbeats
+// a full 30s timeout instead of disconnecting after an aggressive 8s window.
 // perMessageDeflate: battle snapshots are repetitive JSON, so WebSocket compression cuts them several-fold.
 // Small messages (inputs, acks) are below the threshold and are sent as-is.
-const io = new Server(server, { cors: { origin: false }, pingInterval: 10000, pingTimeout: 8000, maxHttpBufferSize: 16e3, perMessageDeflate: process.env.WS_DEFLATE === '0' ? false : { threshold: 512 } });
+const io = new Server(server, { cors: { origin: false }, pingInterval: 25000, pingTimeout: 30000, maxHttpBufferSize: 16e3, perMessageDeflate: process.env.WS_DEFLATE === '0' ? false : { threshold: 512 } });
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/health', (_req, res) => res.json({ ok: true, rooms: rooms.size }));
 
