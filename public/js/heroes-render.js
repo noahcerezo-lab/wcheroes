@@ -19,8 +19,8 @@
         x.fillStyle = c;
         x.fillRect(Math.round(a), Math.round(b), w, h)
     }
-    const HERO_NAMES = ['NOAH', 'MARKIE', 'DESTINY', 'ESPIRIT', 'SMITESH'];
-    const HERO_COLORS = ['#637bff', '#e8a14b', '#e45d76', '#5cce8a', '#40bfae']; // V19 order (NOAH, MARKIE, DESTINY, ESPIRIT)
+    const HERO_NAMES = ['NOAH', 'MARKIE', 'DESTINY', 'ESPIRIT', 'SMITESH', 'DAVE'];
+    const HERO_COLORS = ['#637bff', '#e8a14b', '#e45d76', '#5cce8a', '#40bfae', '#e05a4d']; // V19 order (NOAH, MARKIE, DESTINY, ESPIRIT)
     const ARENA_NAMES = ['MOONLIT TEMPLE', 'EMBER FORTRESS', 'SPIRIT SANCTUARY', 'CELESTIAL VOID'];
     const art = {};
 
@@ -330,7 +330,27 @@
         r(34,51,28,4,'#b9a2e8');
         return c;
     }
+    function daveArt(frame) {
+        // Same canonical body used in every pose. All four weapons are drawn by hero-anim.
+        const c = document.createElement('canvas'); c.width=96; c.height=128;
+        const g=c.getContext('2d'); g.imageSmoothingEnabled=false;
+        const r=(x,y,w,h,col)=>{g.fillStyle=col;g.fillRect(x,y,w,h)};
+        const poly=(pts,col)=>{g.fillStyle=col;g.beginPath();g.moveTo(...pts[0]);for(const p of pts.slice(1))g.lineTo(...p);g.closePath();g.fill()};
+        r(27,92,18,34,'#211b30');r(52,92,18,34,'#211b30');
+        r(26,119+frame,21,7,'#5d3343');r(51,119-frame,21,7,'#5d3343');
+        poly([[26,52],[70,52],[76,96],[61,106],[48,96],[35,106],[20,96]],'#262136');
+        poly([[33,53],[63,53],[67,88],[48,96],[29,88]],'#4b2c39');
+        r(31,79,35,8,'#ae343c');r(42,80,11,9,'#d7a85c');
+        r(32,18,34,40,'#211a29');r(27,27,9,48,'#201928');r(62,27,9,48,'#201928');
+        r(36,25,26,30,'#c9875f');r(38,34,6,3,'#211b27');r(54,34,6,3,'#211b27');
+        r(42,42,15,4,'#271c24');r(44,46,12,5,'#261c26');
+        r(32,18,34,9,'#1b1723');r(38,13,23,8,'#201824');r(44,9,13,6,'#241927');
+        r(27,53,9,18,'#b87b57');r(62,53,9,18,'#b87b57');
+        r(28,56,7,4,'#d6ac6d');r(63,56,7,4,'#d6ac6d');
+        return c;
+    }
     function makeHDArt(name, frame) {
+        if (name === 'DAVE') return daveArt(frame);
         if (name === 'SMITESH') return shamanArt(frame);
         const base = makeArt(name, frame),
             c = document.createElement('canvas');
