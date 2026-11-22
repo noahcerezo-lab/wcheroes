@@ -49,6 +49,13 @@
             blurb: 'Spirit bolts, ancestral healing, and a restorative spirit totem.',
             fill: { STR: .25, AGI: .56, INT: .95, VIT: .48, LUK: .62 },
             v19: { hp: 115, speed: 3.5, damage: 21, range: 650, cool: 450, special: 'SPIRIT TOTEM' }
+        },
+        {
+            id: 'DAVE', slot: '6TH', name: 'DAVE', cls: 'WEAPONS MASTER',
+            color: '#e05a4d', accent: '#f3c275',
+            blurb: 'Four arms, twin Eskrima sticks, twin knives, and a devastating blade cyclone.',
+            fill: { STR: .92, AGI: .84, INT: .25, VIT: .72, LUK: .48 },
+            v19: { hp: 175, speed: 3.85, damage: 25, range: 90, cool: 245, special: 'BLADE CYCLONE' }
         }
     ];
     const STAT_KEYS = ['STR', 'AGI', 'INT', 'VIT', 'LUK'];
