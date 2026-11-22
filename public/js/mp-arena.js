@@ -375,6 +375,14 @@
                             r0: 7, r1: e.f ? 56 : 39, color: col,
                             width: e.f ? 4 : 2, start: now, life: 270 });
                     }
+                    // Every ordinary hit gets a small hero-colored spark, not just crits.
+                    // Keep it restrained to avoid four-player visual clutter.
+                    if (hh && !e.f && !e.c) {
+                        const tint = { NOAH:'#b59aff', DESTINY:'#ffe3a0',
+                            MARKIE:'#ffad6e', ESPIRIT:'#a2ffd1' }[hh.name] || '#ffffff';
+                        burst(e.x*S, e.y*S - 38, tint, 3, 2,
+                            { life: 170, size: 2, lift: .4 });
+                    }
                     if (anim && hh && hh.name === 'NOAH') { noahImpact(e, now); break }
                     if (anim && hh && heroImpact(e, now, hh)) break;
                     const px = e.x * S, py = e.y * S - 40;
