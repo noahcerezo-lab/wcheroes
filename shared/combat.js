@@ -83,6 +83,7 @@ const KITS = {
     MARKIE: { attack: 'cleave', front: 0.55, frontMul: 1.5, sideMul: 0.7, knock: 19, stun: 140, specialName: 'EARTHSHATTER', specialRadius: S(160), specialMul: 4, specialStun: 600, tauntMs: 4000, shieldMs: 3000, shieldMul: 0.45, aiIdeal: S(48) },
     ESPIRIT: { attack: 'arrow', arc: 0.24, knock: 10, stun: 0, specialName: 'ARROW STORM', specialRadius: S(340), specialMul: 3, aiIdeal: 150 },
     SMITESH: { attack: 'spirit', arc: 0.48, knock: 7, stun: 0, specialName: 'SPIRIT TOTEM', specialRadius: S(200), specialMul: 1.5, aiIdeal: 125 },
+    DONNA: { attack: 'nature', arc: 0.5, knock: 6, stun: 0, specialName: 'CALL OF THE WILD', specialRadius: S(180), specialMul: 1.2, aiIdeal: 125 },
     DAVE: { attack: 'fourfold', arc: 1.4, knock: 10, stun: 70, specialName: 'BLADE CYCLONE', specialRadius: S(165), specialMul: 3.2, specialKnock: 24, aiIdeal: 48 },
 };
 
@@ -122,7 +123,7 @@ function createBattle(opts = {}) {
             hp: cfg.v19.hp, maxHp: cfg.v19.hp, damage: cfg.v19.damage, range: S(cfg.v19.range) * (cfg.name === 'ESPIRIT' ? RULES.espiritRangeMul : 1), cool: cfg.v19.cool,
             speed: SIM.speedFromV19(cfg.v19.speed), stats: cfg.stats, level: 1, masteryTier: 0,
             base: { hp: cfg.v19.hp, damage: cfg.v19.damage, speed: SIM.speedFromV19(cfg.v19.speed) },
-            state: 'alive', reviveMs: 0, attackAt: -1e9, specialAt: -1e9, healAt: 0, attackN: 0, specialN: 0, destinyComboHits: 0, destinyComboHealAt: -1e9, weaponFlow: 0, weaponFlowAt: -1e9, shamanHealAt: -1e9, totemUntil: 0, totemAt: -1e9,
+            state: 'alive', reviveMs: 0, attackAt: -1e9, specialAt: -1e9, healAt: 0, attackN: 0, specialN: 0, destinyComboHits: 0, destinyComboHealAt: -1e9, weaponFlow: 0, weaponFlowAt: -1e9, shamanHealAt: -1e9, totemUntil: 0, totemAt: -1e9, druidHealAt: -1e9, animalUntil: 0, animalAt: -1e9, animalKind: 0,
             buffUntil: 0, shieldUntil: 0, furyUntil: 0, hasteUntil: 0, wardUntil: 0, synergyUntil: 0, awakenUntil: 0, critChain: 0, wantAttack: false, wantSpecial: false, ai: true, controller: null, seq: 0,
         }); }),
         enemies: [],
@@ -213,7 +214,7 @@ const inReach = (h, e, range) => Math.hypot(e.x - h.x, (e.y - h.y) * 1.2) <= ran
 // reach for the chain finisher.
 function attackTargets(w, h, rangeMul = 1) {
     const k = KITS[h.name], range = h.range * rangeMul;
-    if (h.name === 'ESPIRIT' || h.name === 'SMITESH') {
+    if (h.name === 'ESPIRIT' || h.name === 'SMITESH' || h.name === 'DONNA') {
         const lane = w.enemies.filter(e => inArc(h, e, range, k.arc)).sort((a, b) => dist(a, h) - dist(b, h));
         return lane.slice(0, 1); // single arrow, nearest in the lane
     }
@@ -298,6 +299,17 @@ function performSpecial(w, h) {
         for (const u of w.heroes) if (alive(u) && dist(u, h) < k.rallyRadius) { healHero(w, u, k.rallyHeal, h); u.buffUntil = w.time + k.buffMs; emit(w, { t: 'buff', h: w.heroes.indexOf(u) }) }
     }
     if (h.name === 'DAVE') emit(w, { t: 'cyclone', h: i, x: Math.round(h.x), y: Math.round(h.y) });
+    if (h.name === 'DONNA') {
+        // A deterministic animal rotation; companions are simulated server-side, never as extra player slots.
+        h.animalKind = (h.specialN - 1) % 3; // 0 wolf, 1 hawk, 2 bear
+        h.animalUntil = w.time + 10000;
+        h.animalAt = w.time - 1000;
+        for (const u of w.heroes) if (alive(u) && dist(u, h) < 145) {
+            healHero(w, u, 22, h);
+            u.buffUntil = Math.max(u.buffUntil || 0, w.time + 5000);
+        }
+        emit(w, { t: 'druidSummon', h: i, kind: h.animalKind, ms: 10000 });
+    }
     if (h.name === 'SMITESH') {
         h.totemUntil = w.time + 6000;
         h.totemAt = w.time - 1000;
@@ -514,6 +526,23 @@ function stepPassives(w) {
         if (h.name === 'DESTINY' && alive(h) && w.time - h.healAt >= RULES.destinyAuraMs) {
             h.healAt = w.time;
             for (const u of w.heroes) if (dist(u, h) <= RULES.destinyAuraRadius) healHero(w, u, RULES.destinyAuraHeal, h);
+        }
+        if (h.name === 'DONNA' && alive(h)) {
+            if (w.time - (h.druidHealAt || -1e9) >= 4500) {
+                h.druidHealAt = w.time;
+                const allies = w.heroes.filter(u => alive(u) && u.hp < u.maxHp && dist(u, h) < 145);
+                allies.sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp);
+                if (allies.length) healHero(w, allies[0], 9, h);
+            }
+            if (w.time < (h.animalUntil || 0) && w.time - (h.animalAt || -1e9) >= 1000) {
+                h.animalAt = w.time;
+                const kind = h.animalKind || 0;
+                const reach = [90, 165, 75][kind];
+                const targets = w.enemies.filter(e => e.hp > 0 && dist(e, h) < reach).sort((a, b) => dist(a, h) - dist(b, h));
+                for (const e of targets.slice(0, kind === 2 ? 3 : 1)) damageEnemy(w, h, e, Math.round(h.damage * [0.9, 0.7, 1.1][kind]), { knock: kind === 2 ? 14 : 5 });
+                if (kind === 1) for (const u of w.heroes) if (alive(u) && dist(u, h) < 145) healHero(w, u, 3, h);
+                emit(w, { t: 'druidAnimal', h: w.heroes.indexOf(h), kind, x: Math.round(h.x), y: Math.round(h.y) });
+            }
         }
         if (h.name === 'SMITESH' && alive(h)) {
             if (w.time - h.shamanHealAt >= 4500) {
