@@ -28,21 +28,45 @@
         main {
             max-width: 950px;
             margin: auto;
-            padding: 22px 16px 100px
+            padding: 16px max(16px, env(safe-area-inset-right)) 100px max(16px, env(safe-area-inset-left))
         }
 
-        h1 {
-            font-size: clamp(26px, 5vw, 48px);
-            letter-spacing: 2px;
-            text-align: center;
-            margin: 20px 0 6px;
-            color: #f5dba3
+        .brand {
+            margin: 4px 0 10px;
+            text-align: center
         }
 
-        .sub {
-            text-align: center;
-            color: #adc2cb;
-            margin: 0 0 25px
+        .brand h1 {
+            margin: 0;
+            font-size: 0;
+            line-height: 0
+        }
+
+        .brand img {
+            display: block;
+            width: clamp(520px, 68vw, 640px);
+            max-width: 100%;
+            height: auto;
+            margin: 0 auto
+        }
+
+        /* Hide the logo in battle so it doesn't push the arena down. */
+        body.in-battle .brand {
+            display: none
+        }
+
+        @media (max-width: 560px) {
+            main {
+                padding-top: 8px
+            }
+
+            .brand {
+                margin: 0 0 4px
+            }
+
+            .brand img {
+                width: 100%
+            }
         }
 
         .panel {
@@ -568,12 +592,14 @@
                 height: 100dvh
             }
 
-            h1 {
-                font-size: 18px;
-                margin: 4px 0 0
+            .brand {
+                margin: 0
             }
 
-            .sub,
+            .brand img {
+                width: min(260px, 40vw)
+            }
+
             main>p.muted,
             #lobby>p.muted:last-of-type,
             #entry>p.muted {
@@ -582,7 +608,7 @@
 
             main {
                 max-width: none;
-                padding: 2px 12px 0;
+                padding: 2px max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left));
                 height: 100dvh
             }
 
@@ -682,7 +708,7 @@
                 font-size: 12px
             }
 
-            body.in-battle h1,
+            body.in-battle .brand,
             body.in-battle .battle-head h2,
             body.in-battle #squad,
             body.in-battle #battle>p {
@@ -801,8 +827,16 @@
 
 <body>
     <main>
-        <h1>⚔ WEST COAST HEROES</h1>
-        <p class="sub">ONLINE CO-OP • 1–4 FRIENDS • AI FILLS EMPTY SLOTS</p>
+        <header class="brand">
+            <h1>
+                <picture>
+                    <source type="image/webp"
+                        srcset="assets/ui/title-logo.webp 1200w, assets/ui/title-logo@2x.webp 2172w"
+                        sizes="(max-width: 560px) calc(100vw - 32px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)), 640px">
+                    <img src="assets/ui/title-logo.png" width="1200" height="400" alt="West Coast Heroes">
+                </picture>
+            </h1>
+        </header>
         <div id="notice" role="status"></div>
         <section id="entry" class="panel">
             <h2>Enter the arena together</h2><label for="name">Your name</label><input id="name" maxlength="20" placeholder="Enter your name" value="Hero">
