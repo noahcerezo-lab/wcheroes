@@ -348,6 +348,15 @@
                 case 'hit': {
                     flashes.set(e.id, now + 200);
                     const hh = latestHero(e.h);
+                    // Mastery impacts are enemy-centered: never overlay hero heads.
+                    if (hh && hh.mastery) {
+                        const mc = { NOAH:'#b99aff', DESTINY:'#ffe4a8', MARKIE:'#ff9a64', ESPIRIT:'#9df7b9' }[hh.name];
+                        if (mc && (e.f || hh.name === 'MARKIE' || hh.name === 'DESTINY')) {
+                            fx.push({ kind:'ring', x:e.x*S, y:e.y*S,
+                                r0:5, r1:24 + hh.mastery*13, color:mc,
+                                width:1.5 + hh.mastery, start:now, life:240 });
+                        }
+                    }
                     // Combat 2.0: directional, character-colored impact flashes are applied
                     // before legacy early returns, so premium animation hits get them too.
                     // Keep all embellishments on the target, never on hero faces.
