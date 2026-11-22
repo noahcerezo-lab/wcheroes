@@ -159,6 +159,7 @@
         }
 
         function reset() {
+            renderFailures.clear();
             snaps.length = 0; clockOffset = null; lastActs.length = 0; fx.length = 0; pool.clear(); pendingHits.length = 0; recoils.clear(); texts.length = 0;
             banners.length = 0; chains.length = 0; flashes.clear(); ghosts.length = 0; enemyMotion.clear(); overInfo = null;
         }
@@ -1598,6 +1599,7 @@
             g.restore();
         }
 
+        const renderFailures = new Set();
         function frame() {
             if (!running) return;
             requestAnimationFrame(frame);
@@ -1639,7 +1641,36 @@
                 if (gh.kx) { e2[2] = gh.e[2] + gh.kx * ease; e2[3] = gh.e[3] + gh.ky * ease }
                 units.push({ y: e2[3], e: e2, dieAt: gh.start, fade: el < gh.life - 160 ? 1 : (gh.life - el) / 160 });
             }
-            units.sort((a, b) => a.y - b.y).forEach(u => u.e ? drawEnemy(u.e, now, k, u.fade, u.dieAt) : drawHero(u.h, u.i, now, room, myId, k));
+            // One malformed/new hero sprite must never abort the entire canvas frame.
+            // Without isolation, the background and earlier heroes draw, but later
+            // heroes and HUD vanish — exactly the partial-frame symptom on iPhone.
+            units.sort((a, b) => a.y - b.y).forEach(u => {
+                g.save();
+                try {
+                    if (u.e) drawEnemy(u.e, now, k, u.fade, u.dieAt);
+                    else drawHero(u.h, u.i, now, room, myId, k);
+                } catch (err) {
+                    const name = u.h ? u.h.name : 'enemy';
+                    if (!renderFailures.has(name)) {
+                        renderFailures.add(name);
+                        console.error('[WCH] Sprite render failed for ' + name, err);
+                    }
+                    // Restore any nested transforms/alpha before drawing a safe
+                    // placeholder at the correct position; never hide a teammate.
+                    g.setTransform(1, 0, 0, 1, sh.x, sh.y);
+                    g.globalAlpha = 1;
+                    g.globalCompositeOperation = 'source-over';
+                    if (u.h) {
+                        const x = u.h.x * S, y = u.h.y * S;
+                        g.fillStyle = '#e5b6ff';
+                        g.beginPath(); g.arc(x, y - 35*k, 17*k, 0, Math.PI*2); g.fill();
+                        g.fillStyle = '#1c1530'; g.font = 'bold 11px monospace';
+                        g.textAlign = 'center'; g.fillText(name, x, y - 31*k);
+                    }
+                } finally {
+                    g.restore();
+                }
+            });
             if (enemyMotion.size > 64) { const live = new Set((view.enemies || []).map(e => e[0])); for (const id of enemyMotion.keys()) if (!live.has(id)) enemyMotion.delete(id) }
             drawBuffs(view, now, k);
             drawActionFx(view, now, k, dt);
@@ -1652,6 +1683,13 @@
             drawBossBar(view, k);
             drawBanners(now, k);
             drawGameOver(now, view.hud);
+            if (renderFailures.size) {
+                g.save(); g.setTransform(1,0,0,1,0,0);
+                g.fillStyle = 'rgba(42,18,42,.92)'; g.fillRect(12, canvas.height-44, 420, 31);
+                g.fillStyle = '#ffd6b1'; g.font = 'bold 15px monospace';
+                g.fillText('Sprite error: ' + [...renderFailures].join(', ').slice(0,38), 20, canvas.height-23);
+                g.restore();
+            }
             stats.frames++;
             lastWork = performance.now() - now; // CPU time this frame took (drives adaptive density)
         }
