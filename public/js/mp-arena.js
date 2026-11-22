@@ -34,7 +34,7 @@
         DESTINY: { atk: 'destinySlash', atkW: 83 * 1.6, spc: 'destinyRally', range: 55 },
         MARKIE: { atk: 'markieCleave', atkW: 76 * 2.2, spc: 'markieQuake', range: 51 },
         ESPIRIT: { atk: 'espiritArrow', atkW: 60, spc: 'espiritStorm', range: 546 },
-        SMITESH: { atk: 'espiritArrow', atkW: 60, spc: 'espiritStorm', range: 330 }, // 2x V19 reach (server RULES.espiritRangeMul)
+        SMITESH: { atk: 'espiritArrow', atkW: 60, spc: 'espiritStorm', range: 650 }, // long-range magic, independent of Espirit's arrow art
     };
     const SPECIAL_RADIUS = { NOAH: 140, DESTINY: 120, MARKIE: 107, ESPIRIT: 227, SMITESH: 133 }; // fallback; events carry r
     const SLAM_R = 55; // Temple Warden shockwave radius (world units)
@@ -188,14 +188,22 @@
                 if (h.attackN > prev.a) {
                     // Swing direction = the hero's 8-way aim; stage 2 = chain finisher (bigger effect).
                     const f = { kind: 'attack', i, name: h.name, start: now, life: 300, facing: h.facing === -1 ? -1 : 1, aim: aimVec(h.aim, h.facing), stage: h.cs || 0, x: h.x, y: h.y };
-                    if (h.name === 'ESPIRIT') {
+                    if (h.name === 'ESPIRIT' || h.name === 'SMITESH') {
                         const hits = ev.filter(e => e.t === 'hit' && e.h === i);
                         const hit = hits[0];
                         f.mastery = Math.min(2, h.mastery || 0);
                         f.volley = hits.slice(0, 1 + f.mastery).map(e => ({ x: e.x, y: e.y }));
-                        f.tx = hit ? hit.x : h.x + f.aim.x * KIT.ESPIRIT.range;
-                        f.ty = hit ? hit.y : h.y + f.aim.y * KIT.ESPIRIT.range;
+                        const maxRange = KIT[h.name].range;
+                        f.tx = hit ? hit.x : h.x + f.aim.x * maxRange;
+                        f.ty = hit ? hit.y : h.y + f.aim.y * maxRange;
                         f.life = Math.max(120, Math.hypot(f.tx - h.x, f.ty - h.y) * S / 3.2);
+                    }
+                    if (h.name === 'SMITESH') {
+                        // A bolt launches on the cast frame and travels visibly to the actual
+                        // server-selected target, or the full aim range on a miss.
+                        f.rel = now + 100;
+                        f.flight = Math.max(110, Math.hypot(f.tx - h.x, f.ty - h.y) * S / 3.4);
+                        f.life = f.rel - now + f.flight + 120;
                     }
                     if (anim && anim.hasPose(h.name)) {
                         anim.onAttack(i, h, f.stage, f.aim, now); f.pose = true;
@@ -205,7 +213,7 @@
                             f.life = f.rel - now + f.flight + 20;
                             sfx('bowDraw', i);
                             pendingHits.push({ at: f.rel, e: { t: 'sfx', name: 'bowRelease', i } });
-                        } else {
+                        } else if (h.name !== 'SMITESH') {
                             sfx(h.name === 'MARKIE' ? 'axeSwing' : 'swing', i, { variant: f.stage + 1 });
                             if (h.name === 'MARKIE') pendingHits.push({ at: anim.contactAt(i), e: { t: 'sfx', name: 'axeImpact', i, gain: f.stage === 2 ? 1.2 : .8 } });
                         }
@@ -337,6 +345,10 @@
                 const h = latestHero(e.h);
                 if (h && anim.hasPose(h.name)) {
                     const dist = h.name === 'ESPIRIT' ? Math.hypot(e.x - h.x, e.y - h.y) * S : 0; // arrow flight
+                    if (h.name === 'SMITESH') {
+                        const bolt = [...fx].reverse().find(f => f.kind === 'attack' && f.name === 'SMITESH' && f.i === e.h);
+                        if (bolt) { const at = bolt.rel + bolt.flight; if (at > now) { pendingHits.push({ at, e }); return } }
+                    }
                     const at = anim.contactAt(e.h, dist);
                     if (at > now) { pendingHits.push({ at, e }); recoilHold(e, at); return }
                 }
@@ -1077,6 +1089,46 @@
                 g.restore();
             }
         }
+        // Smitesh: distinctive long-range jade/violet spirit missile. All movement is
+        // cosmetic; the server still owns range, targets and damage. No sprite asset needed.
+        function drawSpiritBolt(f, now, k) {
+            const elapsed = now - f.rel;
+            if (elapsed < 0 || elapsed > f.flight) return;
+            const t = Math.min(1, elapsed / f.flight);
+            const sx = f.x * S + f.aim.x * 24 * k;
+            const sy = f.y * S - 40 * k + f.aim.y * 8 * k;
+            const ex = f.tx * S, ey = f.ty * S - 38 * k;
+            const x = lerp(sx, ex, t), y = lerp(sy, ey, t);
+            const angle = Math.atan2(ey - sy, ex - sx);
+            const fin = f.stage === 2, size = (fin ? 1.35 : 1) * Math.min(k, 1.3);
+            g.save();
+            g.globalCompositeOperation = 'lighter';
+            g.lineCap = 'round';
+            // Three layered comet tails make the missile legible at maximum range.
+            for (let j = 0; j < 3; j++) {
+                const tailT = Math.max(0, t - (.12 + j * .055));
+                const tx = lerp(sx, ex, tailT), ty = lerp(sy, ey, tailT);
+                g.strokeStyle = ['#59f2d4','#aa82ff','#dcfff8'][j];
+                g.globalAlpha = [.28,.45,.82][j];
+                g.lineWidth = [18, 9, 3.5][j] * size;
+                g.beginPath(); g.moveTo(tx, ty); g.lineTo(x, y); g.stroke();
+            }
+            // Orbiting spirit motes; stable sinusoids avoid random flashing.
+            g.translate(x, y); g.rotate(angle);
+            const pulse = 1 + .14 * Math.sin(now / 75);
+            g.globalAlpha = .28; g.fillStyle = '#78ffe1';
+            g.beginPath(); g.arc(0, 0, 21 * size * pulse, 0, Math.PI * 2); g.fill();
+            g.globalAlpha = .95; g.fillStyle = '#b38cff';
+            g.beginPath(); g.ellipse(0, 0, 15 * size, 8 * size, 0, 0, Math.PI * 2); g.fill();
+            g.fillStyle = '#eafffa';
+            g.beginPath(); g.ellipse(3 * size, 0, 9 * size, 5 * size, 0, 0, Math.PI * 2); g.fill();
+            for (let j = 0; j < 3; j++) {
+                const a = now / 140 + j * Math.PI * 2 / 3;
+                g.globalAlpha = .7; g.fillStyle = j % 2 ? '#d1b0ff' : '#a6ffe9';
+                g.beginPath(); g.arc(Math.cos(a) * 14 * size, Math.sin(a) * 13 * size, 2.6 * size, 0, Math.PI * 2); g.fill();
+            }
+            g.restore();
+        }
         function drawActionFx(view, now, k, dt) {
             if (anim) {
                 const room = opts.getRoom(), myId = opts.getMyId();
@@ -1093,6 +1145,7 @@
                 if (f.kind === 'combatImpact') { drawCombatImpact(f, now); continue }
                 if (f.kind === 'flash' || f.kind === 'shock' || f.kind === 'levelup') { drawFlashFx(f, now, view); continue }
                 if (f.kind === 'ov') { drawOv(f, now, view, k); continue }
+                if (f.kind === 'attack' && f.name === 'SMITESH') { drawSpiritBolt(f, now, k); continue }
                 if (f.kind === 'attack' && f.pose && f.name === 'ESPIRIT') { drawArrow(f, now, k); continue }
                 if (f.kind === 'attack' && f.pose) continue; // drawn by hero-anim (blade-path crescent / sheets)
                 if (f.kind === 'attack' && A) {
