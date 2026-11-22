@@ -82,7 +82,7 @@ const KITS = {
     DESTINY: { attack: 'captain', arc: 0.95, knock: 10, stun: 650, specialName: 'RALLY STRIKE', specialRadius: S(180), specialMul: 3, specialStun: 1000, rallyHeal: 35, rallyRadius: S(190), buffMs: 5000, buffMul: 1.25, aiIdeal: S(58) },
     MARKIE: { attack: 'cleave', front: 0.55, frontMul: 1.5, sideMul: 0.7, knock: 19, stun: 140, specialName: 'EARTHSHATTER', specialRadius: S(160), specialMul: 4, specialStun: 600, tauntMs: 4000, shieldMs: 3000, shieldMul: 0.45, aiIdeal: S(48) },
     ESPIRIT: { attack: 'arrow', arc: 0.24, knock: 10, stun: 0, specialName: 'ARROW STORM', specialRadius: S(340), specialMul: 3, aiIdeal: 150 },
-    SMITESH: { attack: 'spirit', arc: 0.48, knock: 7, stun: 0, specialName: 'SPIRIT TOTEM', specialRadius: S(200), specialMul: 1.5, aiIdeal: 125 },
+    SMITESH: { attack: 'spirit', arc: 0.48, knock: 7, stun: 0, specialName: 'ANCESTRAL GUARDIAN', specialRadius: S(200), specialMul: 1.5, aiIdeal: 125 },
     DONNA: { attack: 'nature', arc: 0.5, knock: 6, stun: 0, specialName: 'WILDHEART AWAKENING', specialRadius: S(180), specialMul: 1.2, aiIdeal: 125 },
     DAVE: { attack: 'fourfold', arc: 1.4, knock: 10, stun: 70, specialName: 'BLADE CYCLONE', specialRadius: S(165), specialMul: 3.2, specialKnock: 24, aiIdeal: 48 },
 };
