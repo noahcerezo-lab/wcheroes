@@ -1461,8 +1461,32 @@
             g.restore();
         }
 
+        // Lightweight pixel-art companions follow Donna visually; all damage stays server-authoritative.
+        function drawDruidPet(h, i, now) {
+            if (h.name !== 'DONNA' || h.state || !Number.isInteger(h.pet) || h.pet < 0) return;
+            const kind = Math.min(3, h.pet), t = now / 1000;
+            const px = h.x * S + (h.facing === -1 ? 48 : -48) + Math.sin(t * 2 + i) * 7;
+            const py = h.y * S + 9 + Math.cos(t * 3 + i) * 3;
+            const scale = [0.72, 0.92, 1.35, 1.12][kind];
+            g.save(); g.translate(Math.round(px), Math.round(py)); g.scale(scale, scale);
+            g.fillStyle = 'rgba(9,26,15,.4)'; g.beginPath(); g.ellipse(0,3,23,7,0,0,Math.PI*2); g.fill();
+            const fur = ['#d98543','#8eaa88','#946e43','#d5c792'][kind];
+            const shade = ['#8b512c','#536b59','#61432d','#8b7b54'][kind];
+            const block=(x,y,w,hh,c)=>{g.fillStyle=c;g.fillRect(x,y,w,hh)};
+            block(-18,-23,34,18,fur); block(-14,-8,7,11,shade); block(6,-8,7,11,shade);
+            block(9,-30,20,18,fur); block(14,-35,7,10,shade); block(23,-35,6,10,shade);
+            block(23,-23,4,3,'#17291a'); block(28,-17,6,4,shade);
+            block(-27,-24,11,6,fur);
+            if(kind===0) {block(-31,-27,11,5,shade);block(18,-37,5,5,'#f2d8a2');}
+            if(kind===1) {block(13,-40,7,9,shade);block(25,-40,7,9,shade);}
+            if(kind===2) {block(11,-37,9,9,shade);block(25,-37,9,9,shade);block(-18,-30,32,7,shade);}
+            if(kind===3) {block(15,-49,4,21,'#e6c66b');block(29,-49,4,21,'#e6c66b');block(7,-45,12,4,'#e6c66b');block(30,-45,12,4,'#e6c66b');}
+            if(h.petBoost) {g.strokeStyle='#a9ff7c';g.lineWidth=2;g.strokeRect(-30,-51,74,57);}
+            g.restore();
+        }
         function drawHero(h, i, now, room, myId, k) {
             const px = h.x * S, py = h.y * S;
+            try { drawDruidPet(h, i, now); } catch (err) { /* Never let companion art crash hero rendering. */ }
             const human = controllerOf(room, i), waiting = reservedOf(room, i);
             const role = human ? (human.id === myId ? 'me' : 'human') : 'ai';
             const color = heroCfg(h.name).color;
