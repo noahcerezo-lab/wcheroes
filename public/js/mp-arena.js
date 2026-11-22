@@ -34,7 +34,8 @@
         DESTINY: { atk: 'destinySlash', atkW: 83 * 1.6, spc: 'destinyRally', range: 55 },
         MARKIE: { atk: 'markieCleave', atkW: 76 * 2.2, spc: 'markieQuake', range: 51 },
         ESPIRIT: { atk: 'espiritArrow', atkW: 60, spc: 'espiritStorm', range: 546 },
-        SMITESH: { atk: 'espiritArrow', atkW: 60, spc: 'espiritStorm', range: 650 }, // long-range magic, independent of Espirit's arrow art
+        SMITESH: { atk: 'espiritArrow', atkW: 60, spc: 'espiritStorm', range: 650 },
+        DAVE: { atk: 'markieAxe', atkW: 170, spc: 'markieWhirl', range: 90 }, // long-range magic, independent of Espirit's arrow art
     };
     const SPECIAL_RADIUS = { NOAH: 140, DESTINY: 120, MARKIE: 107, ESPIRIT: 227, SMITESH: 133 }; // fallback; events carry r
     const SLAM_R = 55; // Temple Warden shockwave radius (world units)
@@ -57,7 +58,7 @@
         for (const k in files) { const im = new Image(); im.onload = () => { OV[k] = im }; im.src = 'assets/overhaul/' + files[k] + '.png' }
     })();
     // Level-up sheet pre-tinted per hero once (multiply by the hero's primary, alpha kept; hot core stays white).
-    const LEVELUP_TINT = { NOAH: ['#7A5FE0', '#83B8FF'], DESTINY: ['#F5C65D', '#D8434F'], MARKIE: ['#FF9657', '#C98A4B'], ESPIRIT: ['#5CCE8A', '#F5D477'], SMITESH: ['#40bfae', '#bda2ff'] };
+    const LEVELUP_TINT = { NOAH: ['#7A5FE0', '#83B8FF'], DESTINY: ['#F5C65D', '#D8434F'], MARKIE: ['#FF9657', '#C98A4B'], ESPIRIT: ['#5CCE8A', '#F5D477'], SMITESH: ['#40bfae', '#bda2ff'], DAVE: ['#e05a4d', '#f3c275'] };
     const tinted = {};
     function tintedLevelup(name) {
         if (tinted[name]) return tinted[name];
@@ -448,6 +449,11 @@
                     if (e.n >= 10) fx.push({ kind: 'sheet', key: 'healAura', follow: e.h, w: 72, start: now, life: A ? A.duration('healAura') : 540 });
                     break;
                 }
+                case 'cyclone': {
+                    for(let j=0;j<4;j++) fx.push({kind:'ring',x:e.x*S,y:e.y*S,r0:16+j*10,r1:150+j*8,color:j%2?'#f3c275':'#e05a4d',width:5-j*.6,start:now+j*70,life:700});
+                    floatText(e.x*S,e.y*S-95,'BLADE CYCLONE','#ffd39c',15,900);
+                    break;
+                }
                 case 'shamanHeal': {
                     const h = latestHero(e.h);
                     if (h) {
@@ -482,7 +488,7 @@
                     // Each ultimate gets a distinct ground-level signature burst.
                     const ultimatePalette = {
                         NOAH: '#aa88ff', DESTINY: '#ffe1a0',
-                        MARKIE: '#ff9355', ESPIRIT: '#80efaf', SMITESH: '#8fffea'
+                        MARKIE: '#ff9355', ESPIRIT: '#80efaf', SMITESH: '#8fffea', DAVE: '#ffb66e'
                     };
                     const uc = ultimatePalette[h.name] || '#fff4b5';
                     fx.push({ kind: 'ring', x: h.x * S, y: h.y * S,
