@@ -42,6 +42,13 @@
             blurb: 'Long-range bow, precision critical hits.',
             fill: { STR: .62, AGI: .92, INT: .42, VIT: .42, LUK: .91 },
             v19: { hp: 100, speed: 4.2, damage: 19, range: 410, cool: 180, special: 'ARROW STORM' }
+        },
+        {
+            id: 'SMITESH', slot: '5TH', name: 'SMITESH', cls: 'SPIRIT SHAMAN',
+            color: '#40bfae', accent: '#bda2ff',
+            blurb: 'Spirit bolts, ancestral healing, and a restorative spirit totem.',
+            fill: { STR: .25, AGI: .56, INT: .95, VIT: .48, LUK: .62 },
+            v19: { hp: 115, speed: 3.5, damage: 21, range: 330, cool: 300, special: 'SPIRIT TOTEM' }
         }
     ];
     const STAT_KEYS = ['STR', 'AGI', 'INT', 'VIT', 'LUK'];

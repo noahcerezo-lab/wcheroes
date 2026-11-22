@@ -82,6 +82,7 @@ const KITS = {
     DESTINY: { attack: 'captain', arc: 0.95, knock: 10, stun: 650, specialName: 'RALLY STRIKE', specialRadius: S(180), specialMul: 3, specialStun: 1000, rallyHeal: 35, rallyRadius: S(190), buffMs: 5000, buffMul: 1.25, aiIdeal: S(58) },
     MARKIE: { attack: 'cleave', front: 0.55, frontMul: 1.5, sideMul: 0.7, knock: 19, stun: 140, specialName: 'EARTHSHATTER', specialRadius: S(160), specialMul: 4, specialStun: 600, tauntMs: 4000, shieldMs: 3000, shieldMul: 0.45, aiIdeal: S(48) },
     ESPIRIT: { attack: 'arrow', arc: 0.24, knock: 10, stun: 0, specialName: 'ARROW STORM', specialRadius: S(340), specialMul: 3, aiIdeal: 150 },
+    SMITESH: { attack: 'spirit', arc: 0.48, knock: 7, stun: 0, specialName: 'SPIRIT TOTEM', specialRadius: S(200), specialMul: 1.5, aiIdeal: 125 },
 };
 
 // Sheet stats -> small modifiers. LUK = crit chance, VIT = damage taken.
@@ -106,6 +107,8 @@ function rng(world) { // mulberry32
 // ---------------- world ----------------
 function createBattle(opts = {}) {
     const spawn = opts.spawn || [[410, 230], [510, 230], [410, 330], [510, 330]];
+    const selected = (opts.heroIndices || [0, 1, 2, 3]).slice(0, 4);
+    if (selected.length !== 4 || new Set(selected).size !== 4 || selected.some(i => !Number.isInteger(i) || i < 0 || i >= ROSTER.HEROES.length)) throw new Error('Battle requires four distinct valid hero indices');
     const world = {
         tick: 0, time: 0, seed: (opts.seed >>> 0) || 1, zone: 0,
         wave: 0, waveState: 'intermission', nextWaveAt: opts.firstWaveDelayMs ?? RULES.intermissionMs,
@@ -113,14 +116,14 @@ function createBattle(opts = {}) {
         score: 0, kills: 0, combo: 0, comboUntil: 0, over: false,
         maxEnemies: opts.maxEnemies || RULES.maxEnemies,
         enemyDamageMul: opts.enemyDamageMul || 1, // difficulty knob (server env ENEMY_DAMAGE_MUL)
-        heroes: ROSTER.HEROES.map((cfg, i) => ({
+        heroes: selected.map((heroIndex, i) => { const cfg = ROSTER.HEROES[heroIndex]; return ({
             name: cfg.name, x: spawn[i][0], y: spawn[i][1], facing: i % 2 ? -1 : 1, aim: i % 2 ? 4 : 0, vx: 0, vy: 0, moving: false, chain: 0,
             hp: cfg.v19.hp, maxHp: cfg.v19.hp, damage: cfg.v19.damage, range: S(cfg.v19.range) * (cfg.name === 'ESPIRIT' ? RULES.espiritRangeMul : 1), cool: cfg.v19.cool,
             speed: SIM.speedFromV19(cfg.v19.speed), stats: cfg.stats, level: 1, masteryTier: 0,
             base: { hp: cfg.v19.hp, damage: cfg.v19.damage, speed: SIM.speedFromV19(cfg.v19.speed) },
-            state: 'alive', reviveMs: 0, attackAt: -1e9, specialAt: -1e9, healAt: 0, attackN: 0, specialN: 0, destinyComboHits: 0, destinyComboHealAt: -1e9,
+            state: 'alive', reviveMs: 0, attackAt: -1e9, specialAt: -1e9, healAt: 0, attackN: 0, specialN: 0, destinyComboHits: 0, destinyComboHealAt: -1e9, shamanHealAt: -1e9, totemUntil: 0, totemAt: -1e9,
             buffUntil: 0, shieldUntil: 0, furyUntil: 0, hasteUntil: 0, wardUntil: 0, synergyUntil: 0, awakenUntil: 0, critChain: 0, wantAttack: false, wantSpecial: false, ai: true, controller: null, seq: 0,
-        })),
+        }); }),
         enemies: [],
         pickups: [], nextPickupId: 1, nextPickupAt: null, // set when the first wave starts
         events: [],
@@ -209,7 +212,7 @@ const inReach = (h, e, range) => Math.hypot(e.x - h.x, (e.y - h.y) * 1.2) <= ran
 // reach for the chain finisher.
 function attackTargets(w, h, rangeMul = 1) {
     const k = KITS[h.name], range = h.range * rangeMul;
-    if (h.name === 'ESPIRIT') {
+    if (h.name === 'ESPIRIT' || h.name === 'SMITESH') {
         const lane = w.enemies.filter(e => inArc(h, e, range, k.arc)).sort((a, b) => dist(a, h) - dist(b, h));
         return lane.slice(0, 1); // single arrow, nearest in the lane
     }
@@ -288,6 +291,11 @@ function performSpecial(w, h) {
     }
     if (h.name === 'DESTINY') { // team heal + damage buff (leadership)
         for (const u of w.heroes) if (alive(u) && dist(u, h) < k.rallyRadius) { healHero(w, u, k.rallyHeal, h); u.buffUntil = w.time + k.buffMs; emit(w, { t: 'buff', h: w.heroes.indexOf(u) }) }
+    }
+    if (h.name === 'SMITESH') {
+        h.totemUntil = w.time + 6000;
+        h.totemAt = w.time - 1000;
+        emit(w, { t: 'totem', h: i, x: Math.round(h.x), y: Math.round(h.y), ms: 6000 });
     }
     if (h.name === 'MARKIE') { // taunt + damage soak
         h.shieldUntil = w.time + k.shieldMs;
@@ -501,6 +509,23 @@ function stepPassives(w) {
             h.healAt = w.time;
             for (const u of w.heroes) if (dist(u, h) <= RULES.destinyAuraRadius) healHero(w, u, RULES.destinyAuraHeal, h);
         }
+        if (h.name === 'SMITESH' && alive(h)) {
+            if (w.time - h.shamanHealAt >= 4500) {
+                h.shamanHealAt = w.time;
+                const allies = w.heroes.filter(u => alive(u) && u.hp < u.maxHp && dist(u, h) <= 145);
+                allies.sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp);
+                if (allies.length) {
+                    const target = allies[0], n = healHero(w, target, 10, h);
+                    if (n) emit(w, { t: 'shamanHeal', h: w.heroes.indexOf(target), from: w.heroes.indexOf(h), n });
+                }
+            }
+            if (w.time < h.totemUntil && w.time - h.totemAt >= 1000) {
+                h.totemAt = w.time;
+                for (const u of w.heroes) if (alive(u) && dist(u, h) <= 135) healHero(w, u, 7, h);
+                for (const e of [...w.enemies]) if (dist(e, h) <= 95) damageEnemy(w, h, e, Math.round(h.damage * .45), { knock: 3 });
+                emit(w, { t: 'totemPulse', h: w.heroes.indexOf(h), x: Math.round(h.x), y: Math.round(h.y) });
+            }
+        }
         if (h.state === 'downed') {
             const helpers = w.heroes.filter(u => u !== h && alive(u) && dist(u, h) <= RULES.reviveRadius).length;
             h.reviveMs = helpers ? h.reviveMs + TICK * Math.min(2, helpers) : Math.max(0, h.reviveMs - TICK / 2);
@@ -586,8 +611,8 @@ function stepAI(w, h, leader) {
         if (Math.abs(SIM.DIR8[h.aim].x) > 0.01) h.facing = SIM.DIR8[h.aim].x > 0 ? 1 : -1;
         if (attackTargets(w, h).length) performAttack(w, h);
         const crowd = w.enemies.filter(e => dist(e, h) < k.specialRadius * 0.8).length;
-        const hurtAlly = h.name === 'DESTINY' && w.heroes.some(u => alive(u) && u.hp < u.maxHp * 0.4 && dist(u, h) < k.rallyRadius);
-        if (crowd >= 3 || (hurtAlly && crowd >= 1)) performSpecial(w, h);
+        const hurtAlly = (h.name === 'DESTINY' || h.name === 'SMITESH') && w.heroes.some(u => alive(u) && u.hp < u.maxHp * 0.6 && dist(u, h) < 135);
+        if (crowd >= 3 || (hurtAlly && (crowd >= 1 || h.name === 'SMITESH'))) performSpecial(w, h);
         return;
     }
     if (enemy && (!leader || leader === h || leader.ai)) { // no human to follow: go find the fight

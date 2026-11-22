@@ -89,8 +89,8 @@
             b.disabled = !!owner && owner.id !== myId();
             b.style.setProperty('--hero', cfg.color);
             const bars = WCHHeroes.STAT_KEYS.map(k => '<span class="stat"><i>' + k + '</i><span class="bar"><span style="width:' + Math.round(cfg.fill[k] * 100) + '%"></span></span></span>').join('');
-            const tag = !owner ? 'AI TEAMMATE' : !owner.connected ? '⟳ ' + esc(owner.name) + ' reconnecting…' : esc(owner.name) + (owner.ready ? ' ✓ READY' : ' • NOT READY');
-            b.innerHTML = '<span class="slot">' + cfg.slot + '</span><img class="portrait" src="assets/portraits/' + slot.hero.toLowerCase() + '.png" alt="' + slot.hero + ' portrait"><b>' + slot.hero + '</b><small>' + cfg.cls + '</small><span class="stats">' + bars + '</span><span class="tag">' + tag + '</span>';
+            const tag = !owner ? 'AVAILABLE' : !owner.connected ? '⟳ ' + esc(owner.name) + ' reconnecting…' : esc(owner.name) + (owner.ready ? ' ✓ READY' : ' • NOT READY');
+            b.innerHTML = '<span class="slot">' + cfg.slot + '</span>' + (slot.hero === 'SMITESH' ? '<span class="portrait" style="display:grid;place-items:center;font-size:42px;background:radial-gradient(circle,#377c83,#17253c);color:#d9fff4">✦</span>' : '<img class="portrait" src="assets/portraits/' + slot.hero.toLowerCase() + '.png" alt="' + slot.hero + ' portrait">') + '<b>' + slot.hero + '</b><small>' + cfg.cls + '</small><span class="stats">' + bars + '</span><span class="tag">' + tag + '</span>';
             b.onclick = () => send('hero:select', { hero: i });
             $('heroes').appendChild(b);
         });
@@ -103,7 +103,8 @@
     function renderSquad() {
         if (!room) return;
         $('toLobby').classList.toggle('hidden', room.host !== myId());
-        $('squad').replaceChildren(...room.slots.map((slot, i) => {
+        const active = room.activeRoster || [0, 1, 2, 3];
+        $('squad').replaceChildren(...active.map(i => { const slot = room.slots[i];
             const owner = room.players.find(p => p.hero === i), li = document.createElement('li');
             li.style.setProperty('--hero', ROSTER[i].color);
             li.className = owner?.connected ? '' : 'ai';

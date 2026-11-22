@@ -19,8 +19,8 @@
         x.fillStyle = c;
         x.fillRect(Math.round(a), Math.round(b), w, h)
     }
-    const HERO_NAMES = ['NOAH', 'MARKIE', 'DESTINY', 'ESPIRIT'];
-    const HERO_COLORS = ['#637bff', '#e8a14b', '#e45d76', '#5cce8a']; // V19 order (NOAH, MARKIE, DESTINY, ESPIRIT)
+    const HERO_NAMES = ['NOAH', 'MARKIE', 'DESTINY', 'ESPIRIT', 'SMITESH'];
+    const HERO_COLORS = ['#637bff', '#e8a14b', '#e45d76', '#5cce8a', '#40bfae']; // V19 order (NOAH, MARKIE, DESTINY, ESPIRIT)
     const ARENA_NAMES = ['MOONLIT TEMPLE', 'EMBER FORTRESS', 'SPIRIT SANCTUARY', 'CELESTIAL VOID'];
     const art = {};
 
@@ -297,7 +297,41 @@
     }
     // High-detail 96x128 source sprites: 4x the source pixels, same on-screen height.
     // 32-bit-era-inspired lighting, cloth textures, layered armor and unique silhouettes.
+    function shamanArt(frame) {
+        // Canonical 96x128 pixel-art body; the animation renderer animates its limbs.
+        const c = document.createElement('canvas');
+        c.width = 96; c.height = 128;
+        const g = c.getContext('2d');
+        g.imageSmoothingEnabled = false;
+        const r = (x,y,w,h,color) => { g.fillStyle=color; g.fillRect(x,y,w,h) };
+        const poly = (points,color) => {
+            g.fillStyle=color; g.beginPath(); g.moveTo(...points[0]);
+            for(const p of points.slice(1)) g.lineTo(...p);
+            g.closePath(); g.fill();
+        };
+        // Split boots and flowing ceremonial mantle.
+        r(30,92,15,33,'#172b38'); r(52,92,15,33,'#172b38');
+        r(29,116+frame,18,8,'#2e8d83'); r(51,116-frame,18,8,'#2e8d83');
+        poly([[27,48],[69,48],[82,99],[61,110],[48,97],[34,110],[15,99]],'#193e4b');
+        poly([[31,54],[65,54],[68,91],[57,98],[48,89],[37,98],[27,91]],'#348d84');
+        r(42,61,12,30,'#214c66'); r(46,64,4,23,'#8de9d6');
+        r(33,85,30,5,'#b9a2e8'); r(44,84,9,7,'#f2d8a4');
+        // Face, brows, long dark hair and headband.
+        r(32,15,33,40,'#172736');
+        r(36,22,26,28,'#d5a27d'); r(39,34,5,3,'#2a2531'); r(54,34,5,3,'#2a2531');
+        r(45,43,7,2,'#a66c63');
+        r(31,17,35,9,'#16252d'); r(34,14,27,5,'#263f48');
+        r(36,24,25,4,'#bca4f2'); r(46,23,6,6,'#d8fff5');
+        r(28,27,8,34,'#1b3138'); r(62,27,8,33,'#1b3138');
+        // Sleeves, bracelets, and shoulder embroidery.
+        r(23,54,11,24,'#215b63'); r(63,54,11,24,'#215b63');
+        r(25,57,7,5,'#ad93df'); r(65,57,7,5,'#ad93df');
+        r(26,75,7,5,'#d2a884'); r(65,75,7,5,'#d2a884');
+        r(34,51,28,4,'#b9a2e8');
+        return c;
+    }
     function makeHDArt(name, frame) {
+        if (name === 'SMITESH') return shamanArt(frame);
         const base = makeArt(name, frame),
             c = document.createElement('canvas');
         c.width = 96;
