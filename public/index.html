@@ -434,6 +434,14 @@
             display: none
         }
 
+        /* Mobile combat: smaller controls keep the arena and enemy telegraphs visible. */
+        @media (pointer: coarse) and (max-height: 520px) {
+            #joystick { width: 108px !important; height: 108px !important; }
+            #attack-touch { width: 76px !important; height: 76px !important; }
+            #special-touch { width: 64px !important; height: 64px !important; }
+            #actions { gap: 8px !important; }
+            #actions button { font-size: 10px !important; }
+        }
         #joystick {
             position: relative;
             width: 136px;
@@ -831,7 +839,7 @@
             <ul id="squad"></ul>
             <p class="muted key-hint">Move: WASD / arrows • Attack: SPACE • Special: Q. Gold ring = you, blue = other players, green = AI.</p>
             <p id="status" class="muted">Connected to battle</p>
-            <p class="muted">Co-op combat: survive the waves together. Stand next to a downed teammate to revive them. Bosses and upgrades arrive in the next update.</p>
+            <p class="muted">Co-op combat: survive the waves together. Stand next to a downed teammate to revive them. Defeat bosses every ten waves and unlock hero mastery at levels 10 and 20.</p>
         </section>
         <p class="muted" style="text-align:center">Want to play the original single-player game? <a style="color:#e8cb8e" href="/legacy-v19.html">Open V19</a></p>
     </main>
