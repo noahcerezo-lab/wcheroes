@@ -298,7 +298,7 @@
     // High-detail 96x128 source sprites: 4x the source pixels, same on-screen height.
     // 32-bit-era-inspired lighting, cloth textures, layered armor and unique silhouettes.
     function shamanArt(frame) {
-        // Ancestral ritual shaman: antler crown, bone mask, jade charms and layered
+        // Ancestral ritual shaman: angular teal hood, bone mask, turquoise charms and layered
         // ceremonial mantle. Kept within the canonical 96x128 animation sprite.
         const c=document.createElement('canvas');c.width=96;c.height=128;
         const g=c.getContext('2d');g.imageSmoothingEnabled=false;
@@ -309,32 +309,33 @@
         r(31,93,14,30,'#192b34');r(52,93,14,30,'#192b34');
         r(29,118+frame,18,7,'#496b66');r(50,118-frame,19,7,'#496b66');
         poly([[26,48],[70,48],[81,105],[64,111],[48,100],[31,111],[15,105]],'#182d3a');
-        poly([[32,53],[64,53],[70,98],[57,104],[48,91],[39,104],[25,98]],'#325d61');
-        poly([[43,56],[53,56],[58,98],[48,90],[38,98]],'#6d527d');
-        for(let j=0;j<4;j++){r(28+j*11,90+(j%2)*4,5,3,'#86e8c6');r(30+j*11,97+(j%2)*3,3,3,'#b8a1d9')}
-        poly([[18,49],[32,42],[43,53],[31,70],[17,65]],'#bdc2b0');
-        poly([[78,49],[64,42],[53,53],[65,70],[79,65]],'#bdc2b0');
-        r(20,55,12,27,'#304a52');r(64,55,12,27,'#304a52');
+        poly([[32,53],[64,53],[70,98],[57,104],[48,91],[39,104],[25,98]],'#147e8b');
+        poly([[43,56],[53,56],[58,98],[48,90],[38,98]],'#285d82');
+        for(let j=0;j<4;j++){r(28+j*11,90+(j%2)*4,5,3,'#65e4f0');r(30+j*11,97+(j%2)*3,3,3,'#77a9e4')}
+        poly([[18,49],[32,42],[43,53],[31,70],[17,65]],'#205f72');
+        poly([[78,49],[64,42],[53,53],[65,70],[79,65]],'#205f72');
+        r(20,55,12,27,'#12687c');r(64,55,12,27,'#304a52');
         r(22,76,10,7,'#a77d62');r(64,76,10,7,'#a77d62');
-        r(26,58,5,6,'#6ff3cb');r(65,58,5,6,'#6ff3cb');
+        r(26,58,5,6,'#54ddea');r(65,58,5,6,'#6ff3cb');
         // Hair and warm face beneath a bone-white ritual mask.
         r(30,19,36,40,'#172530');r(34,24,28,30,'#bd876b');
         r(27,30,9,32,'#182530');r(61,30,9,32,'#182530');
         poly([[34,21],[62,21],[65,35],[58,44],[48,40],[38,44],[31,35]],'#ddd5b6');
         r(38,31,7,4,'#192b35');r(52,31,7,4,'#192b35');
-        r(40,31,4,2,'#85ffdd');r(54,31,4,2,'#85ffdd');
+        r(40,31,4,2,'#62eafa');r(54,31,4,2,'#85ffdd');
         poly([[48,35],[43,43],[53,43]],'#53646b');
-        r(45,47,6,5,'#9b68ae');r(43,51,10,3,'#75e6c9');
-        // Tall branching antlers establish a silhouette unlike Donna's.
-        r(35,17,26,6,'#574c52');r(43,13,10,8,'#77e7cb');
-        line([[37,22],[29,9],[26,2]],'#dfd4b4',5);
-        line([[29,12],[19,10],[16,4]],'#dfd4b4',4);
-        line([[59,22],[67,9],[70,2]],'#dfd4b4',5);
-        line([[67,12],[77,10],[80,4]],'#dfd4b4',4);
+        r(45,47,6,5,'#9b68ae');r(43,51,10,3,'#52c9e4');
+        // Flat-topped angular ceremonial hood and turquoise forehead crest:
+        // no horns, antlers, branches or other nature-druid silhouette.
+        poly([[29,24],[33,12],[42,8],[55,8],[64,12],[68,24],[61,20],[35,20]],'#103f57');
+        r(36,12,24,5,'#167e95');r(43,8,10,8,'#2db6c9');
+        r(46,10,4,5,'#a5f5ff');
+        r(28,23,7,28,'#14566d');r(62,23,7,28,'#14566d');
+        r(31,46,5,11,'#0d4058');r(61,46,5,11,'#0d4058');
         // Ritual necklaces and luminous spirit sigils.
-        r(33,53,30,4,'#c5a778');r(45,55,7,13,'#8bffe0');
-        r(37,67,4,4,'#ba9be2');r(55,67,4,4,'#ba9be2');
-        r(43,82,10,5,'#b3d5c1');r(46,83,4,4,'#4bd7b6');
+        r(33,53,30,4,'#c5a778');r(45,55,7,13,'#64e6fa');
+        r(37,67,4,4,'#669edb');r(55,67,4,4,'#ba9be2');
+        r(43,82,10,5,'#9cd7e2');r(46,83,4,4,'#2dbdd5');
         return c;
     }
     function daveArt(frame) {
