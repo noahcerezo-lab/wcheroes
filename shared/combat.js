@@ -83,6 +83,7 @@ const KITS = {
     MARKIE: { attack: 'cleave', front: 0.55, frontMul: 1.5, sideMul: 0.7, knock: 19, stun: 140, specialName: 'EARTHSHATTER', specialRadius: S(160), specialMul: 4, specialStun: 600, tauntMs: 4000, shieldMs: 3000, shieldMul: 0.45, aiIdeal: S(48) },
     ESPIRIT: { attack: 'arrow', arc: 0.24, knock: 10, stun: 0, specialName: 'ARROW STORM', specialRadius: S(340), specialMul: 3, aiIdeal: 150 },
     SMITESH: { attack: 'spirit', arc: 0.48, knock: 7, stun: 0, specialName: 'SPIRIT TOTEM', specialRadius: S(200), specialMul: 1.5, aiIdeal: 125 },
+    DONNA: { attack: 'nature', arc: 0.5, knock: 6, stun: 0, specialName: 'WILDHEART AWAKENING', specialRadius: S(180), specialMul: 1.2, aiIdeal: 125 },
     DAVE: { attack: 'fourfold', arc: 1.4, knock: 10, stun: 70, specialName: 'BLADE CYCLONE', specialRadius: S(165), specialMul: 3.2, specialKnock: 24, aiIdeal: 48 },
 };
 
@@ -122,7 +123,7 @@ function createBattle(opts = {}) {
             hp: cfg.v19.hp, maxHp: cfg.v19.hp, damage: cfg.v19.damage, range: S(cfg.v19.range) * (cfg.name === 'ESPIRIT' ? RULES.espiritRangeMul : 1), cool: cfg.v19.cool,
             speed: SIM.speedFromV19(cfg.v19.speed), stats: cfg.stats, level: 1, masteryTier: 0,
             base: { hp: cfg.v19.hp, damage: cfg.v19.damage, speed: SIM.speedFromV19(cfg.v19.speed) },
-            state: 'alive', reviveMs: 0, attackAt: -1e9, specialAt: -1e9, healAt: 0, attackN: 0, specialN: 0, destinyComboHits: 0, destinyComboHealAt: -1e9, weaponFlow: 0, weaponFlowAt: -1e9, shamanHealAt: -1e9, totemUntil: 0, totemAt: -1e9,
+            state: 'alive', reviveMs: 0, attackAt: -1e9, specialAt: -1e9, healAt: 0, attackN: 0, specialN: 0, destinyComboHits: 0, destinyComboHealAt: -1e9, weaponFlow: 0, weaponFlowAt: -1e9, shamanHealAt: -1e9, totemUntil: 0, totemAt: -1e9, druidHealAt: -1e9, animalUntil: 0, animalAt: -1e9, animalKind: 0, animalBoostUntil: 0,
             buffUntil: 0, shieldUntil: 0, furyUntil: 0, hasteUntil: 0, wardUntil: 0, synergyUntil: 0, awakenUntil: 0, critChain: 0, wantAttack: false, wantSpecial: false, ai: true, controller: null, seq: 0,
         }); }),
         enemies: [],
@@ -213,7 +214,7 @@ const inReach = (h, e, range) => Math.hypot(e.x - h.x, (e.y - h.y) * 1.2) <= ran
 // reach for the chain finisher.
 function attackTargets(w, h, rangeMul = 1) {
     const k = KITS[h.name], range = h.range * rangeMul;
-    if (h.name === 'ESPIRIT' || h.name === 'SMITESH') {
+    if (h.name === 'ESPIRIT' || h.name === 'SMITESH' || h.name === 'DONNA') {
         const lane = w.enemies.filter(e => inArc(h, e, range, k.arc)).sort((a, b) => dist(a, h) - dist(b, h));
         return lane.slice(0, 1); // single arrow, nearest in the lane
     }
@@ -298,6 +299,15 @@ function performSpecial(w, h) {
         for (const u of w.heroes) if (alive(u) && dist(u, h) < k.rallyRadius) { healHero(w, u, k.rallyHeal, h); u.buffUntil = w.time + k.buffMs; emit(w, { t: 'buff', h: w.heroes.indexOf(u) }) }
     }
     if (h.name === 'DAVE') emit(w, { t: 'cyclone', h: i, x: Math.round(h.x), y: Math.round(h.y) });
+    if (h.name === 'DONNA') {
+        // Her permanent companion is empowered for eight seconds; never creates a player slot.
+        h.animalBoostUntil = w.time + 8000;
+        for (const u of w.heroes) if (alive(u) && dist(u, h) < 145) {
+            healHero(w, u, 22, h);
+            u.buffUntil = Math.max(u.buffUntil || 0, w.time + 5000);
+        }
+        emit(w, { t: 'druidAwaken', h: i, kind: Math.min(3, Math.floor(((h.level || 1) - 1) / 10)), ms: 8000 });
+    }
     if (h.name === 'SMITESH') {
         h.totemUntil = w.time + 6000;
         h.totemAt = w.time - 1000;
@@ -515,6 +525,28 @@ function stepPassives(w) {
             h.healAt = w.time;
             for (const u of w.heroes) if (dist(u, h) <= RULES.destinyAuraRadius) healHero(w, u, RULES.destinyAuraHeal, h);
         }
+        if (h.name === 'DONNA' && alive(h)) {
+            if (w.time - (h.druidHealAt || -1e9) >= 4500) {
+                h.druidHealAt = w.time;
+                const allies = w.heroes.filter(u => alive(u) && u.hp < u.maxHp && dist(u, h) < 145);
+                allies.sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp);
+                if (allies.length) healHero(w, allies[0], 9, h);
+            }
+            // Permanent companion, evolves automatically every ten levels.
+            const kind = Math.min(3, Math.floor(((h.level || 1) - 1) / 10));
+            h.animalKind = kind;
+            const intervals = [1500, 1300, 1800, 1600];
+            if (w.time - h.animalAt >= intervals[kind]) {
+                h.animalAt = w.time;
+                const reach = [75, 95, 80, 115][kind];
+                const targets = w.enemies.filter(e => e.hp > 0 && dist(e, h) < reach).sort((a, b) => dist(a, h) - dist(b, h));
+                const boosted = w.time < (h.animalBoostUntil || 0);
+                for (const e of targets.slice(0, kind === 2 || kind === 3 ? 2 : 1))
+                    damageEnemy(w, h, e, [4, 7, 11, 14][kind] * (boosted ? 2 : 1), { knock: kind === 2 ? 12 : 4 });
+                if (kind === 3) for (const u of w.heroes) if (alive(u) && dist(u, h) < 115) healHero(w, u, 3, h);
+                if (targets.length) emit(w, { t: 'druidAnimal', h: w.heroes.indexOf(h), kind, x: Math.round(h.x), y: Math.round(h.y) });
+            }
+        }
         if (h.name === 'SMITESH' && alive(h)) {
             if (w.time - h.shamanHealAt >= 4500) {
                 h.shamanHealAt = w.time;
@@ -679,6 +711,8 @@ function snapshot(w) {
             cc: h.critChain || 0, // Critical Chain: consecutive crits
             lv: h.level || 1, // hero level (LEVEL UP every 10th wave)
             mastery: h.masteryTier || 0,
+            pet: h.name === 'DONNA' && h.state === 'alive' ? Math.min(3, Math.floor(((h.level || 1) - 1) / 10)) : -1,
+            petBoost: h.name === 'DONNA' && w.time < (h.animalBoostUntil || 0) ? 1 : 0,
             hp: h.hp, maxHp: h.maxHp, state: h.state === 'alive' ? 0 : 1, rv: h.state === 'downed' ? Math.round(h.reviveMs / RULES.reviveMs * 100) : 0,
             awake: left(w, h.awakenUntil),
             comboHealHits: h.destinyComboHits || 0,
