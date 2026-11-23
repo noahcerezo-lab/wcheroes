@@ -676,6 +676,20 @@
         function drawHero(g, h, i, now, k, look) {
             const s = heroState(i);
             const a = liveAtk(s, h, now);
+            // Opt-in art validation: keep authoritative combat and separate FX.
+            // Fall back to the canonical body if this specific sheet is missing.
+            if(SHEETS && SHEETS.conceptEnabled){
+                const hurt=now-s.hurtAt;
+                const action=h.state==='down'?'down':
+                    hurt>=0&&hurt<280?'hurt':
+                    a?'attack':h.moving?'run':'idle';
+                const count={idle:6,run:8,attack:8,hurt:4,down:4}[action];
+                const elapsedMs=action==='attack'?Math.max(0,now-a.start):
+                    action==='hurt'?hurt:now+h.name.length*97;
+                const frame=Math.floor(elapsedMs/(action==='run'?80:action==='attack'?70:120))%count;
+                if(SHEETS.drawConcept(g,h.name,action,frame,h.facing===-1,look))
+                    return null;
+            }
             // Keep Noah's idle stance and Espirit's shooting pose anatomically readable.
             // Prefer consistent pose geometry for Noah's idle and Espirit's bow,
             // rather than swapping back to baked-arm or reversed-bow sheet frames.
