@@ -118,6 +118,28 @@
         const pendingHits = []; // hit visuals waiting for the weapon to connect: {at, e}
         const recoils = new Map(); // enemy id -> {at, dx, dy, holdUntil, x, y}
         let lastFrame = 0;
+        // Optional performance diagnostics: ?perf=1 or F8.
+        let perfVisible = typeof location !== 'undefined' && new URLSearchParams(location.search).get('perf') === '1';
+        const meter = {frames:0,snaps:0,dtSum:0,dtMax:0,workSum:0,workMax:0,lastSnap:0,gapSum:0,gapMax:0,gaps:0,since:0,fps:0,dt:0,peak:0,work:0,workPeak:0,hz:0,gap:0,gapPeak:0};
+        if (typeof document !== 'undefined') document.addEventListener('keydown', e => {
+            if (e.code === 'F8' && !e.repeat) { e.preventDefault(); perfVisible = !perfVisible; }
+        });
+        function drawPerfHud() {
+            if (!perfVisible) return;
+            const p=meter,x=canvas.width-310,y=14;
+            g.save();g.setTransform(1,0,0,1,0,0);
+            g.fillStyle='rgba(8,15,26,.93)';g.fillRect(x,y,296,145);
+            g.font='bold 15px monospace';g.textAlign='left';g.fillStyle='#b3ffcb';
+            g.fillText('PERFORMANCE [F8]',x+12,y+23);
+            g.font='13px monospace';g.fillStyle=p.fps<45?'#ffb39b':'#dcecff';
+            g.fillText('FPS '+p.fps+' | Frame '+p.dt+' ms',x+12,y+47);
+            g.fillStyle='#dcecff';
+            g.fillText('Frame peak '+p.peak+' ms',x+12,y+68);
+            g.fillText('Render '+p.work+' / peak '+p.workPeak+' ms',x+12,y+89);
+            g.fillText('Snapshots '+p.hz+' Hz | gap '+p.gap+' ms',x+12,y+110);
+            g.fillText('Gap peak '+p.gapPeak+' ms | FX '+Math.round(pool.density*100)+'%',x+12,y+131);
+            g.restore();
+        }
         const flashes = new Map(); // enemy id -> flash-until
         const ghosts = []; // dying enemies fading out
         const lastActs = []; // per hero {a, s} counters from the previous snapshot
@@ -154,6 +176,7 @@
             snaps.push({ tick, at: now, heroes: world.heroes, enemies, zone: world.zone || 0, hud: world });
             while (snaps.length > 40) snaps.shift();
             stats.snapshots++;
+            if(perfVisible){meter.snaps++;if(meter.lastSnap){const gap=now-meter.lastSnap;meter.gapSum+=gap;meter.gapMax=Math.max(meter.gapMax,gap);meter.gaps++;}meter.lastSnap=now;}
             const ev = Array.isArray(world.ev) ? world.ev : [];
             trackActions(world.heroes, ev, now);
             for (const e of ev) onEvent(e, now, prevSnap);
@@ -2116,6 +2139,7 @@
             drawBossBar(view, k);
             drawBanners(now, k);
             drawGameOver(now, view.hud);
+            drawPerfHud();
             if (renderFailures.size) {
                 g.save(); g.setTransform(1,0,0,1,0,0);
                 g.fillStyle = 'rgba(42,18,42,.92)'; g.fillRect(12, canvas.height-44, 420, 31);
@@ -2125,6 +2149,19 @@
             }
             stats.frames++;
             lastWork = performance.now() - now; // CPU time this frame took (drives adaptive density)
+            if(perfVisible){
+                const p=meter;if(!p.since)p.since=now;
+                p.frames++;p.dtSum+=dt;p.dtMax=Math.max(p.dtMax,dt);
+                p.workSum+=lastWork;p.workMax=Math.max(p.workMax,lastWork);
+                const elapsed=now-p.since;
+                if(elapsed>=1000){
+                    p.fps=Math.round(p.frames*1000/elapsed);p.dt=+(p.dtSum/p.frames).toFixed(1);
+                    p.peak=+p.dtMax.toFixed(1);p.work=+(p.workSum/p.frames).toFixed(1);
+                    p.workPeak=+p.workMax.toFixed(1);p.hz=Math.round(p.snaps*1000/elapsed);
+                    p.gap=p.gaps?+(p.gapSum/p.gaps).toFixed(1):0;p.gapPeak=+p.gapMax.toFixed(1);
+                    p.frames=p.snaps=p.dtSum=p.dtMax=p.workSum=p.workMax=p.gapSum=p.gapMax=p.gaps=0;p.since=now;
+                }
+            }
         }
 
         function start() { if (!running) { running = true; requestAnimationFrame(frame) } }
