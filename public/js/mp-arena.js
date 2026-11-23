@@ -1735,8 +1735,14 @@
         function drawDruidPet(h, i, now) {
             if (h.name !== 'DONNA' || (h.state && h.state !== 'alive') || !Number.isInteger(h.pet) || h.pet < 0) return;
             const kind = Math.min(3, h.pet), t = now / 1000;
-            const px = h.x * S + (h.facing === -1 ? 48 : -48) + Math.sin(t * 2 + i) * 7;
-            const py = h.y * S + 9 + Math.cos(t * 3 + i) * 3;
+            // Draw the full unlocked pack rather than replacing earlier companions.
+            for(let pet=0;pet<=kind;pet++) drawOneDruidPet(h,i,now,pet);
+        }
+        function drawOneDruidPet(h,i,now,kind) {
+            const t=now/1000;
+            const a=kind*Math.PI*2/4+now/1500+i*.4;
+            const px=h.x*S+Math.cos(a)*(48+kind*8);
+            const py=h.y*S+12+Math.sin(a)*19+Math.cos(t*3+i+kind)*3;
             const scale = [0.72, 0.92, 1.35, 1.12][kind];
             g.save(); g.translate(Math.round(px), Math.round(py)); g.scale(scale, scale);
             g.fillStyle = 'rgba(9,26,15,.4)'; g.beginPath(); g.ellipse(0,3,23,7,0,0,Math.PI*2); g.fill();
@@ -1751,7 +1757,53 @@
             if(kind===1) {block(13,-40,7,9,shade);block(25,-40,7,9,shade);}
             if(kind===2) {block(11,-37,9,9,shade);block(25,-37,9,9,shade);block(-18,-30,32,7,shade);}
             if(kind===3) {block(15,-49,4,21,'#e6c66b');block(29,-49,4,21,'#e6c66b');block(7,-45,12,4,'#e6c66b');block(30,-45,12,4,'#e6c66b');}
+            // Unique glowing combat markings for each active companion.
+            block(12,-27,9,4,['#ffe5a5','#a4ffe3','#e0b9ff','#f4ffac'][kind]);
             if(h.petBoost) {g.strokeStyle='#a9ff7c';g.lineWidth=2;g.strokeRect(-30,-51,74,57);}
+            g.restore();
+        }
+        // Armor evolution is drawn above the animated character sheet, so it
+        // remains visible in every pose. Every ten hero levels adds a new layer.
+        function drawMasteryArmor(h,now) {
+            const tier=Math.floor((h.lv||1)/10);if(tier<1)return;
+            const skin=HERO_FINISH[h.name]||{primary:'#c9b4f4',light:'#fff4c9'};
+            const metal=tier>=3?'#f8df91':tier>=2?'#c8e6f4':'#b1b8c9';
+            const edge=skin.primary,shine=skin.light;
+            g.save();g.lineJoin='miter';
+            // Broad shoulder plates and breastplate create a changed silhouette.
+            g.fillStyle=metal;g.strokeStyle=edge;g.lineWidth=3;
+            for(const side of [-1,1]) {
+                g.beginPath();g.moveTo(side*14,-67);g.lineTo(side*32,-74);
+                g.lineTo(side*(37+tier*3),-60);g.lineTo(side*29,-49);
+                g.lineTo(side*17,-53);g.closePath();g.fill();g.stroke();
+                g.fillStyle=shine;g.fillRect(side<0?-31:26,-65,5,5);g.fillStyle=metal;
+            }
+            g.fillStyle='#283846';g.fillRect(-14,-53,28,22);
+            g.strokeStyle=metal;g.lineWidth=3;g.strokeRect(-14,-53,28,22);
+            g.fillStyle=edge;g.beginPath();g.moveTo(0,-50);g.lineTo(9,-42);
+            g.lineTo(0,-34);g.lineTo(-9,-42);g.closePath();g.fill();
+            if(tier>=2) {
+                // Tall crest, segmented armored skirt and illuminated gauntlets.
+                g.fillStyle=metal;g.fillRect(-10,-97,20,6);g.fillRect(-5,-105,10,9);
+                for(const side of [-1,1]) {
+                    g.fillRect(side<0?-24:15,-29,9,17);
+                    g.fillRect(side<0?-37:30,-50,8,14);
+                }
+                g.strokeStyle=shine;g.lineWidth=2;
+                g.beginPath();g.moveTo(-12,-26);g.lineTo(0,-13);g.lineTo(12,-26);g.stroke();
+            }
+            if(tier>=3) {
+                // Ascended armor: winged pauldrons, crown rays and energy cape.
+                g.strokeStyle=shine;g.lineWidth=4;
+                for(const side of [-1,1]){
+                    g.beginPath();g.moveTo(side*29,-69);
+                    g.lineTo(side*49,-90);g.lineTo(side*43,-62);g.stroke();
+                    g.beginPath();g.moveTo(side*9,-100);g.lineTo(side*16,-117);g.stroke();
+                }
+                g.strokeStyle=edge;g.globalAlpha=.65+.2*Math.sin(now/230);
+                g.beginPath();g.moveTo(-29,-27);g.quadraticCurveTo(-38,4,-20,9);
+                g.moveTo(29,-27);g.quadraticCurveTo(38,4,20,9);g.stroke();
+            }
             g.restore();
         }
         function drawHero(h, i, now, room, myId, k) {
@@ -1802,6 +1854,7 @@
                 g.restore();
             } else if (anim && anim.hasPose(h.name)) { if (env) env.shadow(g, 1, 46); anim.drawHero(g, h, i, now, k, lookFor(role, color)) }
             else R.drawSprite(g, 0, 0, color, false, h.name, now, entity);
+            if (!h.state) drawMasteryArmor(h,now);
             if (!h.state && (h.buff || h.shield) && A) A.loop(g, 'buffAura', now, 0, -34, 58, null, false, .85, i * 90);
             drawHeroFinish(h, i, now, role, k); // rally buff / Markie shield
             // Name + controller label and HP bar above the head (V19 ally style).
