@@ -231,7 +231,7 @@
     // the browser toolbar appears, or the page changes visibility. Always
     // release on global end/cancel as well as on the joystick itself.
     const joy = $('joystick'), stick = $('stick');
-    let joyPointer = null, joyTouchId = null, joyLastEvent = 0;
+    let joyPointer = null, joyLastEvent = 0;
     function moveStick(e) {
         const r = joy.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
         let dx = e.clientX - cx, dy = e.clientY - cy;
@@ -244,7 +244,7 @@
         touch.x = dx * k; touch.y = dy * k;
     }
     function resetJoy() {
-        joyPointer = null; joyTouchId = null; joyLastEvent = 0;
+        joyPointer = null; joyLastEvent = 0;
         joy.classList.remove('active');
         stick.style.transform = 'translate(-50%,-50%)';
         touch.x = touch.y = 0;
@@ -253,7 +253,6 @@
         e.preventDefault();
         if (joyPointer !== null) return;
         joyPointer = e.pointerId;
-        joyTouchId = e.pointerType === 'touch' ? e.pointerId : null;
         joyLastEvent = performance.now();
         joy.classList.add('active');
         try { joy.setPointerCapture(e.pointerId) } catch {}
@@ -274,8 +273,7 @@
     for (const evt of ['touchend','touchcancel'])
         window.addEventListener(evt,e=>{
             if(joyPointer===null)return;
-            if(Array.from(e.changedTouches).some(t=>t.identifier===joyTouchId) ||
-               (e.touches.length===0 && joyTouchId!==null))resetJoy();
+            if(e.touches.length===0)resetJoy();
         },{passive:true,capture:true});
     document.addEventListener('visibilitychange',()=>{if(document.hidden)resetJoy()});
     window.addEventListener('pagehide',resetJoy);
