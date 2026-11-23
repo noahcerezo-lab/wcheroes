@@ -460,7 +460,7 @@ function startWave(w) {
     w.wave++;
     w.waveState = 'fighting';
     w.bossWave = isBossWave(w.wave);
-    w.toSpawn = w.bossWave ? 1 : waveSize(w.wave);
+    w.toSpawn = w.bossWave ? 3 : Math.ceil(waveSize(w.wave) * RULES.difficultyMul);
     w.spawnTimer = 0;
     w.zone = Math.floor(Math.max(0, w.wave - 1) / 15) % 4; // V19: battlefield changes every 15 waves
     emit(w, { t: 'wave', n: w.wave, size: w.toSpawn, boss: w.bossWave ? 1 : 0 });
@@ -473,7 +473,7 @@ function stepWaves(w) {
         return;
     }
     if (w.toSpawn > 0 && --w.spawnTimer <= 0 && w.enemies.length < w.maxEnemies) {
-        spawnEnemy(w, w.bossWave ? ENEMY_INDEX.voidEmperor : pickEnemyType(w));
+        spawnEnemy(w, w.bossWave ? (w.toSpawn === 3 ? ENEMY_INDEX.voidEmperor : ENEMY_INDEX.spiritArcher) : pickEnemyType(w));
         w.toSpawn--;
         w.spawnTimer = spawnIntervalTicks(w.wave);
     }
