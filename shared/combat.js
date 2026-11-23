@@ -25,6 +25,7 @@ const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 // ---------------- tuning (V19 values, converted) ----------------
 const RULES = {
+    moveSpeedMul: 1.10, difficultyMul: 1.15,
     specialCooldownMs: 6500, // V19 special()
     aiSpecialCooldownMs: 9500, // V19 aiTick specials
     aiAttackCooldownMul: 1.2, // V19 AI attacks at cool * 1.2
@@ -64,7 +65,7 @@ const RULES = {
 
 // Enemy types (art: Draper's /workspace/wcheroes-design/enemies.md). The acolyte is V19's armored
 // swordsman (hp 30+8w, speed 1+0.1w per frame, 7+w damage every 850 ms); the warden is new for co-op.
-// No projectile enemies (Noah removed the Lantern Wisp and Tomoe Archer): every threat is up close.
+// Ranged spirit casters enter at wave 10 with visible, dodgeable projectiles.
 //   kind 'melee': walks to `reach`, telegraphs for `windMs`, then strikes if the hero is still in reach.
 //   kind 'slam': heavy, telegraphs longest, then hits every hero within `slamR` (shockwave).
 // `weight(wave)` is the spawn share; wardens ramp from ~16% at wave 3 to 35% so later waves stay heavy.
@@ -73,6 +74,7 @@ const ENEMY_TYPES = [
     { key: 'warden', kind: 'slam', from: 3, weight: w => Math.min(0.54, (0.1 + 0.03 * w) / (0.9 - 0.03 * w)), hp: w => 90 + 22 * w, speed: w => Math.min(3.4, (0.7 + 0.05 * w) * 2), dmg: w => 14 + 2 * w, reach: S(40) + 3, slamR: 55, atkMs: 1600, windMs: 350, knockResist: 0.6, radius: 18, points: 3 },
     // Boss-only type. Never selected by the normal weighted spawner; one appears every tenth wave.
     { key: 'voidEmperor', kind: 'slam', from: Infinity, weight: () => 0, hp: w => 650 + 55 * w, speed: w => Math.min(3.6, 2.1 + w * 0.035), dmg: w => 17 + Math.round(w * 0.7), reach: 66, slamR: 90, atkMs: 2300, windMs: 900, knockResist: 0.95, radius: 33, points: 20 },
+    { key: 'spiritArcher', kind: 'ranged', from: 10, weight: w => Math.min(.48,.19+(w-10)*.012), hp: w => 26+7*w, speed: w => Math.min(4.2,1.7+.06*w), dmg: w => 7+Math.round(w*.75), reach: 175, atkMs: 1900, windMs: 480, knockResist: .15, radius: 12, points: 2 },
 ];
 const ENEMY_INDEX = Object.fromEntries(ENEMY_TYPES.map((t, i) => [t.key, i]));
 
@@ -93,7 +95,7 @@ const critChance = (h, w) => Math.min(0.95, Math.min(LEVELS.CRIT_CAP, RULES.crit
 function critBonus(w, h) { return (w.time < (h.furyUntil || 0) ? RULES.furyCrit : 0) + (w.time < (h.synergyUntil || 0) ? RULES.synergyCrit : 0) }
 const PICKUP_KINDS = ['heal', 'fury', 'haste', 'ward']; // index = snapshot kind
 // Move speed right now (HASTE: x1.5). Server input handling, AI and client prediction all use this.
-const moveSpeed = (w, h) => h.speed * (w.time < (h.hasteUntil || 0) ? RULES.hasteSpeedMul : 1);
+const moveSpeed = (w, h) => h.speed * RULES.moveSpeedMul * (w.time < (h.hasteUntil || 0) ? RULES.hasteSpeedMul : 1);
 const damageTakenMul = st => clamp(1 - (st.VIT - 5) * 0.04, 0.7, 1.2); // Markie (VIT 9): 0.84
 
 function isBossWave(n) { return n > 0 && n % RULES.levelEvery === 0 } // Boss encounter precedes each 10-wave level-up
@@ -126,7 +128,7 @@ function createBattle(opts = {}) {
             state: 'alive', reviveMs: 0, attackAt: -1e9, specialAt: -1e9, healAt: 0, attackN: 0, specialN: 0, destinyComboHits: 0, destinyComboHealAt: -1e9, weaponFlow: 0, weaponFlowAt: -1e9, shamanHealAt: -1e9, totemUntil: 0, totemAt: -1e9, druidHealAt: -1e9, animalUntil: 0, animalAt: -1e9, animalKind: 0, animalBoostUntil: 0,
             buffUntil: 0, shieldUntil: 0, furyUntil: 0, hasteUntil: 0, wardUntil: 0, synergyUntil: 0, awakenUntil: 0, critChain: 0, wantAttack: false, wantSpecial: false, ai: true, controller: null, seq: 0,
         }); }),
-        enemies: [],
+        enemies: [], enemyProjectiles: [],
         pickups: [], nextPickupId: 1, nextPickupAt: null, // set when the first wave starts
         events: [],
         hooks: opts.hooks || {},
@@ -352,7 +354,7 @@ function spawnEnemy(w, typeIndex = pickEnemyType(w)) {
     const t = ENEMY_TYPES[typeIndex], m = RULES.enemyMargin, r = rng(w), side = r < 0.4 ? 0 : r < 0.8 ? 1 : 3;
     const x = side === 0 ? -m : side === 1 ? ARENA.width + m : ARENA.minX + rng(w) * (ARENA.maxX - ARENA.minX);
     const y = side === 3 ? ARENA.height + m : ARENA.minY + 20 + rng(w) * (ARENA.maxY - ARENA.minY - 20);
-    const e = { id: w.nextEnemyId++, type: typeIndex, x, y, hp: t.hp(w.wave), max: t.hp(w.wave), speed: t.speed(w.wave), dmg: Math.round(t.dmg(w.wave) * w.enemyDamageMul), at: -1e9, windUntil: 0, strikeAt: -1e9, aim: null, kx: 0, ky: 0, stunUntil: 0, facing: -1, entered: false, tauntBy: -1, tauntUntil: 0 };
+    const e = { id: w.nextEnemyId++, type: typeIndex, x, y, hp: Math.round(t.hp(w.wave) * RULES.difficultyMul * (typeIndex === ENEMY_INDEX.voidEmperor ? 1.65 : 1)), max: Math.round(t.hp(w.wave) * RULES.difficultyMul * (typeIndex === ENEMY_INDEX.voidEmperor ? 1.65 : 1)), speed: t.speed(w.wave) * RULES.moveSpeedMul * (typeIndex === ENEMY_INDEX.voidEmperor ? 1.25 : 1), dmg: Math.round(t.dmg(w.wave) * w.enemyDamageMul * RULES.difficultyMul), at: -1e9, windUntil: 0, strikeAt: -1e9, aim: null, kx: 0, ky: 0, stunUntil: 0, facing: -1, entered: false, tauntBy: -1, tauntUntil: 0 };
     if (typeIndex === ENEMY_INDEX.voidEmperor) {
         e.x = ARENA.width / 2; e.y = ARENA.minY + 55; e.entered = true;
         e.entranceUntil = w.time + 1400; e.attackCount = 0; e.attackMode = 'slam';
@@ -378,6 +380,13 @@ function strike(w, e, t, target) {
             for (const h of w.heroes) if (alive(h) && Math.hypot(h.x - aim.x, h.y - aim.y) <= 58) damageHero(w, h, e.dmg, e);
         }
         e.aim = null;
+        return;
+    }
+    if (t.kind === 'ranged') {
+        const aim = e.aim || {x:target.x,y:target.y};
+        w.enemyProjectiles.push({x:e.x,y:e.y,tx:aim.x,ty:aim.y,at:w.time+650,dmg:e.dmg,from:e.id});
+        emit(w,{t:'enemyBolt',id:e.id,x:Math.round(e.x),y:Math.round(e.y),tx:Math.round(aim.x),ty:Math.round(aim.y),ms:650});
+        e.aim=null;
         return;
     }
     if (t.kind === 'slam') {
@@ -430,7 +439,10 @@ function stepEnemies(w) {
                 e.aim = { x: Math.round(target.x), y: Math.round(target.y) };
                 emit(w, { t: 'boss:target', id: e.id, x: e.aim.x, y: e.aim.y, r: 58, ms: e.windUntil - w.time });
             }
-        } else if (e.type !== ENEMY_INDEX.voidEmperor && inRange && w.time - e.at >= t.atkMs) { e.at = w.time; e.windUntil = w.time + t.windMs }
+        } else if (e.type !== ENEMY_INDEX.voidEmperor && inRange && w.time - e.at >= t.atkMs) {
+            e.at = w.time; e.windUntil = w.time + t.windMs;
+            if (t.kind === 'ranged') e.aim = {x:target.x,y:target.y};
+        }
     }
     // Light separation so a crowd doesn't collapse into one sprite.
     const es = w.enemies;
@@ -718,6 +730,13 @@ function step(w) {
         h.wantAttack = h.wantSpecial = false;
     }
     stepEnemies(w);
+    // Fixed destination gives players a fair chance to dodge the incoming bolt.
+    for (let j=w.enemyProjectiles.length-1;j>=0;j--) {
+        const p=w.enemyProjectiles[j]; if (w.time<p.at) continue;
+        w.enemyProjectiles.splice(j,1);
+        emit(w,{t:'enemyBoltImpact',x:Math.round(p.tx),y:Math.round(p.ty)});
+        for (const h of w.heroes) if(alive(h)&&Math.hypot(h.x-p.tx,(h.y-p.ty)*1.2)<22) damageHero(w,h,p.dmg,{id:p.from});
+    }
     stepPassives(w);
     stepWaves(w);
     stepPickups(w);
