@@ -947,13 +947,117 @@
         x.restore();
     }
 
+
+    // Native 96×128 pixel-art remaster. Details are rasterized once into each
+    // cached pose canvas, not drawn every frame. Keep the face, hands and weapon
+    // animation unobstructed. Geometry uses hard pixel edges (no antialiasing).
+    const REMASTER = {
+        NOAH:    {dark:'#202449',mid:'#4d5fba',light:'#9aabff',trim:'#e5d09a',gem:'#8cefff'},
+        MARKIE:  {dark:'#392b30',mid:'#845148',light:'#c47e4e',trim:'#f0bc74',gem:'#ff8e50'},
+        DESTINY: {dark:'#52293b',mid:'#b63750',light:'#f4d5a2',trim:'#ffdf86',gem:'#a3ffd6'},
+        ESPIRIT: {dark:'#1a423a',mid:'#397b5b',light:'#83b88a',trim:'#e5c48d',gem:'#b6ffcf'},
+        SMITESH: {dark:'#163e4d',mid:'#268d98',light:'#75d2cb',trim:'#a3eee0',gem:'#e2ffff'},
+        DAVE:    {dark:'#351c2c',mid:'#862e43',light:'#d86a65',trim:'#e7b98b',gem:'#ff8379'},
+        DONNA:   {dark:'#30482a',mid:'#64854a',light:'#a3bd73',trim:'#dfd49d',gem:'#d6ff91'}
+    };
+    function remasterPose(canvas,name,frame) {
+        const p=REMASTER[name];if(!p)return canvas;
+        const g=canvas.getContext('2d');g.imageSmoothingEnabled=false;
+        const r=(x,y,w,h,c)=>{g.fillStyle=c;g.fillRect(x,y,w,h)};
+        const line=(points,c,w=2)=>{
+            g.strokeStyle=c;g.lineWidth=w;g.lineJoin='miter';g.beginPath();
+            points.forEach((pt,i)=>i?g.lineTo(pt[0],pt[1]):g.moveTo(pt[0],pt[1]));
+            g.stroke();
+        };
+        // Rebuild the entire outfit silhouette: long coat panels, fitted
+        // breastplate, layered pauldrons, segmented skirt and greaves.
+        // Neck and face (y<45) remain recognizable.
+        r(26,57,44,35,p.dark);
+        r(30,60,36,28,p.mid);
+        r(34,63,28,24,p.dark);
+        r(39,65,18,19,p.mid);
+        for(const side of [-1,1]){
+            const x=side<0?17:67;
+            r(x,55,12,16,p.dark);
+            r(x+2,57,8,10,p.light);
+            r(x+3,58,6,3,p.trim);
+            r(side<0?24:66,72,6,13,p.mid);
+            r(side<0?25:67,76,3,9,p.trim);
+            const bootX=side<0?27:53,step=side<0?frame*2:-frame*2;
+            r(bootX,99+step,16,17,p.dark);
+            r(bootX+2,102+step,12,9,p.mid);
+            r(bootX+3,105+step,10,2,p.trim);
+            r(bootX,115+step,18,4,p.dark);
+        }
+        // Armored tabard: distinct center plate and layered fabric tails.
+        r(28,88,40,8,p.dark);
+        r(31,90,34,3,p.trim);
+        r(30,96,12,15,p.mid);r(54,96,12,15,p.mid);
+        r(33,98,3,12,p.light);r(60,98,3,12,p.light);
+        r(44,91,8,23,p.dark);r(46,95,4,16,p.trim);
+        // Gem clasp and angular breastplate relief.
+        r(42,64,12,10,p.trim);r(44,66,8,6,p.gem);
+        r(46,67,4,4,'#ffffff');
+        line([[31,63],[39,59],[48,63],[57,59],[65,63]],p.trim,2);
+        line([[33,80],[41,86],[55,86],[63,80]],p.light,2);
+        // A different shoulder/head silhouette and decorative motif per class.
+        if(name==='NOAH'){
+            for(const x of [16,69]){r(x,50,11,7,p.dark);r(x+2,52,7,2,p.gem)}
+            r(37,48,22,3,p.trim);r(46,73,4,11,p.gem);
+            for(let j=0;j<3;j++)r(31+j*13,86+(j%2)*4,3,3,p.gem);
+            line([[24,87],[16,104],[11,111]],p.light,3);
+        }else if(name==='DESTINY'){
+            r(17,52,13,9,p.trim);r(66,52,13,9,p.trim);
+            r(40,57,16,5,p.light);r(42,78,12,3,p.trim);
+            for(let j=0;j<3;j++){r(27+j*15,97,12,3,p.trim);r(31+j*15,101,4,7,p.light)}
+            line([[74,58],[81,82],[87,108]],p.mid,5);
+        }else if(name==='MARKIE'){
+            r(14,52,17,13,p.dark);r(65,52,17,13,p.dark);
+            for(let j=0;j<4;j++){r(16+j*2,53+j*2,7,3,p.trim);r(74-j*2,53+j*2,7,3,p.trim)}
+            r(30,57,36,5,p.light);r(38,76,20,4,p.gem);
+            r(41,47,14,4,p.dark);
+        }else if(name==='ESPIRIT'){
+            r(20,53,9,22,p.dark);r(67,53,9,22,p.dark);
+            for(let j=0;j<5;j++){r(25+j*9,87+(j%2)*3,6,3,p.light)}
+            line([[22,54],[14,75],[9,100]],p.light,3);
+            r(42,76,12,4,p.gem);r(44,82,8,3,p.trim);
+        }else if(name==='SMITESH'){
+            // Teal ritual hood, bone mask and dangling talismans; NO antlers.
+            r(27,15,42,8,p.dark);r(24,22,8,26,p.mid);r(64,22,8,26,p.mid);
+            r(32,18,32,5,p.light);r(45,15,6,8,p.gem);
+            r(39,35,18,9,'#e1e3cb');r(42,38,4,2,p.dark);r(51,38,4,2,p.dark);
+            for(let j=0;j<3;j++){r(24+j*22,75,5,13,p.trim);r(25+j*22,79,3,4,p.gem)}
+            r(42,77,12,5,p.gem);
+        }else if(name==='DAVE'){
+            r(14,50,17,10,p.dark);r(65,50,17,10,p.dark);
+            for(const x of [18,72])line([[x,52],[x-5,44],[x+7,49]],p.light,3);
+            r(34,59,28,4,p.light);r(42,74,12,4,p.gem);
+            for(let j=0;j<4;j++)r(30+j*10,91,7,3,j%2?p.trim:p.light);
+            line([[72,61],[82,91],[89,106]],p.mid,4);
+        }else if(name==='DONNA'){
+            r(16,52,15,10,p.dark);r(65,52,15,10,p.dark);
+            for(let j=0;j<4;j++){
+                r(17+j*4,51-j*2,4,8,p.light);
+                r(65+j*4,51-j*2,4,8,p.light);
+            }
+            r(38,56,20,5,p.trim);r(43,76,10,7,p.gem);
+            for(let j=0;j<5;j++)r(26+j*10,94+(j%2)*3,6,6,p.light);
+            line([[22,62],[13,85],[9,105]],p.mid,4);
+        }
+        // Tiny highlights give the material readable volume at 1:1 pixels.
+        for(let j=0;j<4;j++){
+            r(34+j*9,69+(j%2)*8,2,3,p.light);
+            r(34+j*9,70+(j%2)*8,1,1,p.trim);
+        }
+        return canvas;
+    }
     // Weapon-less HD art (theme-aware) for the multiplayer pose layer: body only, weapon arm drawn separately.
     const poseArt = {};
     function makePoseArt(name, frame, themeName) {
         const key = name + frame + (themeName || '');
         if (poseArt[key]) return poseArt[key];
         NO_WEAPON = true;
-        try { poseArt[key] = themeName ? makeThemedArt(name, frame, themeName) : makeHDArt(name, frame) } finally { NO_WEAPON = false }
+        try { poseArt[key] = remasterPose(themeName ? makeThemedArt(name, frame, themeName) : makeHDArt(name, frame),name,frame) } finally { NO_WEAPON = false }
         return poseArt[key];
     }
 
