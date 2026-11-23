@@ -637,7 +637,8 @@
                     break;
                 }
                 case 'pick': {
-                    if (cinematicOK()) fx.push({kind:'lootClaim',x:e.x*S,y:e.y*S,start:now,life:620});
+                    if (cinematicOK()) fx.push({kind:'ring',x:e.x*S,y:e.y*S-35,
+                        r0:6,r1:125,color:'#ffe4a1',width:5,start:now,life:620});
                     const P = PICKUP[e.k] || PICKUP[0], h = latestHero(e.h);
                     stats.picks = (stats.picks || 0) + 1;
                     sfx('pickup', e.h);
@@ -1902,6 +1903,17 @@
             // Class crest and weapon profile evolve with the armor, not generic helmets.
             const crest={NOAH:'✦',DESTINY:'◆',MARKIE:'▲',ESPIRIT:'➶',
                 SMITESH:'◇',DAVE:'✕',DONNA:'❧'}[h.name]||'✦';
+            // Distinct flowing capes and weapon silhouettes from level 20 onward.
+            if(tier>=2){
+                const cp=CINEMA[h.name]||[edge,shine];
+                g.save();g.globalAlpha=.68;g.strokeStyle=cp[0];g.lineWidth=7;
+                const sway=Math.sin(now/370+h.x*.01)*6;
+                g.beginPath();g.moveTo(-16,-59);g.quadraticCurveTo(-32,-23,-20+sway,8);
+                g.moveTo(16,-59);g.quadraticCurveTo(32,-23,20+sway,8);g.stroke();
+                g.strokeStyle=cp[1];g.lineWidth=2;
+                g.beginPath();g.moveTo(-16,-59);g.lineTo(-20+sway,8);
+                g.moveTo(16,-59);g.lineTo(20+sway,8);g.stroke();g.restore();
+            }
             g.fillStyle=shine;g.font='bold '+(tier>=2?15:11)+'px monospace';
             g.textAlign='center';g.fillText(crest,0,-38);
             if(tier>=2){
@@ -2049,6 +2061,31 @@
                 g.beginPath();g.ellipse(0,-36,23,31,0,0,Math.PI*2);g.stroke();
                 g.fillStyle='#f0b4ff';g.fillRect(-6,-82,12,6);
                 if(wind){g.beginPath();g.arc(dir*22,-39,12,0,Math.PI*2);g.stroke();}
+                g.restore();
+            }
+            // Visual threat ranks evolve with the wave, without changing collision.
+            const waveRank=Math.min(3,Math.floor(Math.max(0,((snaps[snaps.length-1]?.hud?.wave)||1)-1)/10));
+            if(waveRank>0 && fade===undefined){
+                const rankColor=waveRank===1?'#9c87bd':waveRank===2?'#db8b72':'#e6bb74';
+                g.save();g.strokeStyle=rankColor;g.fillStyle=rankColor;g.lineWidth=2+waveRank;
+                // Armored shoulders, segmented chest rune and rank-specific crown.
+                const high=art.key==='voidEmperor'?1.9:art.key==='warden'?1.2:1;
+                for(const side of [-1,1]){
+                    const x=side*art.w*.29;
+                    g.beginPath();g.moveTo(x,-46*high);
+                    g.lineTo(x+side*(9+waveRank*3),-53*high);
+                    g.lineTo(x+side*8,-38*high);g.closePath();g.stroke();
+                }
+                g.fillRect(-4,-41*high,8,3);
+                if(waveRank>=2) {
+                    g.beginPath();g.moveTo(-13,-66*high);
+                    g.lineTo(0,-(73+waveRank*3)*high);
+                    g.lineTo(13,-66*high);g.stroke();
+                }
+                if(waveRank>=3){
+                    g.globalAlpha=.65+.2*Math.sin(now/280+id);
+                    g.beginPath();g.ellipse(0,-40*high,art.w*.48,art.w*.63,0,0,Math.PI*2);g.stroke();
+                }
                 g.restore();
             }
             if (drawn && flash) { // V19 hurt flash: 45% #FFF1C5, only on the sprite's own pixels
