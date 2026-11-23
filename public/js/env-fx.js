@@ -62,6 +62,13 @@
         const OV = opts.OV;
         // ambient particles: fixed slots [x, y, vx, vy, age, life, kind(0 mist / 1 ember), frame offset]
         const N = 40, P = new Float32Array(N * 8);
+        // Precomputed distant lantern and foreground vegetation silhouettes.
+        // No sprite allocations, filters or gradients in the frame loop.
+        const lanterns = [[112,392],[345,380],[1090,382],[1320,396]];
+        const leaves = Array.from({length:18},(_,i)=>({
+            x:(i*173+53)%W,y:HORIZON+((i*97)%350),phase:i*1.9,
+            size:3+(i%3)*2
+        }));
         let live = 0, lastZone = -1;
         function seed(i, zone, anywhere) {
             const o = i * 8, ember = i % 3 !== 0 ? 1 : 0;
@@ -78,6 +85,27 @@
             zone = ((zone | 0) % 4 + 4) % 4;
             const bg = cache[zone] || (cache[zone] = compose(OV, zone));
             g.drawImage(bg, 0, 0);
+            // Zone-reactive lantern flicker and drifting foreground leaves.
+            // Ambient detail is deliberately limited to a few cheap primitives.
+            if(density >= .55){
+                g.save();g.globalCompositeOperation='lighter';
+                const glow=['#a9caff','#ffb36b','#83f4c6','#bd91ff'][zone];
+                for(let j=0;j<lanterns.length;j++){
+                    const p=lanterns[j],pulse=.6+.25*Math.sin(now/460+j*2.2);
+                    g.globalAlpha=.18*pulse;g.fillStyle=glow;
+                    g.fillRect(p[0]-10,p[1]-17,20,26);
+                    g.globalAlpha=.85*pulse;g.fillRect(p[0]-2,p[1]-8,4,10);
+                }
+                g.globalCompositeOperation='source-over';
+                g.globalAlpha=.45;g.fillStyle=zone===1?'#f6a16a':zone===2?'#90d7a1':'#c8d5d0';
+                for(let j=0;j<leaves.length;j++){
+                    const p=leaves[j],x=(p.x+now*(.006+zone*.003))%W;
+                    const y=p.y+Math.sin(now/1100+p.phase)*8;
+                    g.save();g.translate(x,y);g.rotate(now/1900+p.phase);
+                    g.fillRect(-p.size/2,-2,p.size,4);g.restore();
+                }
+                g.restore();
+            }
             const want = Math.round((EMBER_N[zone] + MIST_N[zone]) * Math.max(.35, density || 1));
             if (zone !== lastZone) { lastZone = zone; live = 0 }
             while (live < Math.min(N, want)) seed(live++, zone, true);
