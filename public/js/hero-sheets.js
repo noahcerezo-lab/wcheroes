@@ -70,5 +70,49 @@
         g.imageSmoothingEnabled = wasSmooth;
         return true;
     }
-    root.WCHSheets = { load, ready, draw, dirOf, DIRS, DEF, img: k => img[k], progress: () => ({ wanted, loaded }) };
+    // High-detail concept sheets, opt-in while art QA is underway.
+    // A missing image never replaces the existing procedural hero.
+    const CONCEPT_BASE = 'assets/concept-v2/';
+    const CONCEPT_HEROES = new Set(['NOAH','DESTINY','MARKIE','ESPIRIT','SMITESH','DAVE','DONNA']);
+    const CONCEPT_ANIMS = {idle:6,run:8,attack:8,special:8,hurt:4,down:4};
+    const conceptImages = Object.create(null);
+    const conceptStatus = Object.create(null);
+    const conceptEnabled = typeof location !== 'undefined' &&
+        new URLSearchParams(location.search).get('newart') === '1';
+    function loadConcept(name,action) {
+        if(!conceptEnabled || !CONCEPT_HEROES.has(name) || !CONCEPT_ANIMS[action])return;
+        const key=name+'_'+action;
+        if(conceptStatus[key])return;
+        conceptStatus[key]='loading';
+        const im=new Image();
+        im.onload=()=>{conceptImages[key]=im;conceptStatus[key]='ready'};
+        im.onerror=()=>{conceptStatus[key]='missing'};
+        im.src=CONCEPT_BASE+name.toLowerCase()+'_'+action+'_96x128_'+CONCEPT_ANIMS[action]+'f.png';
+    }
+    function loadConceptRoster() {
+        if(!conceptEnabled)return;
+        // Only preload the three gameplay poses. Other poses load on demand.
+        for(const name of CONCEPT_HEROES)
+            for(const action of ['idle','run','attack'])loadConcept(name,action);
+    }
+    function drawConcept(g,name,action,frame,flip,look) {
+        if(!conceptEnabled)return false;
+        const key=name+'_'+action,im=conceptImages[key];
+        if(!im){loadConcept(name,action);return false}
+        const n=CONCEPT_ANIMS[action],f=((frame%n)+n)%n;
+        // Same feet anchor and ~70-local-unit body height as the existing hero.
+        const sc=.64,wasSmooth=g.imageSmoothingEnabled;
+        g.imageSmoothingEnabled=false;
+        g.save();
+        if(flip)g.scale(-1,1);
+        if(look&&look.fx!==undefined)g.globalAlpha*=look.fx;
+        g.drawImage(im,f*96,0,96,128,-48*sc,-120*sc,96*sc,128*sc);
+        g.restore();
+        g.imageSmoothingEnabled=wasSmooth;
+        return true;
+    }
+    root.WCHSheets = { load, ready, draw, dirOf, DIRS, DEF, img: k => img[k],
+        progress: () => ({ wanted, loaded }), loadConceptRoster, drawConcept,
+        conceptEnabled, conceptStatus };
+
 })(typeof window !== 'undefined' ? window : globalThis);
