@@ -242,6 +242,12 @@
                 const cracks = []; for (let j = 0; j < (fin ? 7 : 5); j++) { const an = j / (fin ? 7 : 5) * Math.PI * 2 + Math.random() * .6; const c = []; let r = 0; for (let q = 0; q < 3; q++) { r += .25 + Math.random() * .15; c.push([Math.cos(an + (Math.random() - .5) * .5) * r, Math.sin(an + (Math.random() - .5) * .5) * r]) } cracks.push(c) }
                 fx.push({ kind: 'crack', x: gx, y: gy, r: fin ? 90 : 62, cracks, fin, start: now, life: fin ? 520 : 400 });
                 if (fin) fx.push({ kind: 'ring', x: gx, y: gy, r0: 16, r1: 110, color: '#FFC277', width: 5, start: now, life: 360 });
+                // Three layered seismic shock fronts, without heavy particle overdraw.
+                for(let j=0;j<(fin?3:2);j++)fx.push({kind:'ring',x:gx,y:gy,
+                    r0:8+j*9,r1:(fin?116:70)+j*18,
+                    color:j===0?'#fff0b5':j===1?'#ff9958':'#b65c40',
+                    width:fin?5:3,start:now+j*65,life:380+j*55});
+                fx.push({kind:'markieEmbers',x:gx,y:gy-20,fin,start:now,life:470});
                 burst(gx, gy - 6, '#A7855F', fin ? 16 : 9, fin ? 5 : 3.5, { flat: .35, lift: 1.4, grav: .03, life: 520, size: 6 }); // dust
                 burst(gx, gy - 6, '#8C7A66', fin ? 10 : 5, 3, { flat: .35, lift: 1, grav: .02, life: 600, size: 7 });
                 burst(gx, gy - 10, '#FFC277', fin ? 8 : 4, 4, { life: 300, size: 4 });
@@ -540,6 +546,12 @@
                         start: now, life: 560 });
                     burst(h.x * S, h.y * S - 14, uc, 12, 4,
                         { life: 520, size: 4, lift: 1.8 });
+                    if(h.name==='MARKIE') {
+                        // Earthshatter: concentric magma fissures and flying stone shards.
+                        fx.push({kind:'markieQuake',x:h.x*S,y:h.y*S,
+                            r,start:now,life:950});
+                        burst(h.x*S,h.y*S-22,'#ffd18a',20,6,{life:480,size:6});
+                    }
                     if (h.name === 'DESTINY' && SH) fx.push({ kind: 'ov', sheet: 'destinyGuard', n: 8, fd: 70, follow: e.h, sc: 2.2 * uiScale(), start: now, life: 560 }); // gold shield + mint heal ring
                     if (h.name === 'DESTINY') sfx('healChime', e.h);
                     addShake(3, 150, now);
@@ -1403,6 +1415,27 @@
             for (const f of fx) {
                 const el = now - f.start;
                 if (f.kind === 'ancestralGuardian' || f.kind === 'guardianPulse') { drawAncestralGuardian(f,now,view); continue }
+                if (f.kind === 'markieQuake' || f.kind === 'markieEmbers') {
+                    const t=Math.max(0,Math.min(1,el/f.life)),fade=(1-t)*(1-t);
+                    g.save();g.translate(f.x,f.y);g.globalCompositeOperation='lighter';
+                    g.globalAlpha=fade;
+                    if(f.kind==='markieQuake'){
+                        for(let j=0;j<3;j++){
+                            const p=Math.max(0,Math.min(1,t*1.7-j*.14)),rad=(f.r||170)*p;
+                            g.strokeStyle=j===0?'#fff1b5':j===1?'#ff9c51':'#a94732';
+                            g.lineWidth=10-j*2;g.beginPath();g.ellipse(0,0,rad,rad*.43,0,0,Math.PI*2);g.stroke();
+                        }
+                    }
+                    const count=f.kind==='markieQuake'?12:f.fin?9:5;
+                    for(let j=0;j<count;j++){
+                        const a=j*Math.PI*2/count+.4,r=(18+t*(f.kind==='markieQuake'?130:75))*(.75+(j%3)*.12);
+                        const x=Math.cos(a)*r,y=Math.sin(a)*r*.42-(12+Math.sin(t*Math.PI)*45);
+                        g.save();g.translate(x,y);g.rotate(a+t*4);
+                        g.fillStyle=j%3?'#f9b365':'#fff0bc';
+                        g.fillRect(-4,-7,8,14);g.restore();
+                    }
+                    g.restore();continue;
+                }
                 if (f.kind === 'daveCyclone') { drawDaveCyclone(f,now,view); continue }
                 if (f.kind === 'enemyBolt') {
                     const t=Math.max(0,Math.min(1,el/f.life)),x=lerp(f.x,f.tx,t),y=lerp(f.y,f.ty,t);
