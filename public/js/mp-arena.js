@@ -2123,34 +2123,36 @@
             }
         }
         // Cinematic layers are brief screen-space overlays; no canvas blur or large textures.
+        // Cinematic announcements live in a small bottom-center toast, not a
+        // full-width band across the combat field. Mobile controls stay clear.
         function drawCinematics(now,view) {
             if(!cinematicOK())return;
             const W=canvas.width,H=canvas.height;
             const drawCard=(c,duration) => {
                 if(!c)return null;
                 const age=now-c.at;if(age<0||age>duration)return null;
-                const t=age/duration,fade=Math.min(1,age/170,(duration-age)/280);
+                const fade=Math.max(0,Math.min(1,age/120,(duration-age)/180));
                 const pal=CINEMA[c.name]||['#a777e6','#fff2d4'];
-                g.save();g.globalAlpha=Math.max(0,fade);
-                g.fillStyle='rgba(8,5,21,.65)';
-                g.fillRect(0,H*.33,W,H*.31);
-                g.fillStyle=pal[0];g.fillRect(0,H*.33,W,3);
-                g.fillRect(0,H*.64-3,W,3);
-                g.textAlign='center';g.fillStyle=pal[1];
-                g.font='bold '+Math.round(Math.min(42,W/24))+'px monospace';
-                const label=c.kind==='ultimate'?c.name+' • ULTIMATE':c.name;
-                g.fillText(label,W/2,H*.48);
-                g.font='bold 16px monospace';g.fillStyle=pal[0];
-                g.fillText(c.kind==='boss'?'BOSS ENCOUNTER':c.kind==='victory'?'LEGENDARY VICTORY':'SIGNATURE TECHNIQUE',W/2,H*.54);
-                for(let j=0;j<8;j++){
-                    const x=W/2+(j-3.5)*55,y=H*.58+Math.sin(t*8+j)*5;
-                    g.fillStyle=j%2?pal[0]:pal[1];g.fillRect(x,y,7,7);
-                }
+                const isUltimate=c.kind==='ultimate';
+                const label=isUltimate?c.name+' • ULTIMATE':c.name;
+                const subtitle=c.kind==='boss'?'BOSS ENCOUNTER':
+                    c.kind==='victory'?'LEGENDARY VICTORY':'SIGNATURE TECHNIQUE';
+                const width=Math.min(390,W*.34),height=53;
+                const x=(W-width)/2,y=H-height-18;
+                g.save();g.globalAlpha=fade;
+                g.fillStyle='rgba(9,7,23,.83)';g.fillRect(x,y,width,height);
+                g.fillStyle=pal[0];g.fillRect(x,y,4,height);
+                g.fillRect(x,y,width,2);
+                g.textAlign='center';g.textBaseline='middle';
+                g.fillStyle=pal[1];g.font='bold 19px monospace';
+                g.fillText(label,W/2,y+21,width-24);
+                g.fillStyle=pal[0];g.font='bold 10px monospace';
+                g.fillText(subtitle,W/2,y+41,width-24);
                 g.restore();return c;
             };
-            if(bossCinematic&&!drawCard(bossCinematic,1700))bossCinematic=null;
+            if(bossCinematic&&!drawCard(bossCinematic,1500))bossCinematic=null;
             if(ultimateCinematic&&!drawCard(ultimateCinematic,650))ultimateCinematic=null;
-            if(victoryCinematic&&!drawCard(victoryCinematic,1600))victoryCinematic=null;
+            if(victoryCinematic&&!drawCard(victoryCinematic,1500))victoryCinematic=null;
         }
         function frame() {
             if (!running) return;
