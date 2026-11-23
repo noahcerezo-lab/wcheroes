@@ -466,6 +466,14 @@
                     floatText(e.x*S,e.y*S-95,'BLADE CYCLONE','#ffd39c',15,900);
                     break;
                 }
+                case 'enemyBolt': {
+                    fx.push({kind:'enemyBolt',x:e.x*S,y:e.y*S-33,tx:e.tx*S,ty:e.ty*S-30,start:now,life:e.ms||650});
+                    break;
+                }
+                case 'enemyBoltImpact': {
+                    fx.push({kind:'ring',x:e.x*S,y:e.y*S-24,r0:4,r1:32,color:'#f18cfa',width:3,start:now,life:300});
+                    break;
+                }
                 case 'spiritSplash': {
                     // Small teal-blue impact bloom; no sustained particles or blur.
                     fx.push({kind:'ring',x:e.x*S,y:e.y*S-20,r0:8,r1:e.r*S,
@@ -1396,6 +1404,14 @@
                 const el = now - f.start;
                 if (f.kind === 'ancestralGuardian' || f.kind === 'guardianPulse') { drawAncestralGuardian(f,now,view); continue }
                 if (f.kind === 'daveCyclone') { drawDaveCyclone(f,now,view); continue }
+                if (f.kind === 'enemyBolt') {
+                    const t=Math.max(0,Math.min(1,el/f.life)),x=lerp(f.x,f.tx,t),y=lerp(f.y,f.ty,t);
+                    g.save();g.globalCompositeOperation='lighter';
+                    g.strokeStyle='#b35cdd';g.lineWidth=7;g.globalAlpha=.55;
+                    g.beginPath();g.moveTo(lerp(f.x,f.tx,Math.max(0,t-.16)),lerp(f.y,f.ty,Math.max(0,t-.16)));g.lineTo(x,y);g.stroke();
+                    g.globalAlpha=1;g.fillStyle='#f6d5ff';g.beginPath();g.arc(x,y,6,0,Math.PI*2);g.fill();g.restore();
+                    continue;
+                }
                 if (f.kind === 'worldTree') { drawWorldTree(f,now,view); continue }
                 if (f.kind === 'petStrike') { drawPetStrike(f,now); continue }
                 if (f.kind === 'combatImpact') { drawCombatImpact(f, now); continue }
@@ -1822,7 +1838,7 @@
                     else { const amt = (1 - t) * (1 - t); ex += rc.dx * amt; ey += rc.dy * amt; tilt = Math.sign(rc.dx || 1) * .22 * amt }
                 }
             }
-            const art = (A && A.ENEMY_ART[type]) || { key: 'acolyte', w: 50 };
+            const art = (A && A.ENEMY_ART[type]) || (A && A.ENEMY_ART[0]) || { key: 'acolyte', w: 50 };
             const flash = (flashes.get(id) || 0) > now;
             let m = enemyMotion.get(id);
             if (!m) { m = { x: ex, y: ey, moveAt: 0, windAt: 0, strikeAt: 0, wasWind: false, wasStrike: false }; enemyMotion.set(id, m) }
@@ -1863,6 +1879,16 @@
             };
             const drawn = drawFrame();
             if (!drawn) R.drawSprite(g, 0, 0, '#000', true, '', now, { facing: dir, hurt: flash ? 6 : 0, flash: flash ? 1 : 0 }); // V19 fallback while loading
+            // Ranged spirit archer: distinct purple robe silhouette and orbiting
+            // casting sigil, even when its sheet falls back to the acolyte.
+            if (type === 3 && fade === undefined) {
+                g.save();g.globalCompositeOperation='lighter';g.strokeStyle='#d78aff';g.lineWidth=3;
+                g.globalAlpha=.7+.2*Math.sin(now/190+id);
+                g.beginPath();g.ellipse(0,-36,23,31,0,0,Math.PI*2);g.stroke();
+                g.fillStyle='#f0b4ff';g.fillRect(-6,-82,12,6);
+                if(wind){g.beginPath();g.arc(dir*22,-39,12,0,Math.PI*2);g.stroke();}
+                g.restore();
+            }
             if (drawn && flash) { // V19 hurt flash: 45% #FFF1C5, only on the sprite's own pixels
                 g.globalCompositeOperation = 'lighter';
                 g.globalAlpha *= .45;
