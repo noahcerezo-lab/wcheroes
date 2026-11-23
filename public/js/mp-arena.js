@@ -242,6 +242,12 @@
                 const cracks = []; for (let j = 0; j < (fin ? 7 : 5); j++) { const an = j / (fin ? 7 : 5) * Math.PI * 2 + Math.random() * .6; const c = []; let r = 0; for (let q = 0; q < 3; q++) { r += .25 + Math.random() * .15; c.push([Math.cos(an + (Math.random() - .5) * .5) * r, Math.sin(an + (Math.random() - .5) * .5) * r]) } cracks.push(c) }
                 fx.push({ kind: 'crack', x: gx, y: gy, r: fin ? 90 : 62, cracks, fin, start: now, life: fin ? 520 : 400 });
                 if (fin) fx.push({ kind: 'ring', x: gx, y: gy, r0: 16, r1: 110, color: '#FFC277', width: 5, start: now, life: 360 });
+                // Three layered seismic shock fronts, without heavy particle overdraw.
+                for(let j=0;j<(fin?3:2);j++)fx.push({kind:'ring',x:gx,y:gy,
+                    r0:8+j*9,r1:(fin?116:70)+j*18,
+                    color:j===0?'#fff0b5':j===1?'#ff9958':'#b65c40',
+                    width:fin?5:3,start:now+j*65,life:380+j*55});
+                fx.push({kind:'markieEmbers',x:gx,y:gy-20,fin,start:now,life:470});
                 burst(gx, gy - 6, '#A7855F', fin ? 16 : 9, fin ? 5 : 3.5, { flat: .35, lift: 1.4, grav: .03, life: 520, size: 6 }); // dust
                 burst(gx, gy - 6, '#8C7A66', fin ? 10 : 5, 3, { flat: .35, lift: 1, grav: .02, life: 600, size: 7 });
                 burst(gx, gy - 10, '#FFC277', fin ? 8 : 4, 4, { life: 300, size: 4 });
@@ -453,7 +459,16 @@
                 }
                 case 'druidAnimal': {
                     // Target-accurate cosmetic attack, independent of hero attack counter.
-                    if(Number.isFinite(e.tx)&&Number.isFinite(e.ty)) fx.push({kind:'petStrike',name:'DONNA',pet:e.kind||0,boost:!!e.boosted,x:e.x*S,y:e.y*S,tx:e.tx*S,ty:e.ty*S,start:now,life:460});
+                    if(Number.isFinite(e.tx)&&Number.isFinite(e.ty)) {
+                        const pet=e.kind||0,angle=pet*Math.PI/2+now/1500+e.h*.4;
+                        const sx=e.x*S+Math.cos(angle)*(48+pet*8);
+                        const sy=e.y*S+12+Math.sin(angle)*19;
+                        fx.push({kind:'petStrike',name:'DONNA',pet,boost:!!e.boosted,
+                            x:sx,y:sy,tx:e.tx*S,ty:e.ty*S,start:now,life:460});
+                        fx.push({kind:'ring',x:e.tx*S,y:e.ty*S-20,r0:5,r1:pet===2?46:30,
+                            color:['#ffce83','#a4f9d0','#d2a5ff','#e9ffae'][pet],
+                            width:pet===2?5:3,start:now+170,life:300});
+                    }
                     break;
                 }
                 case 'druidAwaken': {
@@ -464,6 +479,14 @@
                 case 'cyclone': {
                     fx.push({kind:'daveCyclone',follow:e.h,x:e.x*S,y:e.y*S,start:now,life:1050});
                     floatText(e.x*S,e.y*S-95,'BLADE CYCLONE','#ffd39c',15,900);
+                    break;
+                }
+                case 'enemyBolt': {
+                    fx.push({kind:'enemyBolt',x:e.x*S,y:e.y*S-33,tx:e.tx*S,ty:e.ty*S-30,start:now,life:e.ms||650});
+                    break;
+                }
+                case 'enemyBoltImpact': {
+                    fx.push({kind:'ring',x:e.x*S,y:e.y*S-24,r0:4,r1:32,color:'#f18cfa',width:3,start:now,life:300});
                     break;
                 }
                 case 'spiritSplash': {
@@ -532,6 +555,12 @@
                         start: now, life: 560 });
                     burst(h.x * S, h.y * S - 14, uc, 12, 4,
                         { life: 520, size: 4, lift: 1.8 });
+                    if(h.name==='MARKIE') {
+                        // Earthshatter: concentric magma fissures and flying stone shards.
+                        fx.push({kind:'markieQuake',x:h.x*S,y:h.y*S,
+                            r,start:now,life:950});
+                        burst(h.x*S,h.y*S-22,'#ffd18a',20,6,{life:480,size:6});
+                    }
                     if (h.name === 'DESTINY' && SH) fx.push({ kind: 'ov', sheet: 'destinyGuard', n: 8, fd: 70, follow: e.h, sc: 2.2 * uiScale(), start: now, life: 560 }); // gold shield + mint heal ring
                     if (h.name === 'DESTINY') sfx('healChime', e.h);
                     addShake(3, 150, now);
@@ -1395,7 +1424,36 @@
             for (const f of fx) {
                 const el = now - f.start;
                 if (f.kind === 'ancestralGuardian' || f.kind === 'guardianPulse') { drawAncestralGuardian(f,now,view); continue }
+                if (f.kind === 'markieQuake' || f.kind === 'markieEmbers') {
+                    const t=Math.max(0,Math.min(1,el/f.life)),fade=(1-t)*(1-t);
+                    g.save();g.translate(f.x,f.y);g.globalCompositeOperation='lighter';
+                    g.globalAlpha=fade;
+                    if(f.kind==='markieQuake'){
+                        for(let j=0;j<3;j++){
+                            const p=Math.max(0,Math.min(1,t*1.7-j*.14)),rad=(f.r||170)*p;
+                            g.strokeStyle=j===0?'#fff1b5':j===1?'#ff9c51':'#a94732';
+                            g.lineWidth=10-j*2;g.beginPath();g.ellipse(0,0,rad,rad*.43,0,0,Math.PI*2);g.stroke();
+                        }
+                    }
+                    const count=f.kind==='markieQuake'?12:f.fin?9:5;
+                    for(let j=0;j<count;j++){
+                        const a=j*Math.PI*2/count+.4,r=(18+t*(f.kind==='markieQuake'?130:75))*(.75+(j%3)*.12);
+                        const x=Math.cos(a)*r,y=Math.sin(a)*r*.42-(12+Math.sin(t*Math.PI)*45);
+                        g.save();g.translate(x,y);g.rotate(a+t*4);
+                        g.fillStyle=j%3?'#f9b365':'#fff0bc';
+                        g.fillRect(-4,-7,8,14);g.restore();
+                    }
+                    g.restore();continue;
+                }
                 if (f.kind === 'daveCyclone') { drawDaveCyclone(f,now,view); continue }
+                if (f.kind === 'enemyBolt') {
+                    const t=Math.max(0,Math.min(1,el/f.life)),x=lerp(f.x,f.tx,t),y=lerp(f.y,f.ty,t);
+                    g.save();g.globalCompositeOperation='lighter';
+                    g.strokeStyle='#b35cdd';g.lineWidth=7;g.globalAlpha=.55;
+                    g.beginPath();g.moveTo(lerp(f.x,f.tx,Math.max(0,t-.16)),lerp(f.y,f.ty,Math.max(0,t-.16)));g.lineTo(x,y);g.stroke();
+                    g.globalAlpha=1;g.fillStyle='#f6d5ff';g.beginPath();g.arc(x,y,6,0,Math.PI*2);g.fill();g.restore();
+                    continue;
+                }
                 if (f.kind === 'worldTree') { drawWorldTree(f,now,view); continue }
                 if (f.kind === 'petStrike') { drawPetStrike(f,now); continue }
                 if (f.kind === 'combatImpact') { drawCombatImpact(f, now); continue }
@@ -1719,8 +1777,14 @@
         function drawDruidPet(h, i, now) {
             if (h.name !== 'DONNA' || (h.state && h.state !== 'alive') || !Number.isInteger(h.pet) || h.pet < 0) return;
             const kind = Math.min(3, h.pet), t = now / 1000;
-            const px = h.x * S + (h.facing === -1 ? 48 : -48) + Math.sin(t * 2 + i) * 7;
-            const py = h.y * S + 9 + Math.cos(t * 3 + i) * 3;
+            // Draw the full unlocked pack rather than replacing earlier companions.
+            for(let pet=0;pet<=kind;pet++) drawOneDruidPet(h,i,now,pet);
+        }
+        function drawOneDruidPet(h,i,now,kind) {
+            const t=now/1000;
+            const a=kind*Math.PI*2/4+now/1500+i*.4;
+            const px=h.x*S+Math.cos(a)*(48+kind*8);
+            const py=h.y*S+12+Math.sin(a)*19+Math.cos(t*3+i+kind)*3;
             const scale = [0.72, 0.92, 1.35, 1.12][kind];
             g.save(); g.translate(Math.round(px), Math.round(py)); g.scale(scale, scale);
             g.fillStyle = 'rgba(9,26,15,.4)'; g.beginPath(); g.ellipse(0,3,23,7,0,0,Math.PI*2); g.fill();
@@ -1735,7 +1799,68 @@
             if(kind===1) {block(13,-40,7,9,shade);block(25,-40,7,9,shade);}
             if(kind===2) {block(11,-37,9,9,shade);block(25,-37,9,9,shade);block(-18,-30,32,7,shade);}
             if(kind===3) {block(15,-49,4,21,'#e6c66b');block(29,-49,4,21,'#e6c66b');block(7,-45,12,4,'#e6c66b');block(30,-45,12,4,'#e6c66b');}
+            // Unique glowing combat markings for each active companion.
+            block(12,-27,9,4,['#ffe5a5','#a4ffe3','#e0b9ff','#f4ffac'][kind]);
             if(h.petBoost) {g.strokeStyle='#a9ff7c';g.lineWidth=2;g.strokeRect(-30,-51,74,57);}
+            g.restore();
+        }
+        // Armor evolution is drawn above the animated character sheet, so it
+        // remains visible in every pose. Every ten hero levels adds a new layer.
+        function drawMasteryArmor(h,now) {
+            const tier=Math.floor((h.lv||1)/10);if(tier<1)return;
+            const skin=HERO_FINISH[h.name]||{primary:'#c9b4f4',light:'#fff4c9'};
+            const metal=tier>=3?'#f8df91':tier>=2?'#c8e6f4':'#b1b8c9';
+            const edge=skin.primary,shine=skin.light;
+            g.save();g.lineJoin='miter';
+            // Broad shoulder plates and breastplate create a changed silhouette.
+            g.fillStyle=metal;g.strokeStyle=edge;g.lineWidth=3;
+            for(const side of [-1,1]) {
+                g.beginPath();g.moveTo(side*14,-67);g.lineTo(side*32,-74);
+                g.lineTo(side*(37+tier*3),-60);g.lineTo(side*29,-49);
+                g.lineTo(side*17,-53);g.closePath();g.fill();g.stroke();
+                g.fillStyle=shine;g.fillRect(side<0?-31:26,-65,5,5);g.fillStyle=metal;
+            }
+            g.fillStyle='#283846';g.fillRect(-14,-53,28,22);
+            g.strokeStyle=metal;g.lineWidth=3;g.strokeRect(-14,-53,28,22);
+            g.fillStyle=edge;g.beginPath();g.moveTo(0,-50);g.lineTo(9,-42);
+            g.lineTo(0,-34);g.lineTo(-9,-42);g.closePath();g.fill();
+            if(tier>=2) {
+                // Tall crest, segmented armored skirt and illuminated gauntlets.
+                g.fillStyle=metal;g.fillRect(-10,-97,20,6);g.fillRect(-5,-105,10,9);
+                for(const side of [-1,1]) {
+                    g.fillRect(side<0?-24:15,-29,9,17);
+                    g.fillRect(side<0?-37:30,-50,8,14);
+                }
+                g.strokeStyle=shine;g.lineWidth=2;
+                g.beginPath();g.moveTo(-12,-26);g.lineTo(0,-13);g.lineTo(12,-26);g.stroke();
+            }
+            if(tier>=4) {
+                // Every further ten levels adds another visible armor rank:
+                // layered shoulder fins, gilded chest bands and extra cape length.
+                for(let rank=4;rank<=Math.min(tier,9);rank++){
+                    const offset=(rank-4)*5;
+                    g.strokeStyle=rank%2?shine:metal;g.lineWidth=2.5;
+                    for(const side of [-1,1]){
+                        g.beginPath();g.moveTo(side*(33+offset),-64);
+                        g.lineTo(side*(47+offset),-77-offset);
+                        g.lineTo(side*(39+offset),-54);g.stroke();
+                    }
+                    g.fillStyle=rank%2?shine:edge;
+                    g.fillRect(-10,-49+(rank-4)*4,20,2);
+                }
+            }
+            if(tier>=3) {
+                // Ascended armor: winged pauldrons, crown rays and energy cape.
+                g.strokeStyle=shine;g.lineWidth=4;
+                for(const side of [-1,1]){
+                    g.beginPath();g.moveTo(side*29,-69);
+                    g.lineTo(side*49,-90);g.lineTo(side*43,-62);g.stroke();
+                    g.beginPath();g.moveTo(side*9,-100);g.lineTo(side*16,-117);g.stroke();
+                }
+                g.strokeStyle=edge;g.globalAlpha=.65+.2*Math.sin(now/230);
+                g.beginPath();g.moveTo(-29,-27);g.quadraticCurveTo(-38,4,-20,9);
+                g.moveTo(29,-27);g.quadraticCurveTo(38,4,20,9);g.stroke();
+            }
             g.restore();
         }
         function drawHero(h, i, now, room, myId, k) {
@@ -1786,6 +1911,7 @@
                 g.restore();
             } else if (anim && anim.hasPose(h.name)) { if (env) env.shadow(g, 1, 46); anim.drawHero(g, h, i, now, k, lookFor(role, color)) }
             else R.drawSprite(g, 0, 0, color, false, h.name, now, entity);
+            if (!h.state) drawMasteryArmor(h,now);
             if (!h.state && (h.buff || h.shield) && A) A.loop(g, 'buffAura', now, 0, -34, 58, null, false, .85, i * 90);
             drawHeroFinish(h, i, now, role, k); // rally buff / Markie shield
             // Name + controller label and HP bar above the head (V19 ally style).
@@ -1822,7 +1948,7 @@
                     else { const amt = (1 - t) * (1 - t); ex += rc.dx * amt; ey += rc.dy * amt; tilt = Math.sign(rc.dx || 1) * .22 * amt }
                 }
             }
-            const art = (A && A.ENEMY_ART[type]) || { key: 'acolyte', w: 50 };
+            const art = (A && A.ENEMY_ART[type]) || (A && A.ENEMY_ART[0]) || { key: 'acolyte', w: 50 };
             const flash = (flashes.get(id) || 0) > now;
             let m = enemyMotion.get(id);
             if (!m) { m = { x: ex, y: ey, moveAt: 0, windAt: 0, strikeAt: 0, wasWind: false, wasStrike: false }; enemyMotion.set(id, m) }
@@ -1863,6 +1989,16 @@
             };
             const drawn = drawFrame();
             if (!drawn) R.drawSprite(g, 0, 0, '#000', true, '', now, { facing: dir, hurt: flash ? 6 : 0, flash: flash ? 1 : 0 }); // V19 fallback while loading
+            // Ranged spirit archer: distinct purple robe silhouette and orbiting
+            // casting sigil, even when its sheet falls back to the acolyte.
+            if (type === 3 && fade === undefined) {
+                g.save();g.globalCompositeOperation='lighter';g.strokeStyle='#d78aff';g.lineWidth=3;
+                g.globalAlpha=.7+.2*Math.sin(now/190+id);
+                g.beginPath();g.ellipse(0,-36,23,31,0,0,Math.PI*2);g.stroke();
+                g.fillStyle='#f0b4ff';g.fillRect(-6,-82,12,6);
+                if(wind){g.beginPath();g.arc(dir*22,-39,12,0,Math.PI*2);g.stroke();}
+                g.restore();
+            }
             if (drawn && flash) { // V19 hurt flash: 45% #FFF1C5, only on the sprite's own pixels
                 g.globalCompositeOperation = 'lighter';
                 g.globalAlpha *= .45;
