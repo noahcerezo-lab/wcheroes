@@ -1843,90 +1843,6 @@
             if(h.petBoost) {g.strokeStyle='#a9ff7c';g.lineWidth=2;g.strokeRect(-30,-51,74,57);}
             g.restore();
         }
-        // Armor evolution is drawn above the animated character sheet, so it
-        // remains visible in every pose. Every ten hero levels adds a new layer.
-        function drawMasteryArmor(h,now) {
-            const tier=Math.floor((h.lv||1)/10);if(tier<1)return;
-            const skin=HERO_FINISH[h.name]||{primary:'#c9b4f4',light:'#fff4c9'};
-            const metal=tier>=3?'#f8df91':tier>=2?'#c8e6f4':'#b1b8c9';
-            const edge=skin.primary,shine=skin.light;
-            g.save();g.lineJoin='miter';
-            // Broad shoulder plates and breastplate create a changed silhouette.
-            g.fillStyle=metal;g.strokeStyle=edge;g.lineWidth=3;
-            for(const side of [-1,1]) {
-                g.beginPath();g.moveTo(side*14,-67);g.lineTo(side*32,-74);
-                g.lineTo(side*(37+tier*3),-60);g.lineTo(side*29,-49);
-                g.lineTo(side*17,-53);g.closePath();g.fill();g.stroke();
-                g.fillStyle=shine;g.fillRect(side<0?-31:26,-65,5,5);g.fillStyle=metal;
-            }
-            g.fillStyle='#283846';g.fillRect(-14,-53,28,22);
-            g.strokeStyle=metal;g.lineWidth=3;g.strokeRect(-14,-53,28,22);
-            g.fillStyle=edge;g.beginPath();g.moveTo(0,-50);g.lineTo(9,-42);
-            g.lineTo(0,-34);g.lineTo(-9,-42);g.closePath();g.fill();
-            if(tier>=2) {
-                // Tall crest, segmented armored skirt and illuminated gauntlets.
-                g.fillStyle=metal;g.fillRect(-10,-97,20,6);g.fillRect(-5,-105,10,9);
-                for(const side of [-1,1]) {
-                    g.fillRect(side<0?-24:15,-29,9,17);
-                    g.fillRect(side<0?-37:30,-50,8,14);
-                }
-                g.strokeStyle=shine;g.lineWidth=2;
-                g.beginPath();g.moveTo(-12,-26);g.lineTo(0,-13);g.lineTo(12,-26);g.stroke();
-            }
-            if(tier>=4) {
-                // Every further ten levels adds another visible armor rank:
-                // layered shoulder fins, gilded chest bands and extra cape length.
-                for(let rank=4;rank<=Math.min(tier,9);rank++){
-                    const offset=(rank-4)*5;
-                    g.strokeStyle=rank%2?shine:metal;g.lineWidth=2.5;
-                    for(const side of [-1,1]){
-                        g.beginPath();g.moveTo(side*(33+offset),-64);
-                        g.lineTo(side*(47+offset),-77-offset);
-                        g.lineTo(side*(39+offset),-54);g.stroke();
-                    }
-                    g.fillStyle=rank%2?shine:edge;
-                    g.fillRect(-10,-49+(rank-4)*4,20,2);
-                }
-            }
-            if(tier>=3) {
-                // Ascended armor: winged pauldrons, crown rays and energy cape.
-                g.strokeStyle=shine;g.lineWidth=4;
-                for(const side of [-1,1]){
-                    g.beginPath();g.moveTo(side*29,-69);
-                    g.lineTo(side*49,-90);g.lineTo(side*43,-62);g.stroke();
-                    g.beginPath();g.moveTo(side*9,-100);g.lineTo(side*16,-117);g.stroke();
-                }
-                g.strokeStyle=edge;g.globalAlpha=.65+.2*Math.sin(now/230);
-                g.beginPath();g.moveTo(-29,-27);g.quadraticCurveTo(-38,4,-20,9);
-                g.moveTo(29,-27);g.quadraticCurveTo(38,4,20,9);g.stroke();
-            }
-            // Class crest and weapon profile evolve with the armor, not generic helmets.
-            const crest={NOAH:'✦',DESTINY:'◆',MARKIE:'▲',ESPIRIT:'➶',
-                SMITESH:'◇',DAVE:'✕',DONNA:'❧'}[h.name]||'✦';
-            // Distinct flowing capes and weapon silhouettes from level 20 onward.
-            if(tier>=2){
-                const cp=CINEMA[h.name]||[edge,shine];
-                g.save();g.globalAlpha=.68;g.strokeStyle=cp[0];g.lineWidth=7;
-                const sway=Math.sin(now/370+h.x*.01)*6;
-                g.beginPath();g.moveTo(-16,-59);g.quadraticCurveTo(-32,-23,-20+sway,8);
-                g.moveTo(16,-59);g.quadraticCurveTo(32,-23,20+sway,8);g.stroke();
-                g.strokeStyle=cp[1];g.lineWidth=2;
-                g.beginPath();g.moveTo(-16,-59);g.lineTo(-20+sway,8);
-                g.moveTo(16,-59);g.lineTo(20+sway,8);g.stroke();g.restore();
-            }
-            g.fillStyle=shine;g.font='bold '+(tier>=2?15:11)+'px monospace';
-            g.textAlign='center';g.fillText(crest,0,-38);
-            if(tier>=2){
-                g.strokeStyle=shine;g.lineWidth=3;
-                const v=(h.name==='MARKIE'||h.name==='DAVE')?1:0;
-                for(const side of [-1,1]){
-                    g.beginPath();g.moveTo(side*27,-53);
-                    g.lineTo(side*(38+v*8),-45);
-                    g.lineTo(side*(32+v*8),-31);g.stroke();
-                }
-            }
-            g.restore();
-        }
         function drawHero(h, i, now, room, myId, k) {
             const px = h.x * S, py = h.y * S;
             try { drawDruidPet(h, i, now); } catch (err) { /* Never let companion art crash hero rendering. */ }
@@ -1975,7 +1891,6 @@
                 g.restore();
             } else if (anim && anim.hasPose(h.name)) { if (env) env.shadow(g, 1, 46); anim.drawHero(g, h, i, now, k, lookFor(role, color)) }
             else R.drawSprite(g, 0, 0, color, false, h.name, now, entity);
-            if (!h.state) drawMasteryArmor(h,now);
             if (!h.state && (h.buff || h.shield) && A) A.loop(g, 'buffAura', now, 0, -34, 58, null, false, .85, i * 90);
             drawHeroFinish(h, i, now, role, k); // rally buff / Markie shield
             // Name + controller label and HP bar above the head (V19 ally style).
