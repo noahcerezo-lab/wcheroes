@@ -459,7 +459,16 @@
                 }
                 case 'druidAnimal': {
                     // Target-accurate cosmetic attack, independent of hero attack counter.
-                    if(Number.isFinite(e.tx)&&Number.isFinite(e.ty)) fx.push({kind:'petStrike',name:'DONNA',pet:e.kind||0,boost:!!e.boosted,x:e.x*S,y:e.y*S,tx:e.tx*S,ty:e.ty*S,start:now,life:460});
+                    if(Number.isFinite(e.tx)&&Number.isFinite(e.ty)) {
+                        const pet=e.kind||0,angle=pet*Math.PI/2+now/1500+e.h*.4;
+                        const sx=e.x*S+Math.cos(angle)*(48+pet*8);
+                        const sy=e.y*S+12+Math.sin(angle)*19;
+                        fx.push({kind:'petStrike',name:'DONNA',pet,boost:!!e.boosted,
+                            x:sx,y:sy,tx:e.tx*S,ty:e.ty*S,start:now,life:460});
+                        fx.push({kind:'ring',x:e.tx*S,y:e.ty*S-20,r0:5,r1:pet===2?46:30,
+                            color:['#ffce83','#a4f9d0','#d2a5ff','#e9ffae'][pet],
+                            width:pet===2?5:3,start:now+170,life:300});
+                    }
                     break;
                 }
                 case 'druidAwaken': {
