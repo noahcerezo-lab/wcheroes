@@ -128,7 +128,7 @@
     $('ready').onclick = () => { const mine = room?.players.find(p => p.id === myId()); send('player:ready', { ready: !mine?.ready }) };
     $('start').onclick = () => send('room:start', {});
     $('toLobby').onclick = () => send('room:lobby', {});
-    const leave = () => { socket.emit('room:leave'); clearSession(); room = null; world = null; arena.reset(); resetPrediction(); history.replaceState({}, '', location.pathname); show('entry') };
+    const leave = () => { resetJoy(); socket.emit('room:leave'); clearSession(); room = null; world = null; arena.reset(); resetPrediction(); history.replaceState({}, '', location.pathname); show('entry') };
     $('leaveLobby').onclick = leave;
     $('leaveBattle').onclick = () => { if (confirm('Leave the battle? Your hero becomes an AI teammate.')) leave() };
     $('copy').onclick = async () => {
@@ -137,15 +137,16 @@
 
     // ---------- server events ----------
     socket.on('room:update', r => { room = r; render() });
-    socket.on('battle:start', w => { world = w; arena.reset(); arena.push(w); resetPrediction(); reconcile(w); show('battle') });
+    socket.on('battle:start', w => { resetJoy(); world = w; arena.reset(); arena.push(w); resetPrediction(); reconcile(w); show('battle') });
     socket.on('battle:state', w => { world = w; reconcile(w); arena.push(w) });
     socket.on('battle:end', e => {
-        world = null; arena.reset(); resetPrediction();
+        resetJoy(); world = null; arena.reset(); resetPrediction();
         if (e?.reason === 'wipe') note('Squad defeated on wave ' + e.wave + ' — score ' + e.score + ', ' + e.kills + ' KOs. Ready up to play again!', 12000);
         else note('Back in the lobby' + (e?.by ? ' — ' + e.by + ' ended the round.' : '.'));
     });
     socket.on('session:replaced', () => { me = null; room = null; world = null; arena.reset(); show('entry'); note('This game was opened in another tab or window.') });
     socket.on('disconnect', reason => {
+        resetJoy();
         $('status').textContent = 'Disconnected — reconnecting…';
         if (room) { $('conn').classList.remove('hidden'); note('Connection lost (' + reason + ') — reconnecting…') }
     });
@@ -226,9 +227,11 @@
     addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false });
     addEventListener('blur', () => { for (const k in keys) keys[k] = false; resetJoy(); touch.attack = touch.special = false });
 
-    // V19 virtual joystick: analog direction, released when the finger lifts.
+    // iOS Safari can lose pointer capture when the finger crosses an overlay,
+    // the browser toolbar appears, or the page changes visibility. Always
+    // release on global end/cancel as well as on the joystick itself.
     const joy = $('joystick'), stick = $('stick');
-    let joyPointer = null;
+    let joyPointer = null, joyTouchId = null, joyLastEvent = 0;
     function moveStick(e) {
         const r = joy.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
         let dx = e.clientX - cx, dy = e.clientY - cy;
@@ -237,20 +240,50 @@
         stick.style.transform = `translate(calc(-50% + ${dx}px),calc(-50% + ${dy}px))`;
         const dead = radius * .2, mag = Math.hypot(dx, dy);
         if (mag < dead) { touch.x = touch.y = 0; return }
-        const k = Math.min(1, (mag - dead) / (radius - dead)) / mag; // ramp from the dead zone to full speed
+        const k = Math.min(1, (mag - dead) / (radius - dead)) / mag;
         touch.x = dx * k; touch.y = dy * k;
     }
-    function resetJoy() { joyPointer = null; joy.classList.remove('active'); stick.style.transform = 'translate(-50%,-50%)'; touch.x = touch.y = 0 }
+    function resetJoy() {
+        joyPointer = null; joyTouchId = null; joyLastEvent = 0;
+        joy.classList.remove('active');
+        stick.style.transform = 'translate(-50%,-50%)';
+        touch.x = touch.y = 0;
+    }
     joy.addEventListener('pointerdown', e => {
         e.preventDefault();
         if (joyPointer !== null) return;
         joyPointer = e.pointerId;
+        joyTouchId = e.pointerType === 'touch' ? e.pointerId : null;
+        joyLastEvent = performance.now();
         joy.classList.add('active');
         try { joy.setPointerCapture(e.pointerId) } catch {}
         moveStick(e);
     });
-    joy.addEventListener('pointermove', e => { if (e.pointerId === joyPointer) { e.preventDefault(); moveStick(e) } });
-    for (const evt of ['pointerup', 'pointercancel', 'lostpointercapture']) joy.addEventListener(evt, e => { if (e.pointerId === joyPointer) resetJoy() });
+    joy.addEventListener('pointermove', e => {
+        if (e.pointerId === joyPointer) {
+            e.preventDefault(); joyLastEvent = performance.now(); moveStick(e);
+        }
+    });
+    const releaseJoy = e => { if (e.pointerId === joyPointer) resetJoy() };
+    for (const evt of ['pointerup','pointercancel','lostpointercapture'])
+        joy.addEventListener(evt,releaseJoy);
+    // Window capture catches release even if Safari sends it outside the control.
+    for (const evt of ['pointerup','pointercancel'])
+        window.addEventListener(evt,releaseJoy,true);
+    // Touchend/touchcancel are a fallback when iOS drops the pointer stream.
+    for (const evt of ['touchend','touchcancel'])
+        window.addEventListener(evt,e=>{
+            if(joyPointer===null)return;
+            if(Array.from(e.changedTouches).some(t=>t.identifier===joyTouchId) ||
+               (e.touches.length===0 && joyTouchId!==null))resetJoy();
+        },{passive:true,capture:true});
+    document.addEventListener('visibilitychange',()=>{if(document.hidden)resetJoy()});
+    window.addEventListener('pagehide',resetJoy);
+    // Safari occasionally fails to deliver any end event. The fallback only
+    // triggers after prolonged silence, never during ordinary joystick use.
+    setInterval(()=>{
+        if(joyPointer!==null && performance.now()-joyLastEvent>12000)resetJoy();
+    },1000);
     function bindButton(id, field) {
         const b = $(id);
         let pointer = null;
