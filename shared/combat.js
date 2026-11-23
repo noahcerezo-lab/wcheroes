@@ -564,26 +564,31 @@ function stepPassives(w) {
             // Permanent companion, evolves automatically every ten levels.
             const kind = Math.min(3, Math.floor(((h.level || 1) - 1) / 10));
             h.animalKind = kind;
+            // Every unlocked companion fights independently; later companions do
+            // not replace earlier ones. Separate cooldowns and distinct hit VFX.
             const intervals = [1500, 1300, 1800, 1600];
-            const petDamage = [10, 16, 24, 32]; // base damage before temporary buffs
-            if (w.time - h.animalAt >= intervals[kind]) {
-                h.animalAt = w.time;
-                const reach = [150, 170, 145, 195][kind];
-                const targets = w.enemies.filter(e => e.hp > 0 && dist(e, h) < reach).sort((a, b) => dist(a, h) - dist(b, h));
-                const boosted = w.time < (h.animalBoostUntil || 0);
-                // Every pet strike damages its primary target and briefly stuns
-                // nearby enemies. Each enemy is hit once per pet attack tick.
-                const primary = targets.slice(0, kind === 2 || kind === 3 ? 2 : 1);
-                const affected = new Set();
-                for (const target of primary) {
-                    for (const e of [...w.enemies]) {
-                        if (e.hp <= 0 || affected.has(e.id) || dist(e, target) > 42) continue;
+            const petDamage = [10, 16, 24, 32];
+            const petReach = [150, 170, 145, 195];
+            if (!h.petAttackAt) h.petAttackAt = [-1e9,-1e9,-1e9,-1e9];
+            const boosted = w.time < (h.animalBoostUntil || 0);
+            for (let pet=0;pet<=kind;pet++) {
+                if (w.time-h.petAttackAt[pet]<intervals[pet]) continue;
+                h.petAttackAt[pet]=w.time;
+                const targets=w.enemies.filter(e=>e.hp>0&&dist(e,h)<petReach[pet])
+                    .sort((a,b)=>dist(a,h)-dist(b,h));
+                const primary=targets.slice(0,pet>=2?2:1),affected=new Set();
+                for(const target of primary) {
+                    for(const e of [...w.enemies]) {
+                        if(e.hp<=0||affected.has(e.id)||dist(e,target)>42)continue;
                         affected.add(e.id);
-                        damageEnemy(w, h, e, Math.round(petDamage[kind] * (e === target ? 1 : 0.45) * (boosted ? 2 : 1)), { knock: kind === 2 ? 12 : 4, stun: 500 });
+                        damageEnemy(w,h,e,Math.round(petDamage[pet]*(e===target?1:.45)*(boosted?2:1)),
+                            {knock:pet===2?12:4,stun:500});
                     }
+                    emit(w,{t:'druidAnimal',h:w.heroes.indexOf(h),kind:pet,
+                        x:Math.round(h.x),y:Math.round(h.y),tx:Math.round(target.x),
+                        ty:Math.round(target.y),boosted});
                 }
-                if (kind === 3) for (const u of w.heroes) if (alive(u) && dist(u, h) < 115) healHero(w, u, 3, h);
-                if (targets.length) for (const e of targets.slice(0, kind === 2 || kind === 3 ? 2 : 1)) emit(w, { t: 'druidAnimal', h: w.heroes.indexOf(h), kind, x: Math.round(h.x), y: Math.round(h.y), tx: Math.round(e.x), ty: Math.round(e.y), boosted });
+                if(pet===3)for(const u of w.heroes)if(alive(u)&&dist(u,h)<115)healHero(w,u,3,h);
             }
         }
         if (h.name === 'SMITESH' && alive(h)) {
