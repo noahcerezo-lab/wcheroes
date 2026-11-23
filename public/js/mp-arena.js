@@ -277,6 +277,22 @@
         // Arcane Breaker (finisher) adds a bright impact flash and an expanding magical shockwave.
         // Per-hero impact at the collision point (everyone but Noah): hitflash sheet, preset particles, recoil,
         // hit-stop on the attacker's sheet, sound, smaller number. Crits turn the impact gold.
+        // Shared palette keeps cinematics distinct without allocating per-frame textures.
+        const CINEMA = {
+            NOAH:['#8c77ff','#d6f7ff'], DESTINY:['#e9b65d','#fff3c4'],
+            MARKIE:['#d85c3b','#ffdd85'], ESPIRIT:['#67df9b','#d7ffcc'],
+            SMITESH:['#37bfd0','#c3ffff'], DAVE:['#e34b53','#ffd29a'],
+            DONNA:['#79c867','#f0ffac']
+        };
+        let bossCinematic = null, ultimateCinematic = null, victoryCinematic = null;
+        const cinematicOK = () => !reducedMotion() && pool.density >= .55;
+        const addCinematic = (kind,name,now,x,y) => {
+            if (!cinematicOK()) return;
+            const data={kind,name,at:now,x,y};
+            if(kind==='boss')bossCinematic=data;
+            else if(kind==='ultimate')ultimateCinematic=data;
+            else victoryCinematic=data;
+        };
         const IMPACT = {
             MARKIE: { preset: 'spark', dust: true, recoil: [11, 15, 20], stop: [60, 60, 95], cue: null, flash: '#FFC277' },
             DESTINY: { preset: 'slash', dust: false, recoil: [7, 9, 13], stop: [40, 45, 70], cue: 'goldStrike', flash: '#FFF1C5' },
@@ -440,6 +456,7 @@
                     emitO('dust', e.x * S, e.y * S - 6, -Math.PI / 2, .6);
                     sfx('stagger', e.h, { gain: .5 });
                     if (e.combo >= 2) comboAt = now;
+                    if (last && last[1] === 2) addCinematic('victory','VOID EMPEROR',now,e.x*S,e.y*S);
                     break;
                 }
                 case 'hurt': {
@@ -550,6 +567,7 @@
                         MARKIE: '#ff9355', ESPIRIT: '#80efaf', SMITESH: '#68ddea', DAVE: '#ffb66e', DONNA: '#b2f48b'
                     };
                     const uc = ultimatePalette[h.name] || '#fff4b5';
+                    addCinematic('ultimate',h.name,now,h.x*S,h.y*S);
                     if(h.name !== 'DONNA' && h.name !== 'DAVE' && h.name !== 'SMITESH') fx.push({ kind: 'ring', x: h.x * S, y: h.y * S,
                         r0: 12, r1: r * .7, color: uc, width: 5,
                         start: now, life: 560 });
@@ -578,6 +596,7 @@
                     break;
                 }
                 case 'boss:enter': {
+                    addCinematic('boss','THE VOID EMPEROR',now,e.x*S,e.y*S);
                     banners.push({ str: 'THE VOID EMPEROR AWAKENS', color: '#e6a8ff', born: now, life: 2300 });
                     fx.push({ kind: 'ring', x: e.x * S, y: e.y * S, r0: 8, r1: 170, color: '#bd71ef', width: 7, start: now, life: 1200 });
                     burst(e.x * S, e.y * S - 75, '#d89aff', 24, 5);
@@ -585,6 +604,7 @@
                     break;
                 }
                 case 'boss:phase': {
+                    addCinematic('boss','PHASE II • THE VOID EMPEROR',now,e.x*S,e.y*S);
                     banners.push({ str: 'VOID EMPEROR • PHASE II', color: '#ff9bc7', born: now, life: 2400 });
                     fx.push({ kind: 'ring', x: e.x*S, y: e.y*S, r0: 20, r1: 145,
                         color: '#ff77c4', width: 6, start: now, life: 850 });
@@ -617,6 +637,8 @@
                     break;
                 }
                 case 'pick': {
+                    if (cinematicOK()) fx.push({kind:'ring',x:e.x*S,y:e.y*S-35,
+                        r0:6,r1:125,color:'#ffe4a1',width:5,start:now,life:620});
                     const P = PICKUP[e.k] || PICKUP[0], h = latestHero(e.h);
                     stats.picks = (stats.picks || 0) + 1;
                     sfx('pickup', e.h);
@@ -717,8 +739,10 @@
             g.fillText(R.ARENA_NAMES[zone % 4] + ' • ARENA ' + (1 + zone), W / 2 / k, 31);
             // Squad panel (top-left), like V19's player panel. Shows who is AI-controlled.
             g.textAlign = 'left';
-            g.fillStyle = '#161326d9';
+            g.fillStyle = '#161326e8';
             g.fillRect(18, 18, 330, 30 + view.heroes.length * 22);
+            g.strokeStyle='#c39b64';g.lineWidth=2;g.strokeRect(18,18,330,30+view.heroes.length*22);
+            g.fillStyle='#d5ae74';g.fillRect(18,18,330,3);
             g.font = 'bold 15px monospace';
             g.fillStyle = '#fff';
             const humans = view.heroes.filter((h, i) => controllerOf(room, i)).length;
@@ -741,8 +765,10 @@
             // Score / wave panel (top-right), V19 layout.
             const hud = view.hud || {};
             g.textAlign = 'right';
-            g.fillStyle = '#161326d9';
+            g.fillStyle = '#161326e8';
             g.fillRect(W / k - 300, 18, 282, 74);
+            g.strokeStyle='#c39b64';g.lineWidth=2;g.strokeRect(W/k-300,18,282,74);
+            g.fillStyle='#d5ae74';g.fillRect(W/k-300,18,282,3);
             g.fillStyle = '#fff';
             g.font = 'bold 17px monospace';
             g.fillText('WAVE ' + (hud.wave || 0) + '   SCORE ' + (hud.score || 0), W / k - 30, 42);
@@ -848,8 +874,11 @@
             g.fillText(boss.name, canvas.width / 2, y - 8);
             g.fillStyle = '#382744';
             g.fillRect(x, y, width, 14);
-            g.fillStyle = '#ba60e8';
+            g.fillStyle = boss.phase >= 2 ? '#ec628c' : '#ba60e8';
             g.fillRect(x, y, width * hp, 14);
+            g.fillStyle='rgba(255,245,255,.23)';g.fillRect(x,y,width*hp,3);
+            g.fillStyle='#21152e';
+            for(let j=1;j<12;j++)g.fillRect(x+width*j/12-1,y,2,14);
             g.strokeStyle = '#e7b7ff';
             g.lineWidth = 2;
             g.strokeRect(x, y, width, 14);
@@ -1604,6 +1633,16 @@
                 g.save();
                 g.globalAlpha = .55; g.fillStyle = '#0b0914'; g.beginPath(); g.ellipse(px, py + 4, r * 1.3, r * .45, 0, 0, Math.PI * 2); g.fill();
                 g.globalCompositeOperation = 'lighter';
+                // Legendary loot pillar: a restrained tapered beam anchored to the pickup.
+                if(pool.density >= .55) {
+                    g.globalAlpha=.11+.10*pulse;g.fillStyle=P.core;
+                    g.beginPath();g.moveTo(px-7,py-19);g.lineTo(px-15,py-105-bob);
+                    g.lineTo(px+15,py-105-bob);g.lineTo(px+7,py-19);g.closePath();g.fill();
+                    g.globalAlpha=.8;g.strokeStyle=P.core;g.lineWidth=2;
+                    for(let j=0;j<3;j++){const a=now/520+j*2.094+id;
+                        g.beginPath();g.moveTo(px+Math.cos(a)*19,py-40+Math.sin(a)*7);
+                        g.lineTo(px+Math.cos(a)*24,py-51+Math.sin(a)*7);g.stroke();}
+                }
                 g.globalAlpha = .22 + .2 * pulse; g.fillStyle = P.color;
                 g.beginPath(); g.ellipse(px, py + 2, r * (2 + pulse * .5), r * (.8 + pulse * .2), 0, 0, Math.PI * 2); g.fill();
                 g.globalAlpha = .35 + .25 * pulse; g.beginPath(); g.arc(px, py - 30 + bob, r * 1.55, 0, Math.PI * 2); g.fill();
@@ -1861,6 +1900,31 @@
                 g.beginPath();g.moveTo(-29,-27);g.quadraticCurveTo(-38,4,-20,9);
                 g.moveTo(29,-27);g.quadraticCurveTo(38,4,20,9);g.stroke();
             }
+            // Class crest and weapon profile evolve with the armor, not generic helmets.
+            const crest={NOAH:'✦',DESTINY:'◆',MARKIE:'▲',ESPIRIT:'➶',
+                SMITESH:'◇',DAVE:'✕',DONNA:'❧'}[h.name]||'✦';
+            // Distinct flowing capes and weapon silhouettes from level 20 onward.
+            if(tier>=2){
+                const cp=CINEMA[h.name]||[edge,shine];
+                g.save();g.globalAlpha=.68;g.strokeStyle=cp[0];g.lineWidth=7;
+                const sway=Math.sin(now/370+h.x*.01)*6;
+                g.beginPath();g.moveTo(-16,-59);g.quadraticCurveTo(-32,-23,-20+sway,8);
+                g.moveTo(16,-59);g.quadraticCurveTo(32,-23,20+sway,8);g.stroke();
+                g.strokeStyle=cp[1];g.lineWidth=2;
+                g.beginPath();g.moveTo(-16,-59);g.lineTo(-20+sway,8);
+                g.moveTo(16,-59);g.lineTo(20+sway,8);g.stroke();g.restore();
+            }
+            g.fillStyle=shine;g.font='bold '+(tier>=2?15:11)+'px monospace';
+            g.textAlign='center';g.fillText(crest,0,-38);
+            if(tier>=2){
+                g.strokeStyle=shine;g.lineWidth=3;
+                const v=(h.name==='MARKIE'||h.name==='DAVE')?1:0;
+                for(const side of [-1,1]){
+                    g.beginPath();g.moveTo(side*27,-53);
+                    g.lineTo(side*(38+v*8),-45);
+                    g.lineTo(side*(32+v*8),-31);g.stroke();
+                }
+            }
             g.restore();
         }
         function drawHero(h, i, now, room, myId, k) {
@@ -1999,6 +2063,31 @@
                 if(wind){g.beginPath();g.arc(dir*22,-39,12,0,Math.PI*2);g.stroke();}
                 g.restore();
             }
+            // Visual threat ranks evolve with the wave, without changing collision.
+            const waveRank=Math.min(3,Math.floor(Math.max(0,((snaps[snaps.length-1]?.hud?.wave)||1)-1)/10));
+            if(waveRank>0 && fade===undefined){
+                const rankColor=waveRank===1?'#9c87bd':waveRank===2?'#db8b72':'#e6bb74';
+                g.save();g.strokeStyle=rankColor;g.fillStyle=rankColor;g.lineWidth=2+waveRank;
+                // Armored shoulders, segmented chest rune and rank-specific crown.
+                const high=art.key==='voidEmperor'?1.9:art.key==='warden'?1.2:1;
+                for(const side of [-1,1]){
+                    const x=side*art.w*.29;
+                    g.beginPath();g.moveTo(x,-46*high);
+                    g.lineTo(x+side*(9+waveRank*3),-53*high);
+                    g.lineTo(x+side*8,-38*high);g.closePath();g.stroke();
+                }
+                g.fillRect(-4,-41*high,8,3);
+                if(waveRank>=2) {
+                    g.beginPath();g.moveTo(-13,-66*high);
+                    g.lineTo(0,-(73+waveRank*3)*high);
+                    g.lineTo(13,-66*high);g.stroke();
+                }
+                if(waveRank>=3){
+                    g.globalAlpha=.65+.2*Math.sin(now/280+id);
+                    g.beginPath();g.ellipse(0,-40*high,art.w*.48,art.w*.63,0,0,Math.PI*2);g.stroke();
+                }
+                g.restore();
+            }
             if (drawn && flash) { // V19 hurt flash: 45% #FFF1C5, only on the sprite's own pixels
                 g.globalCompositeOperation = 'lighter';
                 g.globalAlpha *= .45;
@@ -2032,6 +2121,36 @@
                 g.globalAlpha = 1;
                 g.globalCompositeOperation = 'source-over';
             }
+        }
+        // Cinematic layers are brief screen-space overlays; no canvas blur or large textures.
+        function drawCinematics(now,view) {
+            if(!cinematicOK())return;
+            const W=canvas.width,H=canvas.height;
+            const drawCard=(c,duration) => {
+                if(!c)return null;
+                const age=now-c.at;if(age<0||age>duration)return null;
+                const t=age/duration,fade=Math.min(1,age/170,(duration-age)/280);
+                const pal=CINEMA[c.name]||['#a777e6','#fff2d4'];
+                g.save();g.globalAlpha=Math.max(0,fade);
+                g.fillStyle='rgba(8,5,21,.65)';
+                g.fillRect(0,H*.33,W,H*.31);
+                g.fillStyle=pal[0];g.fillRect(0,H*.33,W,3);
+                g.fillRect(0,H*.64-3,W,3);
+                g.textAlign='center';g.fillStyle=pal[1];
+                g.font='bold '+Math.round(Math.min(42,W/24))+'px monospace';
+                const label=c.kind==='ultimate'?c.name+' • ULTIMATE':c.name;
+                g.fillText(label,W/2,H*.48);
+                g.font='bold 16px monospace';g.fillStyle=pal[0];
+                g.fillText(c.kind==='boss'?'BOSS ENCOUNTER':c.kind==='victory'?'LEGENDARY VICTORY':'SIGNATURE TECHNIQUE',W/2,H*.54);
+                for(let j=0;j<8;j++){
+                    const x=W/2+(j-3.5)*55,y=H*.58+Math.sin(t*8+j)*5;
+                    g.fillStyle=j%2?pal[0]:pal[1];g.fillRect(x,y,7,7);
+                }
+                g.restore();return c;
+            };
+            if(bossCinematic&&!drawCard(bossCinematic,1700))bossCinematic=null;
+            if(ultimateCinematic&&!drawCard(ultimateCinematic,650))ultimateCinematic=null;
+            if(victoryCinematic&&!drawCard(victoryCinematic,1600))victoryCinematic=null;
         }
         function frame() {
             if (!running) return;
@@ -2116,6 +2235,7 @@
             drawBossBar(view, k);
             drawBanners(now, k);
             drawGameOver(now, view.hud);
+            drawCinematics(now,view);
             if (renderFailures.size) {
                 g.save(); g.setTransform(1,0,0,1,0,0);
                 g.fillStyle = 'rgba(42,18,42,.92)'; g.fillRect(12, canvas.height-44, 420, 31);
