@@ -1825,6 +1825,21 @@
                 g.strokeStyle=shine;g.lineWidth=2;
                 g.beginPath();g.moveTo(-12,-26);g.lineTo(0,-13);g.lineTo(12,-26);g.stroke();
             }
+            if(tier>=4) {
+                // Every further ten levels adds another visible armor rank:
+                // layered shoulder fins, gilded chest bands and extra cape length.
+                for(let rank=4;rank<=Math.min(tier,9);rank++){
+                    const offset=(rank-4)*5;
+                    g.strokeStyle=rank%2?shine:metal;g.lineWidth=2.5;
+                    for(const side of [-1,1]){
+                        g.beginPath();g.moveTo(side*(33+offset),-64);
+                        g.lineTo(side*(47+offset),-77-offset);
+                        g.lineTo(side*(39+offset),-54);g.stroke();
+                    }
+                    g.fillStyle=rank%2?shine:edge;
+                    g.fillRect(-10,-49+(rank-4)*4,20,2);
+                }
+            }
             if(tier>=3) {
                 // Ascended armor: winged pauldrons, crown rays and energy cape.
                 g.strokeStyle=shine;g.lineWidth=4;
