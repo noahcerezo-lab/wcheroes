@@ -431,7 +431,7 @@ function spawnEnemy(w, typeIndex = pickEnemyType(w)) {
     const t = ENEMY_TYPES[typeIndex], m = RULES.enemyMargin, r = rng(w), side = r < 0.4 ? 0 : r < 0.8 ? 1 : 3;
     const x = side === 0 ? -m : side === 1 ? ARENA.width + m : ARENA.minX + rng(w) * (ARENA.maxX - ARENA.minX);
     const y = side === 3 ? ARENA.height + m : ARENA.minY + 20 + rng(w) * (ARENA.maxY - ARENA.minY - 20);
-    const e = { id: w.nextEnemyId++, type: typeIndex, x, y, hp: Math.round(t.hp(w.wave) * RULES.difficultyMul * (typeIndex === ENEMY_INDEX.voidEmperor ? 2.31 : 1)), max: Math.round(t.hp(w.wave) * RULES.difficultyMul * (typeIndex === ENEMY_INDEX.voidEmperor ? 2.31 : 1)), speed: t.speed(w.wave) * RULES.moveSpeedMul * (typeIndex === ENEMY_INDEX.voidEmperor ? 1.25 : 1), dmg: Math.round(t.dmg(w.wave) * w.enemyDamageMul * RULES.difficultyMul * (typeIndex === ENEMY_INDEX.voidEmperor ? 1.4 : 1)), at: -1e9, windUntil: 0, strikeAt: -1e9, aim: null, kx: 0, ky: 0, stunUntil: 0, facing: -1, entered: false, tauntBy: -1, tauntUntil: 0 };
+    const e = { id: w.nextEnemyId++, type: typeIndex, x, y, hp: Math.round(t.hp(w.wave) * RULES.difficultyMul * (typeIndex === ENEMY_INDEX.voidEmperor ? 2.31 : 1)), max: Math.round(t.hp(w.wave) * RULES.difficultyMul * (typeIndex === ENEMY_INDEX.voidEmperor ? 2.31 : 1)), speed: t.speed(w.wave) * RULES.moveSpeedMul * (typeIndex === ENEMY_INDEX.voidEmperor ? 1.75 : 1), dmg: Math.round(t.dmg(w.wave) * w.enemyDamageMul * RULES.difficultyMul * (typeIndex === ENEMY_INDEX.voidEmperor ? 1.4 : 1)), at: -1e9, windUntil: 0, strikeAt: -1e9, aim: null, kx: 0, ky: 0, stunUntil: 0, facing: -1, entered: false, tauntBy: -1, tauntUntil: 0 };
     if (typeIndex === ENEMY_INDEX.voidEmperor) {
         e.x = ARENA.width / 2; e.y = ARENA.minY + 55; e.entered = true;
         e.armor=Math.round(e.max*.18); e.entranceUntil = w.time + 1400; e.attackCount = 0; e.attackMode = 'slam';
@@ -492,6 +492,22 @@ function stepEnemies(w) {
         }
         const d = dist(target, e) || 1;
         e.facing = Math.sign(target.x - e.x) || -1;
+        if(e.type===ENEMY_INDEX.voidEmperor && d<180 && !e.windUntil){
+            if(w.time >= (e.evadeNext||0)){
+                e.evadeNext=w.time+(e.phaseThree?1050:e.phaseTwo?1500:2100);
+                e.evadeUntil=w.time+(e.phaseThree?480:350);
+                e.evadeSide=rng(w)<.5?-1:1;
+            }
+            if(w.time<(e.evadeUntil||0)){
+                const dx=(target.x-e.x)/d,dy=(target.y-e.y)/d;
+                const retreat=d<75?.65:.12;
+                const speed=e.speed*(e.phaseThree?1.9:1.55);
+                e.x+=(-dy*e.evadeSide-dx*retreat)*speed;
+                e.y+=(dx*e.evadeSide-dy*retreat)*speed;
+                keepInside(e);
+                continue;
+            }
+        }
         const want = t.reach, inRange = d <= t.reach;
         if (d > want) {
             e.x += (target.x - e.x) / d * Math.min(e.speed*(w.fieldEvent?.kind==='blood'?1.25:1), d - want + 0.5);
