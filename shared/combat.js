@@ -326,6 +326,23 @@ function performAttack(w, h) {
     return true;
 }
 
+const FUSIONS = {
+ 'MARKIE|NOAH': {name:'DRAGONSTORM',kind:'dragon',radius:155},
+ 'DESTINY|ESPIRIT': {name:"HEAVEN'S JUDGMENT",kind:'heaven',radius:190},
+ 'MARKIE|SMITESH': {name:'CATACLYSM',kind:'steam',radius:170}
+};
+function tryFusion(w,h) {
+ if(h.ai || !h.controller || w.time < (h.fusionUntil||0)) return;
+ const mate=w.heroes.find(u=>u!==h && alive(u) && !u.ai && u.controller && w.time >= (u.fusionUntil||0) &&
+     w.time-u.specialAt<=2000 && dist(u,h)<=145 && FUSIONS[[u.name,h.name].sort().join('|')]);
+ if(!mate)return;
+ const f=FUSIONS[[mate.name,h.name].sort().join('|')], x=(h.x+mate.x)/2,y=(h.y+mate.y)/2;
+ h.fusionUntil=mate.fusionUntil=w.time+45000;
+ emit(w,{t:'fusion',kind:f.kind,name:f.name,x:Math.round(x),y:Math.round(y),r:f.radius,h:w.heroes.indexOf(h),mate:w.heroes.indexOf(mate)});
+ for(const e of [...w.enemies]) if(dist(e,{x,y})<f.radius)
+   damageEnemy(w,h,e,(h.damage+mate.damage)*1.6,{knock:f.kind==='steam'?32:12,stun:900});
+ if(f.kind==='heaven') for(const u of w.heroes) if(alive(u)&&dist(u,{x,y})<f.radius) healHero(w,u,Math.round(u.maxHp*.12),h);
+}
 function performSpecial(w, h) {
     if (!alive(h) || w.over) return false;
     const cd = h.ai ? RULES.aiSpecialCooldownMs : RULES.specialCooldownMs;
@@ -367,6 +384,7 @@ function performSpecial(w, h) {
         h.shieldUntil = w.time + k.shieldMs;
         for (const e of w.enemies) if (dist(e, h) < k.specialRadius * 1.5) { e.tauntBy = i; e.tauntUntil = w.time + k.tauntMs }
     }
+    tryFusion(w,h);
     return true;
 }
 
@@ -804,6 +822,7 @@ function snapshot(w) {
             cc: h.critChain || 0, // Critical Chain: consecutive crits
             lv: h.level || 1, // hero level (LEVEL UP every 10th wave)
             mastery: h.masteryTier || 0,
+            fusionCd: left(w,h.fusionUntil),
             evolutionOffer: h.evolutionOffer || null, evolutions: h.evolutionNames || [],
             pet: h.name === 'DONNA' && h.state === 'alive' ? Math.min(3, Math.floor(((h.level || 1) - 1) / 10)) : -1,
             petBoost: h.name === 'DONNA' && w.time < (h.animalBoostUntil || 0) ? 1 : 0,
