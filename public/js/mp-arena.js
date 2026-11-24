@@ -243,6 +243,8 @@
                 fx.push({ kind: 'crack', x: gx, y: gy, r: fin ? 90 : 62, cracks, fin, start: now, life: fin ? 520 : 400 });
                 // Fire trails and contact bursts replace the distracting circular basic-attack overlays.
                 fx.push({kind:'markieEmbers',x:gx,y:gy-20,fin,start:now,life:470});
+                burst(gx,gy-32,'#ff5418',fin?16:10,5,{life:380,size:5,lift:2,grav:.02});
+                burst(gx,gy-32,'#ffcc52',fin?10:6,4,{life:300,size:3,lift:2,grav:.01});
                 burst(gx, gy - 6, '#A7855F', fin ? 16 : 9, fin ? 5 : 3.5, { flat: .35, lift: 1.4, grav: .03, life: 520, size: 6 }); // dust
                 burst(gx, gy - 6, '#8C7A66', fin ? 10 : 5, 3, { flat: .35, lift: 1, grav: .02, life: 600, size: 7 });
                 burst(gx, gy - 10, '#FFC277', fin ? 8 : 4, 4, { life: 300, size: 4 });
@@ -556,6 +558,13 @@
                         start: now, life: 460 });
                     burst(h.x * S, h.y * S - 25, '#b5ffe1', 7, 2,
                         { life: 430, size: 3 });
+                    break;
+                }
+                case 'fusion': {
+                    const x=e.x*S,y=e.y*S, colors=e.kind==='dragon'?['#a875ff','#ff6b24']:e.kind==='heaven'?['#ffe79a','#78f3ac']:['#70e7ff','#ff7438'];
+                    fx.push({kind:'elementFusion',type:e.kind,name:e.name,x,y,r:e.r*S,colors,start:now,life:1050});
+                    for(const c of colors) burst(x,y-20,c,20,7,{life:650,size:5,lift:2});
+                    addShake(5,220,now);
                     break;
                 }
                 case 'spc': {
@@ -1199,21 +1208,22 @@
         }
         // Markie: heavy bronze cleave arc (wide, thick, hot core) -- weight before the sprite slash.
         function mightyArc(t, size, fin, aim) {
-            const r = size * .39, fade = Math.pow(1-t,.8);
+            const r = size * .44, fade = Math.pow(1-t,.65);
             const direction = Math.atan2(aim.y, Math.max(.01, Math.abs(aim.x)));
             const head = direction - 1.45 + 2.9 * Math.min(1,t*2.5);
-            const tail = head - Math.min(1.65,.25+t*4);
+            const tail = head - Math.min(2.1,.65+t*5);
             g.save(); g.lineCap='round';
             for (const [color,width,alpha] of [['#8e2418',25,.85],['#ff4817',17,.95],['#ffad29',9,1],['#fff3b0',3,1]]) {
                 g.globalAlpha=fade*alpha; g.strokeStyle=color; g.lineWidth=width*(fin?1.25:1);
                 g.beginPath(); g.arc(0,0,r,tail,head); g.stroke();
             }
-            for(let j=0;j<11;j++){
-                const a=tail+(head-tail)*j/11, rr=r+5;
+            for(let j=0;j<17;j++){
+                const a=tail+(head-tail)*j/17, rr=r+5;
                 const x=Math.cos(a)*rr,y=Math.sin(a)*rr;
-                const length=(9+7*Math.sin(j*2.4+t*13)**2)*(fin?1.3:1);
+                const length=(15+20*Math.sin(j*2.4+t*13)**2)*(fin?1.3:1);
                 g.globalAlpha=fade;g.fillStyle=j%3===0?'#ffdc64':'#ff591e';
-                g.beginPath();g.moveTo(x-4,y+3);g.lineTo(x+Math.cos(a)*length,y+Math.sin(a)*length-8);g.lineTo(x+5,y-2);g.fill();
+                g.beginPath();g.moveTo(x-7,y+5);g.quadraticCurveTo(x+Math.cos(a)*length*.5,y+Math.sin(a)*length*.5,x+Math.cos(a-.35)*length,y+Math.sin(a-.35)*length-10);g.quadraticCurveTo(x+Math.cos(a)*length*.7,y+Math.sin(a)*length*.7,x+7,y-4);g.fill();
+                g.fillStyle='#ffdf65';g.beginPath();g.moveTo(x-3,y+2);g.lineTo(x+Math.cos(a)*length*.48,y+Math.sin(a)*length*.48-5);g.lineTo(x+3,y-2);g.fill();
             }
             g.restore();
         }
@@ -1463,6 +1473,33 @@
             for (const f of fx) {
                 const el = now - f.start;
                 if (f.kind === 'ancestralGuardian' || f.kind === 'guardianPulse') { drawAncestralGuardian(f,now,view); continue }
+                if (f.kind === 'elementFusion') {
+                    const t=Math.max(0,Math.min(1,el/f.life)),fade=Math.sin(Math.PI*Math.min(.99,t+.08))*(1-t*.5);
+                    g.save();g.translate(f.x,f.y);g.globalAlpha=fade;
+                    if(f.type==='dragon'){
+                        for(let j=0;j<7;j++){
+                            const z=j/7,rad=f.r*(.18+.5*(1-z))*Math.min(1,t*4);
+                            g.strokeStyle=f.colors[j%2];g.lineWidth=9-j*.65;
+                            g.beginPath();g.ellipse(0,-z*115,rad,rad*.32,0,t*13+j*.9,t*13+j*.9+Math.PI*1.4);g.stroke();
+                        }
+                    }else if(f.type==='heaven'){
+                        for(let j=0;j<22;j++){
+                            const a=j*2.39996,rad=f.r*Math.sqrt((j+.5)/22)*.85,x=Math.cos(a)*rad,y=Math.sin(a)*rad*.65;
+                            const p=(t*2+j*.073)%1;
+                            g.strokeStyle=f.colors[j%2];g.lineWidth=3;
+                            g.beginPath();g.moveTo(x+20,y-95*(1-p));g.lineTo(x,y-65*(1-p));g.stroke();
+                            if(p>.8){g.fillStyle='#fff5bf';g.fillRect(x-3,y-3,6,6);}
+                        }
+                    }else{
+                        for(let j=0;j<24;j++){
+                            const a=j*Math.PI/12,rad=f.r*t*.9,x=Math.cos(a)*rad,y=Math.sin(a)*rad*.6;
+                            g.save();g.translate(x,y);g.rotate(a);g.fillStyle=f.colors[j%2];
+                            g.beginPath();g.moveTo(-12,-6);g.lineTo(25*(1-t),0);g.lineTo(-12,6);g.fill();g.restore();
+                        }
+                    }
+                    g.globalAlpha=1-t;g.font='bold 15px sans-serif';g.textAlign='center';g.strokeStyle='#18101f';g.lineWidth=4;g.strokeText(f.name,0,-f.r*.45-25);g.fillStyle='#fff0bb';g.fillText(f.name,0,-f.r*.45-25);
+                    g.restore();continue;
+                }
                 if (f.kind === 'markieFireImpact') {
                     const t=Math.max(0,Math.min(1,el/f.life)),fade=(1-t)**1.5, scale=f.fin?1.35:1;
                     g.save();g.translate(f.x,f.y);g.rotate(f.ang);g.scale(scale,scale);
