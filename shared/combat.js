@@ -181,7 +181,7 @@ const emit = (w, e) => { w.events.push(e) };
 // ---------------- damage ----------------
 function damageEnemy(w, hero, e, base, o = {}) {
     if (e.hp <= 0) return;
-    let d = base * (w.time < hero.buffUntil ? KITS.DESTINY.buffMul : 1) * (w.time < (hero.awakenUntil || 0) ? 1.25 : 1);
+    let d = base * (w.fieldEvent?.kind==='blessing'?1.25:1) * (w.time < hero.buffUntil ? KITS.DESTINY.buffMul : 1) * (w.time < (hero.awakenUntil || 0) ? 1.25 : 1);
     const crit = rng(w) < critChance(hero, w);
     if (crit) d *= RULES.critMul;
     hero.critChain = crit ? (hero.critChain || 0) + 1 : 0; // consecutive crits; any normal hit breaks it
@@ -217,7 +217,7 @@ function killEnemy(w, hero, e) {
 function damageHero(w, h, amount, by) {
     if (!alive(h) || w.over) return;
     if (h.evolutionOffer && w.time < h.evolutionOffer.until) return;
-    let d = amount * damageTakenMul(h.stats) * Math.pow(.85,evo(h,'guard'));
+    let d = amount * (w.fieldEvent?.kind==='blood'?1.15:1) * damageTakenMul(h.stats) * Math.pow(.85,evo(h,'guard'));
     if (w.time < h.shieldUntil) d *= KITS.MARKIE.shieldMul;
     if (w.time < h.wardUntil) d *= RULES.wardMul;
     d = Math.max(1, Math.round(d));
@@ -489,8 +489,8 @@ function stepEnemies(w) {
         e.facing = Math.sign(target.x - e.x) || -1;
         const want = t.reach, inRange = d <= t.reach;
         if (d > want) {
-            e.x += (target.x - e.x) / d * Math.min(e.speed, d - want + 0.5);
-            e.y += (target.y - e.y) / d * Math.min(e.speed, d - want + 0.5);
+            e.x += (target.x - e.x) / d * Math.min(e.speed*(w.fieldEvent?.kind==='blood'?1.25:1), d - want + 0.5);
+            e.y += (target.y - e.y) / d * Math.min(e.speed*(w.fieldEvent?.kind==='blood'?1.25:1), d - want + 0.5);
             keepInside(e);
         }
         if (e.type === ENEMY_INDEX.voidEmperor && !e.phaseTwo && e.hp <= e.max * .5) {
@@ -528,10 +528,44 @@ function stepEnemies(w) {
 const waveSize = n => Math.min(60, 5 + 3 * n);
 const spawnIntervalTicks = n => Math.max(4, 16 - n);
 
+const FIELD_EVENTS=[
+ {kind:'blood',name:'BLOOD MOON',desc:'Enemies move faster and hit harder'},
+ {kind:'blessing',name:"DRAGON'S BLESSING",desc:'All heroes deal 25% more damage'},
+ {kind:'meteor',name:'METEOR STORM',desc:'Dodge marked meteor impacts'},
+ {kind:'renewal',name:'ANCESTRAL BLESSING',desc:'All living heroes regenerate health'}
+];
+function stepFieldEvent(w){
+ const f=w.fieldEvent;
+ if(!f||w.waveState!=='fighting')return;
+ if(f.kind==='renewal'&&w.time>=f.next){
+   f.next=w.time+2000;
+   for(const h of w.heroes)if(alive(h))healHero(w,h,Math.max(1,Math.round(h.maxHp*.035)),h);
+ }
+ if(f.kind==='meteor'){
+   if(f.mark&&w.time>=f.mark.at){
+     const p=f.mark;f.mark=null;
+     emit(w,{t:'meteorImpact',x:p.x,y:p.y,r:48});
+     for(const h of w.heroes)if(alive(h)&&dist(h,p)<48)damageHero(w,h,Math.round(h.maxHp*.09),null);
+     const hero=w.heroes.find(alive);
+     if(hero)for(const e of [...w.enemies])if(dist(e,p)<48)damageEnemy(w,hero,e,hero.damage*1.5,{knock:15});
+   }
+   if(!f.mark&&w.time>=f.next){
+     const candidates=w.heroes.filter(alive);
+     if(candidates.length){
+       const h=candidates[Math.floor(rng(w)*candidates.length)];
+       f.mark={x:Math.round(h.x),y:Math.round(h.y),at:w.time+1100};
+       emit(w,{t:'meteorWarn',x:f.mark.x,y:f.mark.y,r:48});
+     }
+     f.next=w.time+3200;
+   }
+ }
+}
 function startWave(w) {
     w.wave++;
     w.waveState = 'fighting';
     w.bossWave = isBossWave(w.wave);
+    w.fieldEvent=null;
+    if(w.wave>=3 && !w.bossWave && w.wave%3===0){const f=FIELD_EVENTS[Math.floor(rng(w)*FIELD_EVENTS.length)];w.fieldEvent={...f,next:w.time+1800,mark:null};emit(w,{t:'fieldEvent',kind:f.kind,name:f.name,desc:f.desc});}
     w.toSpawn = w.bossWave ? 3 : Math.ceil(waveSize(w.wave) * RULES.difficultyMul);
     w.spawnTimer = 0;
     w.zone = Math.floor(Math.max(0, w.wave - 1) / 15) % 4; // V19: battlefield changes every 15 waves
@@ -550,6 +584,7 @@ function stepWaves(w) {
         w.spawnTimer = spawnIntervalTicks(w.wave);
     }
     if (w.toSpawn === 0 && w.enemies.length === 0) {
+        w.fieldEvent=null;
         w.waveState = 'intermission';
         w.nextWaveAt = w.time + RULES.intermissionMs;
         for (const h of w.heroes) if (alive(h)) h.hp = Math.min(h.maxHp, h.hp + RULES.waveClearHeal);
@@ -817,6 +852,7 @@ function step(w) {
         for (const h of w.heroes) if(alive(h)&&Math.hypot(h.x-p.tx,(h.y-p.ty)*1.2)<22) damageHero(w,h,p.dmg,{id:p.from});
     }
     stepPassives(w);
+    stepFieldEvent(w);
     stepWaves(w);
     stepPickups(w);
     if (w.heroes.every(h => h.state === 'downed')) {
@@ -838,6 +874,7 @@ function snapshot(w) {
         tick: w.tick, time: w.time, zone: w.zone, wave: w.wave, ws: w.waveState === 'fighting' ? 1 : 0,
         next: w.waveState === 'intermission' ? Math.max(0, w.nextWaveAt - w.time) : 0, left: w.toSpawn + w.enemies.length,
         score: w.score, kills: w.kills, combo: w.time < w.comboUntil ? w.combo : 0, over: w.over ? 1 : 0,
+        fieldEvent: w.fieldEvent ? {kind:w.fieldEvent.kind,name:w.fieldEvent.name,desc:w.fieldEvent.desc,mark:w.fieldEvent.mark} : null,
         boss: w.bossWave && w.waveState === 'fighting' ? (() => { const e = w.enemies.find(e => e.type === ENEMY_INDEX.voidEmperor); return e ? { id: e.id, hp: Math.max(0, e.hp), max: e.max, name: 'VOID EMPEROR', mode: e.attackMode, entering: w.time < (e.entranceUntil || 0) ? 1 : 0 } : null })() : null,
         heroes: w.heroes.map(h => ({
             name: h.name, x: h.x, y: h.y, vx: h.vx, vy: h.vy, facing: h.facing, aim: h.aim, moving: h.moving, controller: h.controller, seq: h.seq,
