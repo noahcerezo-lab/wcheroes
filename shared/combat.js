@@ -182,6 +182,11 @@ const emit = (w, e) => { w.events.push(e) };
 function damageEnemy(w, hero, e, base, o = {}) {
     if (e.hp <= 0) return;
     let d = base * (w.fieldEvent?.kind==='blessing'?1.25:1) * (w.time < hero.buffUntil ? KITS.DESTINY.buffMul : 1) * (w.time < (hero.awakenUntil || 0) ? 1.25 : 1);
+    if(e.type===ENEMY_INDEX.voidEmperor && e.armor>0){
+        const absorbed=Math.min(e.armor,Math.max(1,Math.round(d*.55)));
+        e.armor-=absorbed;d-=absorbed;
+        if(e.armor<=0){e.stunUntil=Math.max(e.stunUntil,w.time+1800);emit(w,{t:'boss:phase',id:e.id,x:Math.round(e.x),y:Math.round(e.y),phase:1});}
+    }
     const crit = rng(w) < critChance(hero, w);
     if (crit) d *= RULES.critMul;
     hero.critChain = crit ? (hero.critChain || 0) + 1 : 0; // consecutive crits; any normal hit breaks it
@@ -429,7 +434,7 @@ function spawnEnemy(w, typeIndex = pickEnemyType(w)) {
     const e = { id: w.nextEnemyId++, type: typeIndex, x, y, hp: Math.round(t.hp(w.wave) * RULES.difficultyMul * (typeIndex === ENEMY_INDEX.voidEmperor ? 1.65 : 1)), max: Math.round(t.hp(w.wave) * RULES.difficultyMul * (typeIndex === ENEMY_INDEX.voidEmperor ? 1.65 : 1)), speed: t.speed(w.wave) * RULES.moveSpeedMul * (typeIndex === ENEMY_INDEX.voidEmperor ? 1.25 : 1), dmg: Math.round(t.dmg(w.wave) * w.enemyDamageMul * RULES.difficultyMul), at: -1e9, windUntil: 0, strikeAt: -1e9, aim: null, kx: 0, ky: 0, stunUntil: 0, facing: -1, entered: false, tauntBy: -1, tauntUntil: 0 };
     if (typeIndex === ENEMY_INDEX.voidEmperor) {
         e.x = ARENA.width / 2; e.y = ARENA.minY + 55; e.entered = true;
-        e.entranceUntil = w.time + 1400; e.attackCount = 0; e.attackMode = 'slam';
+        e.armor=Math.round(e.max*.18); e.entranceUntil = w.time + 1400; e.attackCount = 0; e.attackMode = 'slam';
         emit(w, { t: 'boss:enter', id: e.id, x: Math.round(e.x), y: Math.round(e.y), name: 'VOID EMPEROR' });
     }
     w.enemies.push(e);
@@ -495,16 +500,21 @@ function stepEnemies(w) {
         }
         if (e.type === ENEMY_INDEX.voidEmperor && !e.phaseTwo && e.hp <= e.max * .5) {
             e.phaseTwo = true;
+            for(let i=0;i<2;i++)spawnEnemy(w,ENEMY_INDEX.spiritArcher);
             e.windUntil = 0;
             e.aim = null;
             e.at = w.time;
             emit(w, { t: 'boss:phase', id: e.id, x: Math.round(e.x), y: Math.round(e.y), phase: 2 });
         }
-        const bossCooldown = e.type === ENEMY_INDEX.voidEmperor && e.phaseTwo ? t.atkMs * .78 : t.atkMs;
+        if(e.type===ENEMY_INDEX.voidEmperor && !e.phaseThree && e.hp<=e.max*.25){
+            e.phaseThree=true;e.speed*=1.25;e.dmg=Math.round(e.dmg*1.2);e.at=w.time;
+            emit(w,{t:'boss:phase',id:e.id,x:Math.round(e.x),y:Math.round(e.y),phase:3});
+        }
+        const bossCooldown = e.type === ENEMY_INDEX.voidEmperor ? t.atkMs*(e.phaseThree?.55:e.phaseTwo?.78:1) : t.atkMs;
         if (e.type === ENEMY_INDEX.voidEmperor && w.time - e.at >= bossCooldown && d <= 250) {
             e.at = w.time;
             e.attackCount = (e.attackCount || 0) + 1;
-            e.attackMode = e.attackCount % 2 === 0 ? 'target' : 'slam';
+            e.attackMode = e.phaseThree || e.attackCount % 2 === 0 ? 'target' : 'slam';
             e.windUntil = w.time + (e.attackMode === 'target' ? (e.phaseTwo ? 850 : 1100) : (e.phaseTwo ? Math.round(t.windMs * .8) : t.windMs));
             if (e.attackMode === 'slam') emit(w, { t: 'boss:warning', id: e.id, x: Math.round(e.x), y: Math.round(e.y), r: t.slamR, ms: e.windUntil - w.time });
             if (e.attackMode === 'target') {
