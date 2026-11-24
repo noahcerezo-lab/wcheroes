@@ -27,7 +27,7 @@
     function show(id) {
         for (const key of ['entry', 'lobby', 'battle']) $(key).classList.toggle('hidden', key !== id);
         document.body.classList.toggle('in-battle', id === 'battle');
-        if (id === 'battle') $('notice').textContent = ''; else renderEvolution(null);
+        if (id === 'battle') $('notice').textContent = ''; else { renderEvolution(null); renderFusion(null); }
     }
     function note(msg, ms = 6500) {
         $('notice').textContent = msg;
@@ -155,12 +155,38 @@
         }
         evolutionPanel.querySelector('[data-countdown]').textContent='Protected while choosing • '+Math.max(0,Math.ceil((p.until-w.time)/1000))+'s • Auto-selects when time expires';
     }
+    const fusionHint=document.createElement('div');
+    fusionHint.setAttribute('role','status');
+    fusionHint.style.cssText='display:none;position:fixed;z-index:90;pointer-events:none;text-align:center;padding:5px 9px;border:1px solid #eac67e;border-radius:7px;background:#20152eeb;color:#ffe4a0;font:bold 11px system-ui;white-space:nowrap;box-shadow:0 0 12px #d99a4555';
+    document.body.appendChild(fusionHint);
+    const fusionPairs={'MARKIE|NOAH':'Dragonstorm','DESTINY|ESPIRIT':"Heaven’s Judgment",'MARKIE|SMITESH':'Cataclysm'};
+    let fusionPrevious=new Map();
+    function renderFusion(w){
+        if(!w){fusionHint.style.display='none';fusionPrevious.clear();return;}
+        const h=w.heroes.find(v=>v.controller && v.controller===myId());
+        const next=new Map();
+        for(const u of w.heroes){
+            const old=fusionPrevious.get(u.name);
+            next.set(u.name,{n:u.specialN,at:old&&old.n!==u.specialN?w.time:old?.at??-1e9});
+        }
+        fusionPrevious=next;
+        if(!h||h.state||h.fusionCd||h.evolutionOffer){fusionHint.style.display='none';return;}
+        const mate=w.heroes.find(u=>u!==h&&u.controller&&!u.state&&!u.fusionCd&&Math.hypot(u.x-h.x,u.y-h.y)<=145&&fusionPairs[[h.name,u.name].sort().join('|')]&&
+            (!u.cd||w.time-next.get(u.name).at<=2000));
+        if(!mate|| (h.cd&&w.time-next.get(h.name).at>2000)){fusionHint.style.display='none';return;}
+        const name=fusionPairs[[h.name,mate.name].sort().join('|')];
+        fusionHint.textContent=(mate.cd&&!h.cd?'FUSE NOW!':h.cd?'PARTNER: USE SPECIAL':'FUSION READY')+' · '+name;
+        const button=$('special-touch'), rect=button?.getBoundingClientRect();
+        fusionHint.style.display='block';
+        if(rect&&rect.width&&rect.height){fusionHint.style.left=Math.max(4,Math.min(innerWidth-fusionHint.offsetWidth-4,rect.left+rect.width/2-fusionHint.offsetWidth/2))+'px';fusionHint.style.top=Math.max(4,rect.top-fusionHint.offsetHeight-7)+'px';}
+        else{fusionHint.style.left=Math.max(4,(innerWidth-fusionHint.offsetWidth)/2)+'px';fusionHint.style.top='12px';}
+    }
     // ---------- server events ----------
     socket.on('room:update', r => { room = r; render() });
-    socket.on('battle:start', w => { resetJoy(); world = w; arena.reset(); arena.push(w); resetPrediction(); reconcile(w); show('battle') });
-    socket.on('battle:state', w => { world = w; reconcile(w); arena.push(w); renderEvolution(w) });
+    socket.on('battle:start', w => { resetJoy(); renderFusion(null); world = w; arena.reset(); arena.push(w); resetPrediction(); reconcile(w); show('battle') });
+    socket.on('battle:state', w => { world = w; reconcile(w); arena.push(w); renderEvolution(w); renderFusion(w) });
     socket.on('battle:end', e => {
-        resetJoy(); world = null; renderEvolution(null); arena.reset(); resetPrediction();
+        resetJoy(); world = null; renderEvolution(null); renderFusion(null); arena.reset(); resetPrediction();
         if (e?.reason === 'wipe') note('Squad defeated on wave ' + e.wave + ' — score ' + e.score + ', ' + e.kills + ' KOs. Ready up to play again!', 12000);
         else note('Back in the lobby' + (e?.by ? ' — ' + e.by + ' ended the round.' : '.'));
     });
