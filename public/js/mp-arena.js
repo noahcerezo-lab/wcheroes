@@ -463,6 +463,7 @@
                     const h = latestHero(e.h);
                     if (!h) break;
                     floatText(h.x * S, h.y * S - 95, '-' + e.d, NUM.hurt, 17); burst(h.x * S, h.y * S - 40, '#FF6574', 4);
+                    if (anim && SH && SH.conceptEnabled) anim.onHurt(e.h, now); // concept-art hurt frames (?newart=1 only)
                     const myId = opts.getMyId && opts.getMyId();
                     if (myId && h.controller === myId) addShake(3, 120, now); // only when YOUR hero is hit
                     break;
@@ -568,6 +569,7 @@
                     };
                     const uc = ultimatePalette[h.name] || '#fff4b5';
                     addCinematic('ultimate',h.name,now,h.x*S,h.y*S);
+                    if (anim && anim.onSpecial) anim.onSpecial(e.h, now); // concept-art special pose (cosmetic)
                     if(h.name !== 'DONNA' && h.name !== 'DAVE' && h.name !== 'SMITESH') fx.push({ kind: 'ring', x: h.x * S, y: h.y * S,
                         r0: 12, r1: r * .7, color: uc, width: 5,
                         start: now, life: 560 });
@@ -1876,10 +1878,13 @@
             const entity = Object.assign({ name: h.name, facing: h.facing === -1 ? -1 : 1, moving: !!h.moving && !h.state, color, upgradeTier: h.upgradeTier || 0, theme: ART_THEME }, poseFor(i, now));
             if (h.state) { // downed: lying on the ground, greyed, with a revive progress ring
                 g.save();
-                g.globalAlpha = .6;
-                g.rotate(-Math.PI / 2 * (h.facing === -1 ? -1 : 1));
-                g.translate(0, 20);
-                R.drawSprite(g, 0, 0, color, false, h.name, 0, Object.assign(entity, { moving: false }));
+                g.globalAlpha = .88; // concept art carries its own darkening
+                if (!(anim && anim.drawConceptDown && anim.drawConceptDown(g, h, i, now, null))) {
+                    g.globalAlpha = .6;
+                    g.rotate(-Math.PI / 2 * (h.facing === -1 ? -1 : 1));
+                    g.translate(0, 20);
+                    R.drawSprite(g, 0, 0, color, false, h.name, 0, Object.assign(entity, { moving: false }));
+                }
                 g.restore();
                 g.save();
                 g.strokeStyle = '#3a2a3a'; g.lineWidth = 6;
@@ -1889,7 +1894,7 @@
                 g.fillStyle = '#ffb3b3'; g.font = 'bold 12px monospace'; g.textAlign = 'center';
                 g.fillText(h.rv ? 'REVIVING' : 'DOWN', 0, -36);
                 g.restore();
-            } else if (anim && anim.hasPose(h.name)) { if (env) env.shadow(g, 1, 46); anim.drawHero(g, h, i, now, k, lookFor(role, color)) }
+            } else if (anim && anim.hasPose(h.name)) { if (anim.clearDown) anim.clearDown(i); if (env) env.shadow(g, 1, 46); anim.drawHero(g, h, i, now, k, lookFor(role, color)) }
             else R.drawSprite(g, 0, 0, color, false, h.name, now, entity);
             if (!h.state && (h.buff || h.shield) && A) A.loop(g, 'buffAura', now, 0, -34, 58, null, false, .85, i * 90);
             drawHeroFinish(h, i, now, role, k); // rally buff / Markie shield

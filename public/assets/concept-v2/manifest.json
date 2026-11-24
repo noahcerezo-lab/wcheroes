@@ -1,0 +1,85 @@
+{
+ "version": 3,
+ "feet": 122,
+ "anims": {
+  "idle": {
+   "n": 6,
+   "fw": 96,
+   "fh": 128,
+   "ms": 150,
+   "loop": true
+  },
+  "run": {
+   "n": 8,
+   "fw": 96,
+   "fh": 128,
+   "ms": 85,
+   "loop": true
+  },
+  "attack": {
+   "n": 8,
+   "fw": 96,
+   "fh": 128,
+   "ms": 0,
+   "loop": false
+  },
+  "special": {
+   "n": 8,
+   "fw": 96,
+   "fh": 128,
+   "ms": 70,
+   "loop": false
+  },
+  "hurt": {
+   "n": 4,
+   "fw": 96,
+   "fh": 128,
+   "ms": 70,
+   "loop": false
+  },
+  "down": {
+   "n": 4,
+   "fw": 128,
+   "fh": 128,
+   "ms": 160,
+   "loop": false
+  }
+ },
+ "heroes": {
+  "noah": {
+   "tiers": [
+    0
+   ]
+  },
+  "destiny": {
+   "tiers": [
+    0
+   ]
+  },
+  "markie": {
+   "tiers": [
+    0
+   ]
+  },
+  "espirit": {
+   "tiers": [
+    0
+   ]
+  },
+  "smitesh": {
+   "tiers": [
+    0
+   ]
+  },
+  "dave": {
+   "tiers": [
+    0
+   ]
+  },
+  "donna": {
+   "tiers": [
+    0
+   ]
+  }
+ }
+}

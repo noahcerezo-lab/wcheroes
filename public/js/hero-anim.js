@@ -73,7 +73,7 @@
         const sil = new Map(); // silhouette cache: art canvas + color -> canvas
 
         function heroState(i) {
-            return st[i] || (st[i] = { atk: null, hurtAt: -1e9, cloth: 0, clothV: 0, lastX: null, shardAcc: 0, lvAt: -1e9 });
+            return st[i] || (st[i] = { atk: null, hurtAt: -1e9, cloth: 0, clothV: 0, lastX: null, shardAcc: 0, lvAt: -1e9, spcAt: -1e9, downAt: -1e9 });
         }
         function silhouette(art, color) {
             let m = sil.get(art); if (!m) { m = {}; sil.set(art, m) }
@@ -141,6 +141,17 @@
         function attackLife(a) { if (a.name === 'ESPIRIT') return bowEnd(a); const T = timing(a); return T ? Math.max(T.a + T.s + Math.max(T.r, T.rel), fxEnd(a)) : 300 }
         function onHurt(i, now) { heroState(i).hurtAt = now }
         function onLevelUp(i, now) { heroState(i).lvAt = now }
+        function onSpecial(i, now) { heroState(i).spcAt = now }
+        // Concept-art downed pose (collapse once, then lie and breathe). False if the sheet isn't loaded.
+        function drawConceptDown(g, h, i, now, look) {
+            if (!SHEETS || !SHEETS.conceptEnabled) return false;
+            const s = heroState(i);
+            if (!s.wasDown) { s.wasDown = true; s.downAt = now }
+            const el = now - s.downAt;
+            const frame = el < 480 ? SHEETS.conceptFrame('down', el) : 2 + (Math.floor(el / 700) % 2);
+            return SHEETS.drawConcept(g, h.name, 'down', frame, h.facing === -1, look, h.lv);
+        }
+        function clearDown(i) { const s = st[i]; if (s) s.wasDown = false }
 
         // ---------- Noah pose ----------
         const ANG = { from: 0, to: 0 };
@@ -678,17 +689,19 @@
             const a = liveAtk(s, h, now);
             // Opt-in art validation: keep authoritative combat and separate FX.
             // Fall back to the canonical body if this specific sheet is missing.
-            if(SHEETS && SHEETS.conceptEnabled){
-                const hurt=now-s.hurtAt;
-                const action=h.state==='down'?'down':
-                    hurt>=0&&hurt<280?'hurt':
-                    a?'attack':h.moving?'run':'idle';
-                const count={idle:6,run:8,attack:8,hurt:4,down:4}[action];
-                const elapsedMs=action==='attack'?Math.max(0,now-a.start):
-                    action==='hurt'?hurt:now+h.name.length*97;
-                const frame=Math.floor(elapsedMs/(action==='run'?80:action==='attack'?70:120))%count;
-                if(SHEETS.drawConcept(g,h.name,action,frame,h.facing===-1,look))
-                    return null;
+            if (SHEETS && SHEETS.conceptEnabled) {
+                const hurt = now - s.hurtAt, spc = now - s.spcAt;
+                const SPC_MS = 560; // 8 frames x 70 ms, cosmetic only
+                const action = spc >= 0 && spc < SPC_MS ? 'special' :
+                    hurt >= 0 && hurt < 280 && !a ? 'hurt' :
+                    a ? 'attack' : h.moving ? 'run' : 'idle';
+                const frame = action === 'attack' ? SHEETS.conceptFrame('attack', elapsed(a, now), attackLife(a)) :
+                    action === 'special' ? SHEETS.conceptFrame('special', spc) :
+                    action === 'hurt' ? SHEETS.conceptFrame('hurt', hurt) :
+                    SHEETS.conceptFrame(action, now + h.name.length * 97); // de-sync idle/run between heroes
+                // face the swing direction while attacking, else the hero's facing
+                const flip = (action === 'attack' && a && a.facing ? a.facing : h.facing === -1 ? -1 : 1) === -1;
+                if (SHEETS.drawConcept(g, h.name, action, frame, flip, look, h.lv)) return null;
             }
             // Keep Noah's idle stance and Espirit's shooting pose anatomically readable.
             // Prefer consistent pose geometry for Noah's idle and Espirit's bow,
@@ -917,7 +930,7 @@
         }
         function hasPose(name) { return name === 'NOAH' || name === 'MARKIE' || name === 'DESTINY' || name === 'ESPIRIT' || name === 'SMITESH' || name === 'DAVE' || name === 'DONNA' }
         const usingSheets = () => !!(SHEETS && !opts.procedural);
-        return { usingSheets, onAttack, contactAt, releaseAt, hitStop, onHurt, onLevelUp, drawHero, drawFx, hasPose, stateOf: i => st[i], NOAH_T, MARKIE_T, DESTINY_T, BOW, attackLife, bowRel };
+        return { usingSheets, onAttack, contactAt, releaseAt, hitStop, onHurt, onLevelUp, onSpecial, drawConceptDown, clearDown, drawHero, drawFx, hasPose, stateOf: i => st[i], NOAH_T, MARKIE_T, DESTINY_T, BOW, attackLife, bowRel };
     }
     root.WCHHeroAnim = { create, SQ };
 })(window);

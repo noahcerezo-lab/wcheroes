@@ -19,6 +19,7 @@
     const keys = {}, touch = { x: 0, y: 0, attack: false, special: false };
     const tapped = { attack: false, special: false }; // a quick tap between two input ticks still counts
     const predictionOn = params.get('predict') !== '0';
+    const keepArt = params.get('newart') === '1' ? '&newart=1' : ''; // keep the art preview flag in room URLs
 
     if (window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0) document.body.classList.add('touch');
 
@@ -39,14 +40,14 @@
         });
     }
     const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    const invite = () => location.origin + location.pathname + '?room=' + room.code;
+    const invite = () => location.origin + location.pathname + '?room=' + room.code + keepArt;
     const myId = () => me?.playerId || null;
 
     // ---------- session ----------
     function saveSession(r) {
         me = { playerId: r.playerId, token: r.token, code: r.code };
         try { localStorage.setItem(STORE_KEY, JSON.stringify(me)) } catch {}
-        history.replaceState({}, '', '?room=' + r.code);
+        history.replaceState({}, '', '?room=' + r.code + keepArt);
     }
     function clearSession() {
         me = null;
@@ -128,7 +129,7 @@
     $('ready').onclick = () => { const mine = room?.players.find(p => p.id === myId()); send('player:ready', { ready: !mine?.ready }) };
     $('start').onclick = () => send('room:start', {});
     $('toLobby').onclick = () => send('room:lobby', {});
-    const leave = () => { resetJoy(); socket.emit('room:leave'); clearSession(); room = null; world = null; arena.reset(); resetPrediction(); history.replaceState({}, '', location.pathname); show('entry') };
+    const leave = () => { resetJoy(); socket.emit('room:leave'); clearSession(); room = null; world = null; arena.reset(); resetPrediction(); history.replaceState({}, '', location.pathname + (keepArt ? '?newart=1' : '')); show('entry') };
     $('leaveLobby').onclick = leave;
     $('leaveBattle').onclick = () => { if (confirm('Leave the battle? Your hero becomes an AI teammate.')) leave() };
     $('copy').onclick = async () => {
