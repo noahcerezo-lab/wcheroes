@@ -280,6 +280,12 @@ io.on('connection', socket => {
         if (data.attack === true) h.wantAttack = true;
         if (data.special === true) h.wantSpecial = true;
     });
+    socket.on('evolution:choose', limited(socket, (data, ack) => {
+        const {r,p}=ctx();
+        const h=r?.phase==='battle' && r.world?.heroes[r.activeRoster.indexOf(p?.hero)];
+        if(!h || !data || !COMBAT.chooseEvolution(r.world,h,data.id,data.level)) return safeAck(ack,{ok:false,error:'Evolution unavailable'});
+        safeAck(ack,{ok:true});
+    }));
     socket.on('room:leave', () => leave(socket));
     socket.on('disconnect', () => drop(socket));
 });
