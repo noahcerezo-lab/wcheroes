@@ -155,7 +155,8 @@
         g.imageSmoothingEnabled = false;
         g.save();
         if (flip) g.scale(-1, 1);
-        if (look && look.fx !== undefined) g.globalAlpha *= look.fx;
+        // look.fx dims only attack/ability FX for allies; hero bodies always draw fully opaque
+        // (like the classic renderer). Real state fades (downed) are set by the caller's globalAlpha.
         g.drawImage(im, f * A.fw, 0, A.fw, A.fh, -A.fw / 2 * sc, -(conceptMeta.feet || 122) * sc, A.fw * sc, A.fh * sc);
         g.restore();
         g.imageSmoothingEnabled = wasSmooth;
