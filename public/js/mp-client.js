@@ -27,7 +27,7 @@
     function show(id) {
         for (const key of ['entry', 'lobby', 'battle']) $(key).classList.toggle('hidden', key !== id);
         document.body.classList.toggle('in-battle', id === 'battle');
-        if (id === 'battle') $('notice').textContent = '';
+        if (id === 'battle') $('notice').textContent = ''; else renderEvolution(null);
     }
     function note(msg, ms = 6500) {
         $('notice').textContent = msg;
@@ -136,12 +136,31 @@
         try { await navigator.clipboard.writeText(invite()); note('Invite link copied!') } catch { note('Share this link: ' + invite()) }
     };
 
+    // Evolution cards: snapshot-driven, including reconnects.
+    const evolutionPanel=document.createElement('section');
+    evolutionPanel.style.cssText='display:none;position:fixed;z-index:1000;top:50%;left:50%;transform:translate(-50%,-50%);width:min(94vw,620px);max-height:90dvh;overflow:auto;padding:16px;border:1px solid #d9ad69;border-radius:14px;background:#181121f5;color:#f8e6bd;box-shadow:0 12px 50px #0009;text-align:center';
+    document.body.appendChild(evolutionPanel);
+    let evolutionKey='';
+    function renderEvolution(w){
+        const h=w?.heroes.find(h=>h.controller && h.controller===myId()), p=h?.evolutionOffer;
+        if(!p){evolutionPanel.style.display='none';evolutionKey='';return;}
+        const key=h.name+':'+p.level;
+        if(key!==evolutionKey){
+            evolutionKey=key;
+            evolutionPanel.innerHTML='<div style="font-size:11px;letter-spacing:3px;color:#d9ad69">ASCENSION • LEVEL '+p.level+'</div><h2 style="margin:6px 0 10px;font-size:20px">CHOOSE YOUR EVOLUTION</h2><div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">'+p.cards.map((c,i)=>'<button type="button" data-evo="'+c.id+'" style="min-width:0;white-space:normal;min-height:110px;padding:10px 6px;border:1px solid #a77d49;border-radius:9px;background:linear-gradient(160deg,#3d2949,#21182e);color:#ffe4ac"><span style="display:block;font-size:25px;margin-bottom:6px">'+['✦','◆','✧'][i]+'</span><strong>'+esc(c.name)+'</strong><span style="display:block;font-size:12px;line-height:1.3;margin-top:6px;color:#e4d8ec">'+esc(c.description)+'</span></button>').join('')+'</div><div data-countdown style="font-size:12px;margin-top:10px;color:#cbb7d2"></div>';
+            evolutionPanel.querySelectorAll('[data-evo]').forEach(b=>b.onclick=()=>{
+                socket.emit('evolution:choose',{id:Number(b.dataset.evo),level:p.level},res=>{if(!res?.ok)note(res?.error||'Selection expired');});
+            });
+            evolutionPanel.style.display='block';
+        }
+        evolutionPanel.querySelector('[data-countdown]').textContent='Protected while choosing • '+Math.max(0,Math.ceil((p.until-w.time)/1000))+'s • Auto-selects when time expires';
+    }
     // ---------- server events ----------
     socket.on('room:update', r => { room = r; render() });
     socket.on('battle:start', w => { resetJoy(); world = w; arena.reset(); arena.push(w); resetPrediction(); reconcile(w); show('battle') });
-    socket.on('battle:state', w => { world = w; reconcile(w); arena.push(w) });
+    socket.on('battle:state', w => { world = w; reconcile(w); arena.push(w); renderEvolution(w) });
     socket.on('battle:end', e => {
-        resetJoy(); world = null; arena.reset(); resetPrediction();
+        resetJoy(); world = null; renderEvolution(null); arena.reset(); resetPrediction();
         if (e?.reason === 'wipe') note('Squad defeated on wave ' + e.wave + ' — score ' + e.score + ', ' + e.kills + ' KOs. Ready up to play again!', 12000);
         else note('Back in the lobby' + (e?.by ? ' — ' + e.by + ' ended the round.' : '.'));
     });
