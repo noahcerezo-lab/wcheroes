@@ -91,11 +91,11 @@ const KITS = {
 
 // Sheet stats -> small modifiers. LUK = crit chance, VIT = damage taken.
 // Crit chance for a hero right now: 14% base + active boosts (FURY, SQUAD SYNERGY; see power-ups).
-const critChance = (h, w) => Math.min(0.95, Math.min(LEVELS.CRIT_CAP, RULES.critBase + (h && h.levelCrit || 0)) + (w && h ? critBonus(w, h) : 0));
+const critChance = (h, w) => Math.min(0.95, Math.min(LEVELS.CRIT_CAP, RULES.critBase + (h && h.levelCrit || 0) + (h ? .08*evo(h,'crit') : 0)) + (w && h ? critBonus(w, h) : 0));
 function critBonus(w, h) { return (w.time < (h.furyUntil || 0) ? RULES.furyCrit : 0) + (w.time < (h.synergyUntil || 0) ? RULES.synergyCrit : 0) }
 const PICKUP_KINDS = ['heal', 'fury', 'haste', 'ward']; // index = snapshot kind
 // Move speed right now (HASTE: x1.5). Server input handling, AI and client prediction all use this.
-const moveSpeed = (w, h) => h.speed * RULES.moveSpeedMul * (w.time < (h.hasteUntil || 0) ? RULES.hasteSpeedMul : 1);
+const moveSpeed = (w, h) => h.speed * (1+.10*evo(h,'speed')) * RULES.moveSpeedMul * (w.time < (h.hasteUntil || 0) ? RULES.hasteSpeedMul : 1);
 const damageTakenMul = st => clamp(1 - (st.VIT - 5) * 0.04, 0.7, 1.2); // Markie (VIT 9): 0.84
 
 function isBossWave(n) { return n > 0 && n % RULES.levelEvery === 0 } // Boss encounter precedes each 10-wave level-up
@@ -136,6 +136,31 @@ function createBattle(opts = {}) {
     return world;
 }
 
+const EVOLUTIONS = {
+ NOAH:[['Void Walker','Finisher hits splash nearby enemies','splash'],['Storm Sage','Attacks recover 12% faster','haste'],['Spirit Master','Specials deal 20% more damage','special'],['Astral Focus','Critical chance increases by 8%','crit']],
+ DESTINY:[['Phoenix','Successful swings restore health','leech'],['Divine Guardian','Take 15% less damage','guard'],['Radiant Valkyrie','Critical chance increases by 8%','crit'],['Sacred Light','Specials deal 20% more damage','special']],
+ MARKIE:[['Inferno','Finisher hits splash nearby enemies','splash'],['Earth Titan','Take 15% less damage','guard'],['Berserker','Attacks recover 12% faster','haste'],['Molten Axe','Specials deal 20% more damage','special']],
+ ESPIRIT:[['Phantom Archer','Finisher hits splash nearby enemies','splash'],['Venom Huntress','Critical chance increases by 8%','crit'],['Windrunner','Move 10% faster','speed'],['Rapid Volley','Attacks recover 12% faster','haste']],
+ SMITESH:[['Tsunami','Finisher hits splash nearby enemies','splash'],['Frost Monarch','Take 15% less damage','guard'],['Tempest','Specials deal 20% more damage','special'],['Flow State','Attacks recover 12% faster','haste']],
+ DAVE:[['Crimson Warlock','Finisher hits splash nearby enemies','splash'],['Soul Reaper','Successful swings restore health','leech'],['Chaos Sage','Critical chance increases by 8%','crit'],['Blade Master','Attacks recover 12% faster','haste']],
+ DONNA:[['Wildheart','Successful swings restore health','leech'],['Ironwood','Take 15% less damage','guard'],['Forest Fury','Finisher hits splash nearby enemies','splash'],['Swiftpaw','Move 10% faster','speed']]
+};
+const evo = (h,k) => (h.evolutions || []).filter(v=>v===k).length;
+function chooseEvolution(w,h,id,level) {
+ const p=h.evolutionOffer;
+ if(w.over || !p || p.level!==level || !Number.isInteger(id) || !p.cards.some(c=>c.id===id)) return false;
+ const card=p.cards.find(c=>c.id===id);
+ (h.evolutions ||= []).push(card.kind);
+ (h.evolutionNames ||= []).push(card.name);
+ h.evolutionOffer=null;
+ return true;
+}
+function offerEvolution(w,h) {
+ const pool=EVOLUTIONS[h.name].map((c,id)=>({id,name:c[0],description:c[1],kind:c[2]}));
+ const cards=[]; while(cards.length<3) cards.push(pool.splice(Math.floor(rng(w)*pool.length),1)[0]);
+ h.evolutionOffer={level:h.level,cards,until:w.time+15000};
+ if(h.ai) chooseEvolution(w,h,cards[0].id,h.level);
+}
 const alive = h => h.state === 'alive';
 const emit = (w, e) => { w.events.push(e) };
 
@@ -177,7 +202,8 @@ function killEnemy(w, hero, e) {
 
 function damageHero(w, h, amount, by) {
     if (!alive(h) || w.over) return;
-    let d = amount * damageTakenMul(h.stats);
+    if (h.evolutionOffer && w.time < h.evolutionOffer.until) return;
+    let d = amount * damageTakenMul(h.stats) * Math.pow(.85,evo(h,'guard'));
     if (w.time < h.shieldUntil) d *= KITS.MARKIE.shieldMul;
     if (w.time < h.wardUntil) d *= RULES.wardMul;
     d = Math.max(1, Math.round(d));
@@ -232,7 +258,7 @@ function nextChainStage(w, h, cool) {
 function performAttack(w, h) {
     if (!alive(h) || w.over) return false;
     const flow = h.name === 'DAVE' ? Math.max(.72, 1 - Math.min(5, h.weaponFlow || 0) * .055) : 1;
-    const cool = (h.ai ? h.cool * RULES.aiAttackCooldownMul : h.cool) * flow * (w.time < h.hasteUntil ? RULES.hasteCooldownMul : 1);
+    const cool = (h.ai ? h.cool * RULES.aiAttackCooldownMul : h.cool) * flow * Math.pow(.88,evo(h,'haste')) * (w.time < h.hasteUntil ? RULES.hasteCooldownMul : 1);
     const recovery = h.chain === 2 ? cool * RULES.finisherRecoveryMul : 0; // brief pause after a finisher
     if (w.time - h.attackAt < cool + recovery) return false;
     const stage = nextChainStage(w, h, cool + recovery);
@@ -277,9 +303,14 @@ function performAttack(w, h) {
             }
             emit(w, {t:'spiritSplash',h:w.heroes.indexOf(h),x:Math.round(spiritImpact.x),y:Math.round(spiritImpact.y),r:radius});
         }
+        if(fin && evo(h,'splash')) {
+            for(const other of [...w.enemies].filter(o=>o!==e && dist(o,e)<45).slice(0,3))
+                damageEnemy(w,h,other,dmg*.22*evo(h,'splash'),{knock:2});
+        }
         connectedHits++;
         if (h.name === 'DAVE') { h.weaponFlow = Math.min(5, (h.weaponFlow || 0) + 1); h.weaponFlowAt = w.time; }
     }
+    if(connectedHits && evo(h,'leech')) healHero(w,h,Math.max(1,Math.round(h.maxHp*.012*evo(h,'leech'))),h);
     // Destiny: every third successful basic-attack swing heals her for 5% max HP.
     // Multiple enemies hit by a sweep count as one swing, not multiple triggers.
     // The 1.5s internal cooldown prevents fast attack-speed buffs from spamming heals.
@@ -307,7 +338,7 @@ function performSpecial(w, h) {
     emit(w, { t: 'spc', h: i, k: k.specialName, r: Math.round(k.specialRadius) });
     emit(w, { t: 'awaken', h: i, until: h.awakenUntil });
     for (const e of [...w.enemies]) {
-        if (dist(e, h) < k.specialRadius) damageEnemy(w, h, e, h.damage * k.specialMul * (h.skillScale || 1), { knock: k.specialKnock ?? 12, stun: k.specialStun || 0 });
+        if (dist(e, h) < k.specialRadius) damageEnemy(w, h, e, h.damage * k.specialMul * (h.skillScale || 1) * (1+.20*evo(h,'special')), { knock: k.specialKnock ?? 12, stun: k.specialStun || 0 });
     }
     if (h.name === 'DESTINY') { // team heal + damage buff (leadership)
         for (const u of w.heroes) if (alive(u) && dist(u, h) < k.rallyRadius) { healHero(w, u, k.rallyHeal, h); u.buffUntil = w.time + k.buffMs; emit(w, { t: 'buff', h: w.heroes.indexOf(u) }) }
@@ -504,6 +535,7 @@ function levelUp(w) {
         h.maxHp = L.hp; h.damage = L.damage; h.speed = L.speed; h.cool = L.cool;
         h.skillScale = L.skill; h.levelCrit = L.crit;
         h.hp = h.maxHp;
+        if([5,10,15,20].includes(h.level)) offerEvolution(w,h);
         got.push(i);
     });
     if (got.length) emit(w, { t: 'lvl', all: got, n: w.wave, lv: Math.max(...got.map(i => w.heroes[i].level)), mastery: Math.max(0, ...got.filter(i => w.heroes[i].level % 10 === 0).map(i => w.heroes[i].masteryTier)) });
@@ -727,6 +759,7 @@ function step(w) {
     w.time += TICK;
     const leader = w.heroes.find(h => !h.ai && alive(h)) || w.heroes.find(alive);
     for (const h of w.heroes) {
+        if(h.evolutionOffer && (h.ai || w.time>=h.evolutionOffer.until)) chooseEvolution(w,h,h.evolutionOffer.cards[0].id,h.evolutionOffer.level);
         if (h.ai) stepAI(w, h, leader);
         else {
             if (h.wantAttack) performAttack(w, h);
@@ -771,6 +804,7 @@ function snapshot(w) {
             cc: h.critChain || 0, // Critical Chain: consecutive crits
             lv: h.level || 1, // hero level (LEVEL UP every 10th wave)
             mastery: h.masteryTier || 0,
+            evolutionOffer: h.evolutionOffer || null, evolutions: h.evolutionNames || [],
             pet: h.name === 'DONNA' && h.state === 'alive' ? Math.min(3, Math.floor(((h.level || 1) - 1) / 10)) : -1,
             petBoost: h.name === 'DONNA' && w.time < (h.animalBoostUntil || 0) ? 1 : 0,
             hp: h.hp, maxHp: h.maxHp, state: h.state === 'alive' ? 0 : 1, rv: h.state === 'downed' ? Math.round(h.reviveMs / RULES.reviveMs * 100) : 0,
@@ -788,4 +822,4 @@ function snapshot(w) {
     };
 }
 
-module.exports = { levelUp, PICKUP_KINDS, moveSpeed, stepPickups, collectPickup, damageEnemy, nextChainStage, aimOf, RULES, ENEMY_TYPES, ENEMY_INDEX, KITS, createBattle, step, snapshot, spawnEnemy, performAttack, performSpecial, damageHero, attackTargets, isBossWave, waveSize, critChance, damageTakenMul, inArc };
+module.exports = { chooseEvolution, levelUp, PICKUP_KINDS, moveSpeed, stepPickups, collectPickup, damageEnemy, nextChainStage, aimOf, RULES, ENEMY_TYPES, ENEMY_INDEX, KITS, createBattle, step, snapshot, spawnEnemy, performAttack, performSpecial, damageHero, attackTargets, isBossWave, waveSize, critChance, damageTakenMul, inArc };
