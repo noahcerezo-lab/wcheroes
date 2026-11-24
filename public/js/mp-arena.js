@@ -241,12 +241,7 @@
                 const gx = x + f.aim.x * 34, gy = y + f.aim.y * 14 + 4;
                 const cracks = []; for (let j = 0; j < (fin ? 7 : 5); j++) { const an = j / (fin ? 7 : 5) * Math.PI * 2 + Math.random() * .6; const c = []; let r = 0; for (let q = 0; q < 3; q++) { r += .25 + Math.random() * .15; c.push([Math.cos(an + (Math.random() - .5) * .5) * r, Math.sin(an + (Math.random() - .5) * .5) * r]) } cracks.push(c) }
                 fx.push({ kind: 'crack', x: gx, y: gy, r: fin ? 90 : 62, cracks, fin, start: now, life: fin ? 520 : 400 });
-                if (fin) fx.push({ kind: 'ring', x: gx, y: gy, r0: 16, r1: 110, color: '#FFC277', width: 5, start: now, life: 360 });
-                // Three layered seismic shock fronts, without heavy particle overdraw.
-                for(let j=0;j<(fin?3:2);j++)fx.push({kind:'ring',x:gx,y:gy,
-                    r0:8+j*9,r1:(fin?116:70)+j*18,
-                    color:j===0?'#fff0b5':j===1?'#ff9958':'#b65c40',
-                    width:fin?5:3,start:now+j*65,life:380+j*55});
+                // Fire trails and contact bursts replace the distracting circular basic-attack overlays.
                 fx.push({kind:'markieEmbers',x:gx,y:gy-20,fin,start:now,life:470});
                 burst(gx, gy - 6, '#A7855F', fin ? 16 : 9, fin ? 5 : 3.5, { flat: .35, lift: 1.4, grav: .03, life: 520, size: 6 }); // dust
                 burst(gx, gy - 6, '#8C7A66', fin ? 10 : 5, 3, { flat: .35, lift: 1, grav: .02, life: 600, size: 7 });
@@ -308,6 +303,12 @@
             fx.push({ kind: 'ov', key: 'hit' + h.name, n: 5, fd: 45, x: cx, y: cy, sc: fin || e.c ? 1.6 : 1.2, start: now, life: 225 });
             emitO(e.c ? 'gold' : C.preset, cx, cy, ang, fin ? 1.3 : e.c ? 1.1 : .8, e.c ? OC.GOLD : OC[h.name]);
             if (C.dust && (fin || e.c)) emitO('dust', e.x * S, e.y * S - 4, -Math.PI / 2, fin ? 1.2 : .7);
+            if (h.name === 'MARKIE') {
+                fx.push({kind:'markieFireImpact',x:cx,y:cy,ang,fin,start:now,life:280});
+                burst(cx,cy,'#ff541c',fin?12:7,5,{life:260,size:4,grav:.025});
+                burst(cx,cy,'#ffdc65',fin?9:5,6,{life:210,size:3,grav:.02});
+                if (!fin && !e.c && mine) addShake(1.6,80,now);
+            }
             if (h.name === 'DESTINY' && fin) emitO('glint', cx, cy - 6, 0, 1);
             if (e.c) { emitO('glint', cx, cy, 0, 1); fx.push({ kind: 'flash', x: cx, y: cy, r: fin ? 34 : 26, color: '#FFE9A8', start: now, life: 120 }) }
             if (C.cue) sfx(C.cue, e.h, { gain: fin ? 1.1 : .8 });
@@ -1197,16 +1198,23 @@
             g.restore();
         }
         // Markie: heavy bronze cleave arc (wide, thick, hot core) -- weight before the sprite slash.
-        function mightyArc(t, size, fin) {
-            const r = size * .36, fade = 1 - t, a1 = -Math.PI * .85 + Math.PI * 1.7 * Math.min(1, t * 2.2);
-            g.save();
-            g.globalCompositeOperation = 'lighter'; g.lineCap = 'round';
-            g.globalAlpha = .45 * fade; g.strokeStyle = '#C98A4B'; g.lineWidth = fin ? 26 : 18;
-            g.beginPath(); g.arc(0, 0, r, -Math.PI * .85, a1); g.stroke();
-            g.globalAlpha = .75 * fade; g.strokeStyle = '#FF9657'; g.lineWidth = fin ? 10 : 7;
-            g.beginPath(); g.arc(0, 0, r, -Math.PI * .85, a1); g.stroke();
-            g.globalAlpha = fade; g.strokeStyle = '#FFF0A4'; g.lineWidth = 3;
-            g.beginPath(); g.arc(0, 0, r, Math.max(-Math.PI * .85, a1 - .9), a1); g.stroke();
+        function mightyArc(t, size, fin, aim) {
+            const r = size * .39, fade = Math.pow(1-t,.8);
+            const direction = Math.atan2(aim.y, Math.max(.01, Math.abs(aim.x)));
+            const head = direction - 1.45 + 2.9 * Math.min(1,t*2.5);
+            const tail = head - Math.min(1.65,.25+t*4);
+            g.save(); g.lineCap='round';
+            for (const [color,width,alpha] of [['#8e2418',25,.85],['#ff4817',17,.95],['#ffad29',9,1],['#fff3b0',3,1]]) {
+                g.globalAlpha=fade*alpha; g.strokeStyle=color; g.lineWidth=width*(fin?1.25:1);
+                g.beginPath(); g.arc(0,0,r,tail,head); g.stroke();
+            }
+            for(let j=0;j<11;j++){
+                const a=tail+(head-tail)*j/11, rr=r+5;
+                const x=Math.cos(a)*rr,y=Math.sin(a)*rr;
+                const length=(9+7*Math.sin(j*2.4+t*13)**2)*(fin?1.3:1);
+                g.globalAlpha=fade;g.fillStyle=j%3===0?'#ffdc64':'#ff591e';
+                g.beginPath();g.moveTo(x-4,y+3);g.lineTo(x+Math.cos(a)*length,y+Math.sin(a)*length-8);g.lineTo(x+5,y-2);g.fill();
+            }
             g.restore();
         }
         // Cached soft-glow sprites (radial gradients are built once per color, then drawn as images).
@@ -1455,6 +1463,18 @@
             for (const f of fx) {
                 const el = now - f.start;
                 if (f.kind === 'ancestralGuardian' || f.kind === 'guardianPulse') { drawAncestralGuardian(f,now,view); continue }
+                if (f.kind === 'markieFireImpact') {
+                    const t=Math.max(0,Math.min(1,el/f.life)),fade=(1-t)**1.5, scale=f.fin?1.35:1;
+                    g.save();g.translate(f.x,f.y);g.rotate(f.ang);g.scale(scale,scale);
+                    for(let j=0;j<9;j++){
+                        const a=(j-4)*.35, r=7+t*(28+(j%3)*9), len=(20+(j%3)*5)*fade;
+                        g.save();g.rotate(a);g.globalAlpha=fade;g.fillStyle=j%2?'#ff9a24':'#ff4919';
+                        g.beginPath();g.moveTo(r-8,-5*fade);g.lineTo(r+len,0);g.lineTo(r-8,5*fade);g.closePath();g.fill();
+                        g.fillStyle='#fff0a1';g.beginPath();g.moveTo(r,-2*fade);g.lineTo(r+len*.65,0);g.lineTo(r,2*fade);g.fill();g.restore();
+                    }
+                    if(t<.28){g.globalAlpha=1-t/.28;g.fillStyle='#fff4c4';g.beginPath();g.moveTo(-13,0);g.lineTo(0,-8);g.lineTo(17,0);g.lineTo(0,8);g.closePath();g.fill();}
+                    g.restore();continue;
+                }
                 if (f.kind === 'markieQuake' || f.kind === 'markieEmbers') {
                     const t=Math.max(0,Math.min(1,el/f.life)),fade=(1-t)*(1-t);
                     g.save();g.translate(f.x,f.y);g.globalCompositeOperation='lighter';
@@ -1533,8 +1553,8 @@
                         const t = Math.min(1, el / f.life);
                         if (f.name === 'NOAH') arcaneArc(t, size, fin, now);
                         else if (f.name === 'MARKIE') mightyArc(t, size, fin, a);
-                        A.play(g, kit.atk, el, ox, 0, size);
-                        if (fin || f.name === 'MARKIE') { g.globalAlpha = fin ? .55 : .35; g.globalCompositeOperation = 'lighter'; A.play(g, kit.atk, el, ox, 0, size * (fin ? 1.15 : 1.05)); }
+                        if (f.name !== 'MARKIE') A.play(g, kit.atk, el, ox, 0, size);
+                        if (fin && f.name !== 'MARKIE') { g.globalAlpha = fin ? .55 : .35; g.globalCompositeOperation = 'lighter'; A.play(g, kit.atk, el, ox, 0, size * (fin ? 1.15 : 1.05)); }
                         if (f.name === 'DESTINY') { g.globalCompositeOperation = 'lighter'; g.globalAlpha = .35 * (1 - t); g.strokeStyle = '#FFE1A2'; g.lineWidth = 6; g.beginPath(); g.arc(ox * .4, 0, size * .42, -1, 1); g.stroke() }
                         g.restore();
                     }
