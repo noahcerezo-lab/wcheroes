@@ -70,7 +70,7 @@
         g.imageSmoothingEnabled = wasSmooth;
         return true;
     }
-    // High-detail concept sheets (assets/concept-v2/), opt-in with ?newart=1 while art QA is underway.
+    // High-detail concept sheets are default; ?newart=0 restores classic art.
     // A sheet that is missing or still loading never replaces the existing procedural hero.
     // Mastery tiers: 0 = Lv 1-9, 1 = Lv 10-19, 2 = Lv 20-29, 3 = Lv 30+. A tier's art lives in
     // concept-v2/tier{n}/ with the same filenames; manifest.json lists which tiers exist per hero so the
@@ -89,8 +89,8 @@
     const CONCEPT_SCALE = .7; // local units per sheet px: a ~95 px tall hero stands ~67 units, like the V19 body
     const conceptImages = Object.create(null);
     const conceptStatus = Object.create(null);
-    const conceptEnabled = typeof location !== 'undefined' &&
-        new URLSearchParams(location.search).get('newart') === '1';
+    const conceptEnabled = typeof location === 'undefined' ||
+        new URLSearchParams(location.search).get('newart') !== '0';
     const masteryTier = lv => { lv = lv | 0; return lv >= 30 ? 3 : lv >= 20 ? 2 : lv >= 10 ? 1 : 0 };
     // highest tier <= wanted that has art for this hero (always at least 0)
     function artTier(name, lv) {
