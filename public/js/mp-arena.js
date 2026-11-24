@@ -560,6 +560,16 @@
                         { life: 430, size: 3 });
                     break;
                 }
+                case 'meteorWarn': {
+                    fx.push({kind:'meteorWarn',x:e.x*S,y:e.y*S,r:e.r*S,start:now,life:1100});
+                    break;
+                }
+                case 'meteorImpact': {
+                    const x=e.x*S,y=e.y*S;
+                    fx.push({kind:'meteorBlast',x,y,r:e.r*S,start:now,life:480});
+                    burst(x,y,'#ff6a25',22,6,{life:500,size:5,lift:3});
+                    addShake(4,180,now);break;
+                }
                 case 'legendary': {
                     const x=e.x*S,y=e.y*S;
                     fx.push({kind:'legendaryAscend',name:e.name,x,y,start:now,life:1800});
@@ -1480,6 +1490,19 @@
             for (const f of fx) {
                 const el = now - f.start;
                 if (f.kind === 'ancestralGuardian' || f.kind === 'guardianPulse') { drawAncestralGuardian(f,now,view); continue }
+                if(f.kind==='meteorWarn'||f.kind==='meteorBlast'){
+                    const t=Math.max(0,Math.min(1,el/f.life));
+                    g.save();g.translate(f.x,f.y);
+                    if(f.kind==='meteorWarn'){
+                        g.globalAlpha=.25+.25*t;g.fillStyle='#ff482d';g.beginPath();g.ellipse(0,0,f.r,f.r*.65,0,0,Math.PI*2);g.fill();
+                        g.globalAlpha=.9;g.strokeStyle='#ffab60';g.lineWidth=2;g.stroke();
+                        g.beginPath();g.moveTo(-9,0);g.lineTo(9,0);g.moveTo(0,-9);g.lineTo(0,9);g.stroke();
+                    }else{
+                        g.globalAlpha=1-t;g.fillStyle='#ff8b32';g.beginPath();g.ellipse(0,0,f.r*(.4+t),f.r*(.25+t*.6),0,0,Math.PI*2);g.fill();
+                        g.fillStyle='#fff0ad';g.beginPath();g.moveTo(-12,0);g.lineTo(0,-70*(1-t));g.lineTo(12,0);g.fill();
+                    }
+                    g.restore();continue;
+                }
                 if(f.kind==='legendaryAscend'){
                     const t=Math.max(0,Math.min(1,el/f.life));
                     g.save();g.translate(f.x,f.y);g.globalAlpha=Math.sin(Math.PI*t);
