@@ -189,11 +189,46 @@
       fieldBanner.style.display=f?'block':'none';
       if(f)fieldBanner.textContent=f.name+' · '+f.desc;
     }
+    // Device-local dojo progression; never changes multiplayer combat stats.
+    const DOJO_KEY='wch.dojo.v1';
+    function loadDojo(){try{return JSON.parse(localStorage.getItem(DOJO_KEY))||{honor:0,runs:0,best:0,heroes:{}}}catch{return {honor:0,runs:0,best:0,heroes:{}}}}
+    let dojo=loadDojo(), dojoRun=null;
+    const belts=[[0,'White','#eee'],[100,'Yellow','#e9c34d'],[250,'Orange','#ef933e'],[500,'Green','#62b878'],[900,'Blue','#629bea'],[1500,'Purple','#b18ae8'],[2400,'Brown','#ad7955'],[4000,'Black','#bfc3ce']];
+    const dojoButton=document.createElement('button');
+    dojoButton.textContent='THE DOJO';
+    dojoButton.style.cssText='display:block;margin:12px auto;padding:12px 22px;border:1px solid #b99758;border-radius:8px;background:#231c25;color:#ffe0a0;font-weight:800;letter-spacing:2px;cursor:pointer';
+    $('entry').appendChild(dojoButton);
+    const dojoPanel=document.createElement('div');
+    dojoPanel.style.cssText='display:none;position:fixed;inset:0;z-index:150;background:#100e16f5;overflow:auto;padding:24px;color:#f6eee0;font-family:system-ui';
+    document.body.appendChild(dojoPanel);
+    function renderDojo(){
+      const rank=belts.filter(b=>dojo.honor>=b[0]).pop(), next=belts.find(b=>b[0]>dojo.honor);
+      dojoPanel.innerHTML='<div style="max-width:480px;margin:auto"><button id="dojo-close" style="float:right;padding:8px 14px">Close ×</button><div style="color:#c8a66b;letter-spacing:3px;font-size:12px">WEST COAST HEROES</div><h1>THE DOJO</h1><div style="border:1px solid #786344;border-radius:12px;padding:18px"><div style="color:'+rank[2]+';font-weight:800">'+rank[1].toUpperCase()+' BELT</div><h2>'+dojo.honor+' Honor</h2><progress style="width:100%;accent-color:#c8a66b" max="'+(next?next[0]-rank[0]:1)+'" value="'+(next?dojo.honor-rank[0]:1)+'"></progress><small>'+(next?(next[0]-dojo.honor)+' Honor to '+next[1]+' Belt':'Highest rank achieved')+'</small><p>'+dojo.runs+' completed runs · Best wave '+dojo.best+'</p></div><h2>Hero mastery</h2>'+['NOAH','DESTINY','MARKIE','ESPIRIT','SMITESH','DAVE','DONNA'].map(n=>{const h=dojo.heroes[n]||{xp:0,runs:0};return '<div style="padding:12px 0;border-bottom:1px solid #453b49"><b>'+n+'</b><span style="float:right;color:#e5c58b">Mastery '+(1+Math.floor(h.xp/100))+'</span><progress style="width:100%;accent-color:#c8a66b" max="100" value="'+h.xp%100+'"></progress><small>'+h.xp+' XP · '+h.runs+' runs</small></div>'}).join('')+'<p style="opacity:.6;font-size:12px">Progress saved on this device. Ranks are cosmetic.</p></div>';
+      $('dojo-close').onclick=()=>dojoPanel.style.display='none';
+    }
+    dojoButton.onclick=()=>{dojo=loadDojo();renderDojo();dojoPanel.style.display='block'};
+    function trackDojo(w){
+      const h=w.heroes.find(h=>h.controller&&h.controller===myId());
+      if(!h)return;
+      if(!dojoRun)dojoRun={hero:h.name,wave:1};
+      dojoRun.wave=Math.max(dojoRun.wave,w.wave||1);
+    }
+    function finishDojo(e){
+      if(!dojoRun)return;
+      const run=dojoRun;dojoRun=null;
+      if(e?.reason!=='wipe')return;
+      const wave=Math.max(run.wave,Number(e.wave)||1), reward=5+Math.max(0,wave-1)*5;
+      dojo=loadDojo();dojo.honor+=reward;dojo.runs++;dojo.best=Math.max(dojo.best,wave);
+      const h=dojo.heroes[run.hero]||(dojo.heroes[run.hero]={xp:0,runs:0});h.xp+=reward;h.runs++;
+      try{localStorage.setItem(DOJO_KEY,JSON.stringify(dojo))}catch{}
+      setTimeout(()=>note('Dojo: +'+reward+' Honor · +'+reward+' '+run.hero+' mastery XP',10000),500);
+    }
     // ---------- server events ----------
     socket.on('room:update', r => { room = r; render() });
     socket.on('battle:start', w => { resetJoy(); renderFusion(null); world = w; arena.reset(); arena.push(w); resetPrediction(); reconcile(w); show('battle') });
-    socket.on('battle:state', w => { world = w; reconcile(w); arena.push(w); renderEvolution(w); renderFusion(w); renderField(w) });
+    socket.on('battle:state', w => { world = w; trackDojo(w); reconcile(w); arena.push(w); renderEvolution(w); renderFusion(w); renderField(w) });
     socket.on('battle:end', e => {
+        finishDojo(e); renderField(null);
         resetJoy(); world = null; renderEvolution(null); renderFusion(null); arena.reset(); resetPrediction();
         if (e?.reason === 'wipe') note('Squad defeated on wave ' + e.wave + ' — score ' + e.score + ', ' + e.kills + ' KOs. Ready up to play again!', 12000);
         else note('Back in the lobby' + (e?.by ? ' — ' + e.by + ' ended the round.' : '.'));
