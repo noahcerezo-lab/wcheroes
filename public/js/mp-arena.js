@@ -560,6 +560,13 @@
                         { life: 430, size: 3 });
                     break;
                 }
+                case 'legendary': {
+                    const x=e.x*S,y=e.y*S;
+                    fx.push({kind:'legendaryAscend',name:e.name,x,y,start:now,life:1800});
+                    burst(x,y-20,'#ffda73',24,5,{life:800,size:4,lift:3});
+                    addShake(3,160,now);
+                    break;
+                }
                 case 'fusion': {
                     const x=e.x*S,y=e.y*S, colors=e.kind==='dragon'?['#a875ff','#ff6b24']:e.kind==='heaven'?['#ffe79a','#78f3ac']:['#70e7ff','#ff7438'];
                     fx.push({kind:'elementFusion',type:e.kind,name:e.name,x,y,r:e.r*S,colors,start:now,life:1050});
@@ -1473,6 +1480,19 @@
             for (const f of fx) {
                 const el = now - f.start;
                 if (f.kind === 'ancestralGuardian' || f.kind === 'guardianPulse') { drawAncestralGuardian(f,now,view); continue }
+                if(f.kind==='legendaryAscend'){
+                    const t=Math.max(0,Math.min(1,el/f.life));
+                    g.save();g.translate(f.x,f.y);g.globalAlpha=Math.sin(Math.PI*t);
+                    for(let j=0;j<12;j++){
+                        const a=j*Math.PI/6+t*2,x=Math.cos(a)*(24+t*42),y=Math.sin(a)*(12+t*18)-t*65;
+                        g.fillStyle=j%2?'#fff2bb':'#eeb44f';
+                        g.beginPath();g.moveTo(x,y-9);g.lineTo(x+4,y);g.lineTo(x,y+9);g.lineTo(x-4,y);g.fill();
+                    }
+                    g.textAlign='center';g.font='bold 12px sans-serif';g.strokeStyle='#201326';g.lineWidth=4;
+                    g.strokeText('LEGENDARY ASCENSION',0,-88);g.fillStyle='#ffcf70';g.fillText('LEGENDARY ASCENSION',0,-88);
+                    g.font='bold 15px sans-serif';g.strokeText(f.name,0,-69);g.fillStyle='#fff1bd';g.fillText(f.name,0,-69);
+                    g.restore();continue;
+                }
                 if (f.kind === 'elementFusion') {
                     const t=Math.max(0,Math.min(1,el/f.life)),fade=Math.sin(Math.PI*Math.min(.99,t+.08))*(1-t*.5);
                     g.save();g.translate(f.x,f.y);g.globalAlpha=fade;
