@@ -27,7 +27,7 @@
     function show(id) {
         for (const key of ['entry', 'lobby', 'battle']) $(key).classList.toggle('hidden', key !== id);
         document.body.classList.toggle('in-battle', id === 'battle');
-        if (id === 'battle') $('notice').textContent = ''; else { renderEvolution(null); renderFusion(null); }
+        if (id === 'battle') $('notice').textContent = ''; else { renderEvolution(null); renderFusion(null); renderField(null); }
     }
     function note(msg, ms = 6500) {
         $('notice').textContent = msg;
@@ -181,10 +181,18 @@
         if(rect&&rect.width&&rect.height){fusionHint.style.left=Math.max(4,Math.min(innerWidth-fusionHint.offsetWidth-4,rect.left+rect.width/2-fusionHint.offsetWidth/2))+'px';fusionHint.style.top=Math.max(4,rect.top-fusionHint.offsetHeight-7)+'px';}
         else{fusionHint.style.left=Math.max(4,(innerWidth-fusionHint.offsetWidth)/2)+'px';fusionHint.style.top='12px';}
     }
+    const fieldBanner=document.createElement('div');
+    fieldBanner.style.cssText='display:none;position:fixed;top:12%;left:50%;transform:translateX(-50%);z-index:85;pointer-events:none;background:#191320e8;border:1px solid #bd925b;border-radius:7px;padding:5px 12px;color:#ffe1a3;text-align:center;font: bold 11px system-ui;max-width:80vw';
+    document.body.appendChild(fieldBanner);
+    function renderField(w){
+      const f=w?.fieldEvent;
+      fieldBanner.style.display=f?'block':'none';
+      if(f)fieldBanner.textContent=f.name+' · '+f.desc;
+    }
     // ---------- server events ----------
     socket.on('room:update', r => { room = r; render() });
     socket.on('battle:start', w => { resetJoy(); renderFusion(null); world = w; arena.reset(); arena.push(w); resetPrediction(); reconcile(w); show('battle') });
-    socket.on('battle:state', w => { world = w; reconcile(w); arena.push(w); renderEvolution(w); renderFusion(w) });
+    socket.on('battle:state', w => { world = w; reconcile(w); arena.push(w); renderEvolution(w); renderFusion(w); renderField(w) });
     socket.on('battle:end', e => {
         resetJoy(); world = null; renderEvolution(null); renderFusion(null); arena.reset(); resetPrediction();
         if (e?.reason === 'wipe') note('Squad defeated on wave ' + e.wave + ' — score ' + e.score + ', ' + e.kills + ' KOs. Ready up to play again!', 12000);
