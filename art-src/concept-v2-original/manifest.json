@@ -1,0 +1,71 @@
+{
+  "frame_width": 96,
+  "frame_height": 128,
+  "animations": {
+    "idle": 6,
+    "run": 8,
+    "attack": 8,
+    "special": 8,
+    "hurt": 4,
+    "down": 4
+  },
+  "source": "Generated high-detail roster artwork; frames derived from three source poses",
+  "heroes": {
+    "noah": {
+      "idle": "noah_idle_96x128_6f.png",
+      "run": "noah_run_96x128_8f.png",
+      "attack": "noah_attack_96x128_8f.png",
+      "special": "noah_special_96x128_8f.png",
+      "hurt": "noah_hurt_96x128_4f.png",
+      "down": "noah_down_96x128_4f.png"
+    },
+    "destiny": {
+      "idle": "destiny_idle_96x128_6f.png",
+      "run": "destiny_run_96x128_8f.png",
+      "attack": "destiny_attack_96x128_8f.png",
+      "special": "destiny_special_96x128_8f.png",
+      "hurt": "destiny_hurt_96x128_4f.png",
+      "down": "destiny_down_96x128_4f.png"
+    },
+    "markie": {
+      "idle": "markie_idle_96x128_6f.png",
+      "run": "markie_run_96x128_8f.png",
+      "attack": "markie_attack_96x128_8f.png",
+      "special": "markie_special_96x128_8f.png",
+      "hurt": "markie_hurt_96x128_4f.png",
+      "down": "markie_down_96x128_4f.png"
+    },
+    "espirit": {
+      "idle": "espirit_idle_96x128_6f.png",
+      "run": "espirit_run_96x128_8f.png",
+      "attack": "espirit_attack_96x128_8f.png",
+      "special": "espirit_special_96x128_8f.png",
+      "hurt": "espirit_hurt_96x128_4f.png",
+      "down": "espirit_down_96x128_4f.png"
+    },
+    "smitesh": {
+      "idle": "smitesh_idle_96x128_6f.png",
+      "run": "smitesh_run_96x128_8f.png",
+      "attack": "smitesh_attack_96x128_8f.png",
+      "special": "smitesh_special_96x128_8f.png",
+      "hurt": "smitesh_hurt_96x128_4f.png",
+      "down": "smitesh_down_96x128_4f.png"
+    },
+    "dave": {
+      "idle": "dave_idle_96x128_6f.png",
+      "run": "dave_run_96x128_8f.png",
+      "attack": "dave_attack_96x128_8f.png",
+      "special": "dave_special_96x128_8f.png",
+      "hurt": "dave_hurt_96x128_4f.png",
+      "down": "dave_down_96x128_4f.png"
+    },
+    "donna": {
+      "idle": "donna_idle_96x128_6f.png",
+      "run": "donna_run_96x128_8f.png",
+      "attack": "donna_attack_96x128_8f.png",
+      "special": "donna_special_96x128_8f.png",
+      "hurt": "donna_hurt_96x128_4f.png",
+      "down": "donna_down_96x128_4f.png"
+    }
+  }
+}

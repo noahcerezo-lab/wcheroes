@@ -70,49 +70,100 @@
         g.imageSmoothingEnabled = wasSmooth;
         return true;
     }
-    // High-detail concept sheets, opt-in while art QA is underway.
-    // A missing image never replaces the existing procedural hero.
+    // High-detail concept sheets (assets/concept-v2/), opt-in with ?newart=1 while art QA is underway.
+    // A sheet that is missing or still loading never replaces the existing procedural hero.
+    // Mastery tiers: 0 = Lv 1-9, 1 = Lv 10-19, 2 = Lv 20-29, 3 = Lv 30+. A tier's art lives in
+    // concept-v2/tier{n}/ with the same filenames; manifest.json lists which tiers exist per hero so the
+    // client never requests (and 404s on) art that hasn't been made. Missing tiers fall back to the
+    // highest available lower tier, ending at the base art.
     const CONCEPT_BASE = 'assets/concept-v2/';
-    const CONCEPT_HEROES = new Set(['NOAH','DESTINY','MARKIE','ESPIRIT','SMITESH','DAVE','DONNA']);
-    const CONCEPT_ANIMS = {idle:6,run:8,attack:8,special:8,hurt:4,down:4};
+    const CONCEPT_HEROES = ['NOAH', 'DESTINY', 'MARKIE', 'ESPIRIT', 'SMITESH', 'DAVE', 'DONNA'];
+    const CONCEPT_DEFAULT = { // used until (or if) manifest.json loads
+        feet: 122,
+        anims: { idle: { n: 6, fw: 96, fh: 128, ms: 150, loop: true }, run: { n: 8, fw: 96, fh: 128, ms: 85, loop: true },
+            attack: { n: 8, fw: 96, fh: 128, ms: 0, loop: false }, special: { n: 8, fw: 96, fh: 128, ms: 70, loop: false },
+            hurt: { n: 4, fw: 96, fh: 128, ms: 70, loop: false }, down: { n: 4, fw: 128, fh: 128, ms: 160, loop: false } },
+        heroes: {},
+    };
+    let conceptMeta = CONCEPT_DEFAULT, manifestState = '';
+    const CONCEPT_SCALE = .7; // local units per sheet px: a ~95 px tall hero stands ~67 units, like the V19 body
     const conceptImages = Object.create(null);
     const conceptStatus = Object.create(null);
     const conceptEnabled = typeof location !== 'undefined' &&
         new URLSearchParams(location.search).get('newart') === '1';
-    function loadConcept(name,action) {
-        if(!conceptEnabled || !CONCEPT_HEROES.has(name) || !CONCEPT_ANIMS[action])return;
-        const key=name+'_'+action;
-        if(conceptStatus[key])return;
-        conceptStatus[key]='loading';
-        const im=new Image();
-        im.onload=()=>{conceptImages[key]=im;conceptStatus[key]='ready'};
-        im.onerror=()=>{conceptStatus[key]='missing'};
-        im.src=CONCEPT_BASE+name.toLowerCase()+'_'+action+'_96x128_'+CONCEPT_ANIMS[action]+'f.png';
+    const masteryTier = lv => { lv = lv | 0; return lv >= 30 ? 3 : lv >= 20 ? 2 : lv >= 10 ? 1 : 0 };
+    // highest tier <= wanted that has art for this hero (always at least 0)
+    function artTier(name, lv) {
+        const want = masteryTier(lv), h = conceptMeta.heroes[String(name).toLowerCase()];
+        const have = h && h.tiers ? h.tiers : [0];
+        let best = 0;
+        for (const t of have) if (t <= want && t > best) best = t;
+        return best;
     }
-    function loadConceptRoster() {
-        if(!conceptEnabled)return;
-        // Only preload the three gameplay poses. Other poses load on demand.
-        for(const name of CONCEPT_HEROES)
-            for(const action of ['idle','run','attack'])loadConcept(name,action);
+    function conceptFile(name, action, tier) {
+        const A = conceptMeta.anims[action];
+        return CONCEPT_BASE + (tier ? 'tier' + tier + '/' : '') + name.toLowerCase() + '_' + action + '_' + A.fw + 'x' + A.fh + '_' + A.n + 'f.png';
     }
-    function drawConcept(g,name,action,frame,flip,look) {
-        if(!conceptEnabled)return false;
-        const key=name+'_'+action,im=conceptImages[key];
-        if(!im){loadConcept(name,action);return false}
-        const n=CONCEPT_ANIMS[action],f=((frame%n)+n)%n;
-        // Same feet anchor and ~70-local-unit body height as the existing hero.
-        const sc=.64,wasSmooth=g.imageSmoothingEnabled;
-        g.imageSmoothingEnabled=false;
+    function loadManifest() {
+        if (manifestState || typeof fetch === 'undefined') return;
+        manifestState = 'loading';
+        fetch(CONCEPT_BASE + 'manifest.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).then(m => {
+            if (m && m.anims && m.heroes) conceptMeta = m;
+            manifestState = 'ready';
+        }).catch(() => { manifestState = 'ready' });
+    }
+    function loadConcept(name, action, tier) {
+        if (!conceptEnabled || !CONCEPT_HEROES.includes(name) || !conceptMeta.anims[action]) return;
+        const key = name + '_' + action + '_' + (tier | 0);
+        if (conceptStatus[key]) return;
+        conceptStatus[key] = 'loading';
+        const im = new Image();
+        im.onload = () => { conceptImages[key] = im; conceptStatus[key] = 'ready' };
+        im.onerror = () => { conceptStatus[key] = 'missing' };
+        im.src = conceptFile(name, action, tier | 0);
+    }
+    // Load every pose of one hero (only heroes actually on screen ever get loaded).
+    function loadConceptHero(name, lv) {
+        if (!conceptEnabled) return;
+        loadManifest();
+        if (manifestState !== 'ready') return;
+        const t = artTier(name, lv);
+        for (const action in conceptMeta.anims) loadConcept(name, action, t);
+    }
+    function loadConceptRoster(names) {
+        if (!conceptEnabled) return;
+        for (const name of names || CONCEPT_HEROES) loadConceptHero(name, 1);
+    }
+    // Frame for an action given ms since it started. Looping actions wrap; one-shots hold the last frame.
+    // durMs (optional) stretches a one-shot over that time, e.g. the hero's real attack length.
+    function conceptFrame(action, ms, durMs) {
+        const A = conceptMeta.anims[action]; if (!A) return 0;
+        const fd = durMs ? durMs / A.n : A.ms || 70;
+        const f = Math.floor(Math.max(0, ms) / fd);
+        return A.loop ? f % A.n : Math.min(A.n - 1, f);
+    }
+    // Draw one frame with the feet at (0,0). Nearest-neighbour, cached Image, no per-frame processing.
+    function drawConcept(g, name, action, frame, flip, look, lv) {
+        if (!conceptEnabled) return false;
+        loadConceptHero(name, lv);
+        const tier = artTier(name, lv);
+        let im = conceptImages[name + '_' + action + '_' + tier];
+        if (!im && tier) im = conceptImages[name + '_' + action + '_0'];   // tier art still loading
+        if (!im) return false;
+        const A = conceptMeta.anims[action], n = A.n, f = ((frame % n) + n) % n;
+        const sc = CONCEPT_SCALE, wasSmooth = g.imageSmoothingEnabled;
+        g.imageSmoothingEnabled = false;
         g.save();
-        if(flip)g.scale(-1,1);
-        if(look&&look.fx!==undefined)g.globalAlpha*=look.fx;
-        g.drawImage(im,f*96,0,96,128,-48*sc,-120*sc,96*sc,128*sc);
+        if (flip) g.scale(-1, 1);
+        if (look && look.fx !== undefined) g.globalAlpha *= look.fx;
+        g.drawImage(im, f * A.fw, 0, A.fw, A.fh, -A.fw / 2 * sc, -(conceptMeta.feet || 122) * sc, A.fw * sc, A.fh * sc);
         g.restore();
-        g.imageSmoothingEnabled=wasSmooth;
+        g.imageSmoothingEnabled = wasSmooth;
         return true;
     }
+    const conceptReady = (name, action, lv) => !!conceptImages[name + '_' + action + '_' + artTier(name, lv)] || !!conceptImages[name + '_' + action + '_0'];
     root.WCHSheets = { load, ready, draw, dirOf, DIRS, DEF, img: k => img[k],
-        progress: () => ({ wanted, loaded }), loadConceptRoster, drawConcept,
-        conceptEnabled, conceptStatus };
+        progress: () => ({ wanted, loaded }), loadConceptRoster, loadConceptHero, drawConcept, conceptReady,
+        conceptFrame, masteryTier, artTier, conceptEnabled, conceptStatus, conceptMeta: () => conceptMeta };
 
 })(typeof window !== 'undefined' ? window : globalThis);
