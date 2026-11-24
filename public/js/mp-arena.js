@@ -1983,31 +1983,9 @@
                 if(wind){g.beginPath();g.arc(dir*22,-39,12,0,Math.PI*2);g.stroke();}
                 g.restore();
             }
-            // Visual threat ranks evolve with the wave, without changing collision.
-            const waveRank=Math.min(3,Math.floor(Math.max(0,((snaps[snaps.length-1]?.hud?.wave)||1)-1)/10));
-            if(waveRank>0 && fade===undefined){
-                const rankColor=waveRank===1?'#9c87bd':waveRank===2?'#db8b72':'#e6bb74';
-                g.save();g.strokeStyle=rankColor;g.fillStyle=rankColor;g.lineWidth=2+waveRank;
-                // Armored shoulders, segmented chest rune and rank-specific crown.
-                const high=art.key==='voidEmperor'?1.9:art.key==='warden'?1.2:1;
-                for(const side of [-1,1]){
-                    const x=side*art.w*.29;
-                    g.beginPath();g.moveTo(x,-46*high);
-                    g.lineTo(x+side*(9+waveRank*3),-53*high);
-                    g.lineTo(x+side*8,-38*high);g.closePath();g.stroke();
-                }
-                g.fillRect(-4,-41*high,8,3);
-                if(waveRank>=2) {
-                    g.beginPath();g.moveTo(-13,-66*high);
-                    g.lineTo(0,-(73+waveRank*3)*high);
-                    g.lineTo(13,-66*high);g.stroke();
-                }
-                if(waveRank>=3){
-                    g.globalAlpha=.65+.2*Math.sin(now/280+id);
-                    g.beginPath();g.ellipse(0,-40*high,art.w*.48,art.w*.63,0,0,Math.PI*2);g.stroke();
-                }
-                g.restore();
-            }
+            // Enemy silhouettes stay unobstructed at high waves. Threat is communicated by
+            // the enemy art, combat animations and boss telegraphs, not permanent rings,
+            // floating shoulder triangles or crowns on every mob.
             if (drawn && flash) { // V19 hurt flash: 45% #FFF1C5, only on the sprite's own pixels
                 g.globalCompositeOperation = 'lighter';
                 g.globalAlpha *= .45;
