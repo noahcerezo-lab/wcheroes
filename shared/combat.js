@@ -152,6 +152,20 @@ function chooseEvolution(w,h,id,level) {
  const card=p.cards.find(c=>c.id===id);
  (h.evolutions ||= []).push(card.kind);
  (h.evolutionNames ||= []).push(card.name);
+ const legends={
+ NOAH:['Void Walker','Storm Sage','Cosmic Singularity'],
+ DESTINY:['Phoenix','Divine Guardian','Immortal Phoenix'],
+ MARKIE:['Inferno','Earth Titan','Volcanic Titan'],
+ ESPIRIT:['Phantom Archer','Venom Huntress','Death Lotus'],
+ SMITESH:['Tsunami','Frost Monarch','Absolute Zero'],
+ DAVE:['Soul Reaper','Chaos Sage','Lord of the Abyss'],
+ DONNA:['Wildheart','Ironwood','Ancient Wildheart']
+ };
+ const l=legends[h.name];
+ if(!h.legendary && l && l.slice(0,2).every(n=>h.evolutionNames.includes(n))){
+   h.legendary=l[2];
+   emit(w,{t:'legendary',h:w.heroes.indexOf(h),name:h.legendary,x:Math.round(h.x),y:Math.round(h.y)});
+ }
  h.evolutionOffer=null;
  return true;
 }
@@ -307,10 +321,19 @@ function performAttack(w, h) {
             for(const other of [...w.enemies].filter(o=>o!==e && dist(o,e)<45).slice(0,3))
                 damageEnemy(w,h,other,dmg*.22*evo(h,'splash'),{knock:2});
         }
+        if(fin && h.legendary && e.hp>0){
+            if(h.name==='NOAH'||h.name==='MARKIE'||h.name==='ESPIRIT') {
+                for(const o of [...w.enemies].filter(o=>o!==e&&dist(o,e)<65).slice(0,4))
+                    damageEnemy(w,h,o,dmg*.45,{knock:5,stun:250});
+            } else if(h.name==='SMITESH') e.stunUntil=Math.max(e.stunUntil,w.time+1100);
+            else if(h.name==='DAVE') damageEnemy(w,h,e,dmg*.45,{knock:3});
+        }
         connectedHits++;
         if (h.name === 'DAVE') { h.weaponFlow = Math.min(5, (h.weaponFlow || 0) + 1); h.weaponFlowAt = w.time; }
     }
     if(connectedHits && evo(h,'leech')) healHero(w,h,Math.max(1,Math.round(h.maxHp*.012*evo(h,'leech'))),h);
+    if(fin && connectedHits && h.legendary && (h.name==='DESTINY'||h.name==='DONNA'))
+        for(const u of w.heroes) if(alive(u)&&dist(u,h)<100) healHero(w,u,Math.max(1,Math.round(u.maxHp*.04)),h);
     // Destiny: every third successful basic-attack swing heals her for 5% max HP.
     // Multiple enemies hit by a sweep count as one swing, not multiple triggers.
     // The 1.5s internal cooldown prevents fast attack-speed buffs from spamming heals.
@@ -822,6 +845,7 @@ function snapshot(w) {
             cc: h.critChain || 0, // Critical Chain: consecutive crits
             lv: h.level || 1, // hero level (LEVEL UP every 10th wave)
             mastery: h.masteryTier || 0,
+            legendary: h.legendary || null,
             fusionCd: left(w,h.fusionUntil),
             evolutionOffer: h.evolutionOffer || null, evolutions: h.evolutionNames || [],
             pet: h.name === 'DONNA' && h.state === 'alive' ? Math.min(3, Math.floor(((h.level || 1) - 1) / 10)) : -1,
