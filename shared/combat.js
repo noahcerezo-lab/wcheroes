@@ -181,7 +181,7 @@ const emit = (w, e) => { w.events.push(e) };
 // ---------------- damage ----------------
 function damageEnemy(w, hero, e, base, o = {}) {
     if (e.hp <= 0) return;
-    let d = base * (w.fieldEvent?.kind==='blessing'?1.25:1) * (w.time < hero.buffUntil ? KITS.DESTINY.buffMul : 1) * (w.time < (hero.awakenUntil || 0) ? 1.25 : 1);
+    let d = base * (w.time<(w.virtueUntil||0)?1.35:1) * (w.fieldEvent?.kind==='blessing'?1.25:1) * (w.time < hero.buffUntil ? KITS.DESTINY.buffMul : 1) * (w.time < (hero.awakenUntil || 0) ? 1.25 : 1);
     if(e.type===ENEMY_INDEX.voidEmperor && e.armor>0){
         const absorbed=Math.min(e.armor,Math.max(1,Math.round(d*.55)));
         e.armor-=absorbed;d-=absorbed;
@@ -192,6 +192,7 @@ function damageEnemy(w, hero, e, base, o = {}) {
     hero.critChain = crit ? (hero.critChain || 0) + 1 : 0; // consecutive crits; any normal hit breaks it
     d = Math.max(1, Math.round(d));
     e.hp -= d;
+    if(!hero.ai&&hero.controller&&hero.hp<=hero.maxHp*.4&&w.time>=(hero.braveryNext||0)){hero.braveryNext=w.time+500;virtue(w,'bravery',5);}
     const t = ENEMY_TYPES[e.type];
     // Knockback along the attack direction (8-way aim), or straight away from the hero by default.
     let kv = o.dirVec;
@@ -216,6 +217,7 @@ function killEnemy(w, hero, e) {
     const pts = 10 * Math.max(1, w.wave) * mult * ENEMY_TYPES[e.type].points;
     w.score += pts;
     w.kills++;
+    if(!hero.ai&&hero.controller)virtue(w,'honor',e.type===ENEMY_INDEX.voidEmperor?30:5);
     emit(w, { t: 'kill', id: e.id, h: w.heroes.indexOf(hero), x: Math.round(e.x), y: Math.round(e.y), combo: w.combo, mult, pts });
 }
 
@@ -241,6 +243,7 @@ function healHero(w, h, amount, from) {
     if (!alive(h) || h.hp >= h.maxHp) return 0;
     const n = Math.min(amount, h.maxHp - h.hp);
     h.hp += n;
+    if(from&&from!==h&&!from.ai&&from.controller)virtue(w,'family',Math.min(12,n));
     emit(w, { t: 'heal', h: w.heroes.indexOf(h), n, from: w.heroes.indexOf(from) });
     return n;
 }
@@ -560,6 +563,25 @@ const FIELD_EVENTS=[
  {kind:'meteor',name:'METEOR STORM',desc:'Dodge marked meteor impacts'},
  {kind:'renewal',name:'ANCESTRAL BLESSING',desc:'All living heroes regenerate health'}
 ];
+function virtue(w,key,n){
+ if(w.time<(w.virtueUntil||0))return;
+ const v=w.virtues||(w.virtues={honor:0,loyalty:0,family:0,bravery:0});
+ v[key]=Math.min(100,v[key]+n);
+}
+function stepVirtues(w){
+ if(w.waveState!=='fighting'||w.over||w.time<(w.virtueUntil||0))return;
+ if(w.time<(w.virtueNext||0))return;
+ w.virtueNext=w.time+1000;
+ const humans=w.heroes.filter(h=>alive(h)&&!h.ai&&h.controller);
+ if(humans.some(h=>w.heroes.some(u=>u!==h&&alive(u)&&dist(u,h)<110)))virtue(w,'loyalty',4);
+ const v=w.virtues;
+ if(v&&Object.values(v).every(n=>n>=100)){
+   w.virtueUntil=w.time+12000;
+   w.virtues={honor:0,loyalty:0,family:0,bravery:0};
+   for(const h of w.heroes)if(alive(h)){healHero(w,h,Math.round(h.maxHp*.15),h);h.wardUntil=Math.max(h.wardUntil||0,w.virtueUntil);}
+   emit(w,{t:'virtueSurge'});
+ }
+}
 function stepFieldEvent(w){
  const f=w.fieldEvent;
  if(!f||w.waveState!=='fighting')return;
@@ -758,6 +780,7 @@ function stepPassives(w) {
                 h.state = 'alive';
                 h.hp = Math.round(h.maxHp * RULES.reviveHpFrac);
                 h.reviveMs = 0;
+                if(w.heroes.some(u=>u!==h&&alive(u)&&!u.ai&&u.controller&&dist(u,h)<=RULES.reviveRadius))virtue(w,'family',25);
                 emit(w, { t: 'revive', h: w.heroes.indexOf(h) });
             }
         }
@@ -878,6 +901,7 @@ function step(w) {
         for (const h of w.heroes) if(alive(h)&&Math.hypot(h.x-p.tx,(h.y-p.ty)*1.2)<22) damageHero(w,h,p.dmg,{id:p.from});
     }
     stepPassives(w);
+    stepVirtues(w);
     stepFieldEvent(w);
     stepWaves(w);
     stepPickups(w);
@@ -900,6 +924,7 @@ function snapshot(w) {
         tick: w.tick, time: w.time, zone: w.zone, wave: w.wave, ws: w.waveState === 'fighting' ? 1 : 0,
         next: w.waveState === 'intermission' ? Math.max(0, w.nextWaveAt - w.time) : 0, left: w.toSpawn + w.enemies.length,
         score: w.score, kills: w.kills, combo: w.time < w.comboUntil ? w.combo : 0, over: w.over ? 1 : 0,
+        virtues: w.virtues||{honor:0,loyalty:0,family:0,bravery:0}, virtueSurge: Math.max(0,Math.ceil(((w.virtueUntil||0)-w.time)/1000)),
         fieldEvent: w.fieldEvent ? {kind:w.fieldEvent.kind,name:w.fieldEvent.name,desc:w.fieldEvent.desc,mark:w.fieldEvent.mark} : null,
         boss: w.bossWave && w.waveState === 'fighting' ? (() => { const e = w.enemies.find(e => e.type === ENEMY_INDEX.voidEmperor); return e ? { id: e.id, hp: Math.max(0, e.hp), max: e.max, name: 'VOID EMPEROR', mode: e.attackMode, entering: w.time < (e.entranceUntil || 0) ? 1 : 0 } : null })() : null,
         heroes: w.heroes.map(h => ({
