@@ -122,7 +122,7 @@ function createBattle(opts = {}) {
         enemyDamageMul: opts.enemyDamageMul || 1, // difficulty knob (server env ENEMY_DAMAGE_MUL)
         heroes: selected.map((heroIndex, i) => { const cfg = ROSTER.HEROES[heroIndex]; return ({
             name: cfg.name, x: spawn[i][0], y: spawn[i][1], facing: i % 2 ? -1 : 1, aim: i % 2 ? 4 : 0, vx: 0, vy: 0, moving: false, chain: 0,
-            hp: cfg.v19.hp, maxHp: cfg.v19.hp, damage: cfg.v19.damage, range: S(cfg.v19.range) * (cfg.name === 'ESPIRIT' ? RULES.espiritRangeMul : 1), cool: cfg.v19.cool,
+            hp: cfg.v19.hp, maxHp: cfg.v19.hp, damage: cfg.v19.damage, range: S(cfg.v19.range) * (cfg.name === 'ESPIRIT' ? RULES.espiritRangeMul : cfg.name === 'DONNA' ? 1.5 : 1), cool: cfg.v19.cool,
             speed: SIM.speedFromV19(cfg.v19.speed), stats: cfg.stats, level: 1, masteryTier: 0,
             base: { hp: cfg.v19.hp, damage: cfg.v19.damage, speed: SIM.speedFromV19(cfg.v19.speed) },
             state: 'alive', reviveMs: 0, attackAt: -1e9, specialAt: -1e9, healAt: 0, attackN: 0, specialN: 0, destinyComboHits: 0, destinyComboHealAt: -1e9, weaponFlow: 0, weaponFlowAt: -1e9, shamanHealAt: -1e9, totemUntil: 0, totemAt: -1e9, druidHealAt: -1e9, animalUntil: 0, animalAt: -1e9, animalKind: 0, animalBoostUntil: 0,
@@ -300,7 +300,7 @@ function performAttack(w, h) {
     // No 'atk' event: clients animate swings from attackN + chain stage in the snapshot (saves bandwidth).
     let connectedHits = 0;
     for (const e of [...targets]) {
-        let dmg = h.damage;
+        let dmg = h.damage * (h.name === 'SMITESH' ? 1.75 : 1);
         if (h.name === 'MARKIE') dmg = Math.round(h.damage * (inArc(h, e, h.range * 1.2, k.front) ? k.frontMul : k.sideMul));
         if (h.name === 'DAVE') dmg = Math.round(h.damage * 1.12);
         if (fin) dmg = Math.round(dmg * RULES.finisherDamageMul);
@@ -399,14 +399,14 @@ function performSpecial(w, h) {
         emit(w, { t: 'druidAwaken', h: i, kind: Math.min(3, Math.floor(((h.level || 1) - 1) / 10)), ms: 8000 });
     }
     if (h.name === 'SMITESH') {
-        h.totemUntil = w.time + 6000;
+        h.totemUntil = w.time + 8000;
         h.totemAt = w.time - 1000;
         const tier = h.masteryTier || 0;
         if (tier >= 2) for (const u of w.heroes) if (alive(u) && dist(u,h) <= 145) {
             u.wardUntil = Math.max(u.wardUntil || 0, w.time + 3000);
             emit(w,{t:'guardianWard',h:w.heroes.indexOf(u),from:i});
         }
-        emit(w, { t: 'totem', h: i, x: Math.round(h.x), y: Math.round(h.y), ms: 6000, mastery:tier });
+        emit(w, { t: 'totem', h: i, x: Math.round(h.x), y: Math.round(h.y), ms: 8000, mastery:tier });
     }
     if (h.name === 'MARKIE') { // taunt + damage soak
         h.shieldUntil = w.time + k.shieldMs;
@@ -431,7 +431,7 @@ function spawnEnemy(w, typeIndex = pickEnemyType(w)) {
     const t = ENEMY_TYPES[typeIndex], m = RULES.enemyMargin, r = rng(w), side = r < 0.4 ? 0 : r < 0.8 ? 1 : 3;
     const x = side === 0 ? -m : side === 1 ? ARENA.width + m : ARENA.minX + rng(w) * (ARENA.maxX - ARENA.minX);
     const y = side === 3 ? ARENA.height + m : ARENA.minY + 20 + rng(w) * (ARENA.maxY - ARENA.minY - 20);
-    const e = { id: w.nextEnemyId++, type: typeIndex, x, y, hp: Math.round(t.hp(w.wave) * RULES.difficultyMul * (typeIndex === ENEMY_INDEX.voidEmperor ? 2.31 : 1)), max: Math.round(t.hp(w.wave) * RULES.difficultyMul * (typeIndex === ENEMY_INDEX.voidEmperor ? 2.31 : 1)), speed: t.speed(w.wave) * RULES.moveSpeedMul * (typeIndex === ENEMY_INDEX.voidEmperor ? 1.75 : 1), dmg: Math.round(t.dmg(w.wave) * w.enemyDamageMul * RULES.difficultyMul * (typeIndex === ENEMY_INDEX.voidEmperor ? 1.4 : 1)), at: -1e9, windUntil: 0, strikeAt: -1e9, aim: null, kx: 0, ky: 0, stunUntil: 0, facing: -1, entered: false, tauntBy: -1, tauntUntil: 0 };
+    const e = { id: w.nextEnemyId++, type: typeIndex, x, y, hp: Math.round(t.hp(w.wave) * RULES.difficultyMul * (typeIndex === ENEMY_INDEX.voidEmperor ? 3.003 : 1)), max: Math.round(t.hp(w.wave) * RULES.difficultyMul * (typeIndex === ENEMY_INDEX.voidEmperor ? 3.003 : 1)), speed: t.speed(w.wave) * RULES.moveSpeedMul * (typeIndex === ENEMY_INDEX.voidEmperor ? 1.75 : 1), dmg: Math.round(t.dmg(w.wave) * w.enemyDamageMul * RULES.difficultyMul * (typeIndex === ENEMY_INDEX.voidEmperor ? 1.82 : 1)), at: -1e9, windUntil: 0, strikeAt: -1e9, aim: null, kx: 0, ky: 0, stunUntil: 0, facing: -1, entered: false, tauntBy: -1, tauntUntil: 0 };
     if (typeIndex === ENEMY_INDEX.voidEmperor) {
         e.x = ARENA.width / 2; e.y = ARENA.minY + 55; e.entered = true;
         e.armor=Math.round(e.max*.18); e.entranceUntil = w.time + 1400; e.attackCount = 0; e.attackMode = 'slam';
@@ -701,12 +701,12 @@ function stepPassives(w) {
             // Every unlocked companion fights independently; later companions do
             // not replace earlier ones. Separate cooldowns and distinct hit VFX.
             const intervals = [1500, 1300, 1800, 1600];
-            const petDamage = [10, 16, 24, 32];
+            const petDamage = [20, 32, 48, 64];
             const petReach = [150, 170, 145, 195];
             if (!h.petAttackAt) h.petAttackAt = [-1e9,-1e9,-1e9,-1e9];
             const boosted = w.time < (h.animalBoostUntil || 0);
             for (let pet=0;pet<=kind;pet++) {
-                if (w.time-h.petAttackAt[pet]<intervals[pet]) continue;
+                if (w.time-h.petAttackAt[pet]<intervals[pet]/2) continue;
                 h.petAttackAt[pet]=w.time;
                 const targets=w.enemies.filter(e=>e.hp>0&&dist(e,h)<petReach[pet])
                     .sort((a,b)=>dist(a,h)-dist(b,h));
@@ -735,11 +735,11 @@ function stepPassives(w) {
                     if (n) emit(w, { t: 'shamanHeal', h: w.heroes.indexOf(target), from: w.heroes.indexOf(h), n });
                 }
             }
-            if (w.time < h.totemUntil && w.time - h.totemAt >= 1000) {
+            if (w.time < h.totemUntil && w.time - h.totemAt >= 800) {
                 h.totemAt = w.time;
                 const tier = h.masteryTier || 0;
                 const allies = w.heroes.filter(u => alive(u) && dist(u,h) <= 135);
-                for (const u of allies) healHero(w, u, tier >= 2 ? 11 : 7, h);
+                for (const u of allies) { healHero(w, u, tier >= 2 ? 11 : 7, h); u.wardUntil=Math.max(u.wardUntil||0,w.time+900); }
                 if (tier >= 1) {
                     const injured = allies.filter(u => u.hp < u.maxHp).sort((a,b) => a.hp/a.maxHp - b.hp/b.maxHp);
                     if (injured.length) {
@@ -747,7 +747,7 @@ function stepPassives(w) {
                         if (n) emit(w,{t:'spiritCommunion',h:w.heroes.indexOf(target),from:w.heroes.indexOf(h),n});
                     }
                 }
-                for (const e of [...w.enemies]) if (dist(e, h) <= 95) damageEnemy(w, h, e, Math.round(h.damage * .45), { knock: 3 });
+                for (const e of [...w.enemies]) if (dist(e, h) <= 145) damageEnemy(w, h, e, Math.round(h.damage * .65), { knock: 7, stun: 220 });
                 emit(w, { t: 'totemPulse', h: w.heroes.indexOf(h), x: Math.round(h.x), y: Math.round(h.y), mastery:tier });
             }
         }
