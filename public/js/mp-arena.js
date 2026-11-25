@@ -196,7 +196,7 @@
                         const hit = hits[0];
                         f.mastery = Math.min(2, h.mastery || 0);
                         f.volley = hits.slice(0, 1 + f.mastery).map(e => ({ x: e.x, y: e.y }));
-                        const maxRange = KIT[h.name].range;
+                        const maxRange = KIT[h.name].range * (h.name==='DONNA'?1.5:1);
                         f.tx = hit ? hit.x : h.x + f.aim.x * maxRange;
                         f.ty = hit ? hit.y : h.y + f.aim.y * maxRange;
                         f.life = Math.max(120, Math.hypot(f.tx - h.x, f.ty - h.y) * S / 3.2);
@@ -222,6 +222,7 @@
                         }
                     }
                     fx.push(f);
+                    fx.push({...f,kind:'elementTrail',life:Math.max(300,f.life)});
                     if (!f.pose) attackBurst(f, h, now);
                 }
                 if (h.specialN > prev.s) fx.push({ kind: 'cast', i, start: now, life: 560 });
@@ -548,6 +549,8 @@
                 }
                 case 'totemPulse': {
                     fx.push({kind:'guardianPulse',follow:e.h,x:e.x*S,y:e.y*S,start:now,life:800,mastery:e.mastery||0});
+                    burst(e.x*S,e.y*S-28,'#9bfff2',16,5,{life:500,size:4,lift:3});
+                    fx.push({kind:'guardianSpirits',follow:e.h,start:now,life:650});
                     break;
                 }
                 case 'comboHeal': {
@@ -1489,6 +1492,36 @@
             }
             for (const f of fx) {
                 const el = now - f.start;
+                if(f.kind==='guardianSpirits'){
+                    const h=view.heroes[f.follow];if(!h||el>f.life)continue;
+                    const t=el/f.life;g.save();g.translate(h.x*S,h.y*S-25);g.globalCompositeOperation='lighter';g.globalAlpha=1-t;
+                    for(let j=0;j<8;j++){const a=j*Math.PI/4+t*.8,r=15+t*145*S;g.save();g.translate(Math.cos(a)*r,Math.sin(a)*r*.75);g.rotate(a);g.fillStyle='#58e7d9';g.beginPath();g.moveTo(13,0);g.quadraticCurveTo(-4,-9,-18,0);g.quadraticCurveTo(-4,9,13,0);g.fill();g.fillStyle='#e1fff6';g.fillRect(0,-2,7,4);g.restore();}
+                    g.restore();continue;
+                }
+                if(f.kind==='elementTrail'){
+                    const h=view.heroes[f.i];if(!h||el<0||el>f.life)continue;
+                    const palette={NOAH:['#7554ff','#a9f5ff'],DESTINY:['#f5ad36','#fff5c2'],MARKIE:['#ff4718','#ffdb63'],ESPIRIT:['#dca743','#fff6b1'],SMITESH:['#37cbe8','#b9fff4'],DAVE:['#b946e9','#ffb9f8'],DONNA:['#42b965','#d9ff9b']};
+                    const p=palette[f.name]||palette.NOAH, ranged=['ESPIRIT','SMITESH','DONNA'].includes(f.name), fin=f.stage===2;
+                    g.save();g.globalCompositeOperation='lighter';g.lineCap='round';
+                    if(ranged){
+                        const release=f.rel||f.start, flight=f.flight||f.life;
+                        if(now>=release){
+                            const t=Math.min(1,(now-release)/flight), fade=Math.max(0,1-Math.max(0,now-release-flight)/120);
+                            const x0=f.x*S,y0=f.y*S-34*k,x1=f.tx*S,y1=f.ty*S-34*k,dx=x1-x0,dy=y1-y0,len=Math.hypot(dx,dy)||1;
+                            const x=x0+dx*t,y=y0+dy*t,tail=Math.max(0,t-.32);
+                            g.globalAlpha=fade*.65;g.strokeStyle=p[0];g.lineWidth=fin?12:8;g.beginPath();g.moveTo(x0+dx*tail,y0+dy*tail);g.lineTo(x,y);g.stroke();
+                            g.strokeStyle=p[1];g.lineWidth=2.5;g.stroke();
+                            for(let j=0;j<5;j++){const q=Math.max(0,t-j*.045),off=Math.sin(j*2+t*16)*(f.name==='DONNA'?9:5);g.fillStyle=j%2?p[1]:p[0];g.beginPath();g.ellipse(x0+dx*q-dy/len*off,y0+dy*q+dx/len*off,5,2,Math.atan2(dy,dx),0,Math.PI*2);g.fill();}
+                        }
+                    }else{
+                        const t=Math.min(1,el/300),a=Math.atan2(f.aim.y,f.aim.x),r=(KIT[f.name].atkW||100)*.43*k*(fin?1.3:1);
+                        g.translate(h.x*S,h.y*S-34*k);g.rotate(a);
+                        const center=-1.05+t*2.1;
+                        for(let j=0;j<3;j++){g.globalAlpha=(1-t)*(.48-j*.10);g.strokeStyle=j===1?p[1]:p[0];g.lineWidth=j===1?3:8-j*2;g.beginPath();g.arc(0,0,r-j*7,center-.85,center+.18);g.stroke();}
+                        for(let j=0;j<7;j++){const ang=center-j*.12,rr=r+j*2;g.fillStyle=j%2?p[0]:p[1];g.globalAlpha=(1-t)*.75;g.beginPath();g.moveTo(Math.cos(ang)*rr,Math.sin(ang)*rr);g.lineTo(Math.cos(ang-.13)*(rr+9),Math.sin(ang-.13)*(rr+9));g.lineTo(Math.cos(ang-.2)*(rr-3),Math.sin(ang-.2)*(rr-3));g.fill();}
+                    }
+                    g.restore();continue;
+                }
                 if (f.kind === 'ancestralGuardian' || f.kind === 'guardianPulse') { drawAncestralGuardian(f,now,view); continue }
                 if(f.kind==='meteorWarn'||f.kind==='meteorBlast'){
                     const t=Math.max(0,Math.min(1,el/f.life));
