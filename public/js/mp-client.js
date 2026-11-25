@@ -27,7 +27,7 @@
     function show(id) {
         for (const key of ['entry', 'lobby', 'battle']) $(key).classList.toggle('hidden', key !== id);
         document.body.classList.toggle('in-battle', id === 'battle');
-        if (id === 'battle') $('notice').textContent = ''; else { renderEvolution(null); renderFusion(null); renderField(null); }
+        if (id === 'battle') $('notice').textContent = ''; else { renderEvolution(null); renderFusion(null); renderField(null); renderVirtues(null); }
     }
     function note(msg, ms = 6500) {
         $('notice').textContent = msg;
@@ -223,12 +223,24 @@
       try{localStorage.setItem(DOJO_KEY,JSON.stringify(dojo))}catch{}
       setTimeout(()=>note('Dojo: +'+reward+' Honor · +'+reward+' '+run.hero+' mastery XP',10000),500);
     }
+    const virtueHud=document.createElement('div');
+    virtueHud.style.cssText='display:none;position:fixed;left:50%;top:5px;transform:translateX(-50%);width:min(290px,48vw);z-index:80;pointer-events:none;background:#16131de0;border:1px solid #65543b;border-radius:6px;padding:4px 7px;color:#f4e3bf;font:700 9px system-ui';
+    const virtueKeys=['honor','loyalty','family','bravery'], virtueColors=['#e5bb63','#78aaff','#79d6a0','#ed8065'];
+    virtueHud.innerHTML='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px">'+virtueKeys.map((key,i)=>'<div style="text-align:center">'+key.toUpperCase()+'<div style="height:4px;background:#3a3340;border-radius:3px;overflow:hidden"><div id="virtue-'+key+'" style="height:100%;width:0%;background:'+virtueColors[i]+'"></div></div></div>').join('')+'</div><div id="virtue-surge" style="display:none;text-align:center;color:#ffe3a1;padding:3px"></div>';
+    document.body.appendChild(virtueHud);
+    function renderVirtues(w){
+        virtueHud.style.display=w?.virtues?'block':'none';
+        if(!w?.virtues)return;
+        for(const key of virtueKeys)$('virtue-'+key).style.width=Math.min(100,w.virtues[key]||0)+'%';
+        const surge=$('virtue-surge');surge.style.display=w.virtueSurge?'block':'none';
+        surge.textContent=w.virtueSurge?'WAY OF THE WARRIOR · '+w.virtueSurge+'s':'';
+    }
     // ---------- server events ----------
     socket.on('room:update', r => { room = r; render() });
     socket.on('battle:start', w => { resetJoy(); renderFusion(null); world = w; arena.reset(); arena.push(w); resetPrediction(); reconcile(w); show('battle') });
-    socket.on('battle:state', w => { world = w; trackDojo(w); reconcile(w); arena.push(w); renderEvolution(w); renderFusion(w); renderField(w) });
+    socket.on('battle:state', w => { world = w; trackDojo(w); reconcile(w); arena.push(w); renderEvolution(w); renderFusion(w); renderField(w); renderVirtues(w) });
     socket.on('battle:end', e => {
-        finishDojo(e); renderField(null);
+        finishDojo(e); renderField(null); renderVirtues(null);
         resetJoy(); world = null; renderEvolution(null); renderFusion(null); arena.reset(); resetPrediction();
         if (e?.reason === 'wipe') note('Squad defeated on wave ' + e.wave + ' — score ' + e.score + ', ' + e.kills + ' KOs. Ready up to play again!', 12000);
         else note('Back in the lobby' + (e?.by ? ' — ' + e.by + ' ended the round.' : '.'));
