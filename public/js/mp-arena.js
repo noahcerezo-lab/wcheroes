@@ -222,7 +222,7 @@
                         }
                     }
                     fx.push(f);
-                    fx.push({...f,kind:'elementTrail',life:Math.max(300,f.life)});
+                    fx.push({...f,kind:'elementTrail',life:Math.max(300,f.life),legendary:h.controller===opts.getMyId()&&!!opts.getMyId()&&opts.legendaryEquipped?.(h.name)});
                     if (!f.pose) attackBurst(f, h, now);
                 }
                 if (h.specialN > prev.s) fx.push({ kind: 'cast', i, start: now, life: 560 });
@@ -1519,6 +1519,22 @@
                         const center=-1.05+t*2.1;
                         for(let j=0;j<3;j++){g.globalAlpha=(1-t)*(.48-j*.10);g.strokeStyle=j===1?p[1]:p[0];g.lineWidth=j===1?3:8-j*2;g.beginPath();g.arc(0,0,r-j*7,center-.85,center+.18);g.stroke();}
                         for(let j=0;j<7;j++){const ang=center-j*.12,rr=r+j*2;g.fillStyle=j%2?p[0]:p[1];g.globalAlpha=(1-t)*.75;g.beginPath();g.moveTo(Math.cos(ang)*rr,Math.sin(ang)*rr);g.lineTo(Math.cos(ang-.13)*(rr+9),Math.sin(ang-.13)*(rr+9));g.lineTo(Math.cos(ang-.2)*(rr-3),Math.sin(ang-.2)*(rr-3));g.fill();}
+                    }
+                    if(f.legendary){
+                        g.globalAlpha=Math.max(0,1-el/f.life)*.85;
+                        g.strokeStyle='#fff1b2';g.fillStyle='#fff8dd';g.lineWidth=2;
+                        if(ranged){
+                            const t=Math.max(0,Math.min(1,(now-(f.rel||f.start))/(f.flight||f.life)));
+                            if(now>=(f.rel||f.start)){
+                                const x=(f.x+(f.tx-f.x)*t)*S,y=(f.y+(f.ty-f.y)*t)*S-34*k;
+                                for(let j=0;j<5;j++){const a=j*Math.PI*2/5+t*5,rr=8+j*2;g.beginPath();g.moveTo(x+Math.cos(a)*rr,y+Math.sin(a)*rr);g.lineTo(x+Math.cos(a)*(rr+7),y+Math.sin(a)*(rr+7));g.stroke();}
+                                g.beginPath();g.moveTo(x,y-8);g.lineTo(x+6,y);g.lineTo(x,y+8);g.lineTo(x-6,y);g.closePath();g.fill();
+                            }
+                        }else{
+                            const t=Math.min(1,el/300),r=(KIT[f.name].atkW||100)*.52*k,center=-1.05+t*2.1;
+                            g.beginPath();g.arc(0,0,r,center-.9,center+.2);g.stroke();
+                            for(let j=0;j<5;j++){const a=center-j*.19,x=Math.cos(a)*r,y=Math.sin(a)*r;g.beginPath();g.moveTo(x,y-5);g.lineTo(x+3,y);g.lineTo(x,y+5);g.lineTo(x-3,y);g.closePath();g.fill();}
+                        }
                     }
                     g.restore();continue;
                 }
