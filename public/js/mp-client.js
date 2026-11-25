@@ -201,9 +201,24 @@
     const dojoPanel=document.createElement('div');
     dojoPanel.style.cssText='display:none;position:fixed;inset:0;z-index:150;background:#100e16f5;overflow:auto;padding:24px;color:#f6eee0;font-family:system-ui';
     document.body.appendChild(dojoPanel);
+    const armory={NOAH:['Celestial Riftblade','#a99aff'],DESTINY:['Phoenix Excalibur','#ffd17a'],MARKIE:['Worldbreaker Axe','#ff7840'],ESPIRIT:['Heavenpiercer Bow','#ffe59a'],SMITESH:['Staff of the Ancestors','#72f4e7'],DAVE:['Chaos Reaver','#e68aff'],DONNA:['Staff of the Wildmother','#a4ef83']};
+    function legendaryEquipped(name){return !!(dojo.equipped?.[name]&&(dojo.heroes[name]?.xp||0)>=400);}
+    function renderArmory(){
+      const section=document.createElement('section');
+      section.innerHTML='<h2>Legendary Armory</h2><p>Reach Mastery 5 (400 XP) with each hero to unlock their weapon. Cosmetic only.</p>';
+      for(const [name,[weapon,color]] of Object.entries(armory)){
+        const xp=dojo.heroes[name]?.xp||0, unlocked=xp>=400, equipped=legendaryEquipped(name);
+        const row=document.createElement('div');row.style.cssText='border:1px solid #514451;border-radius:10px;padding:12px;margin:8px 0';
+        row.innerHTML='<small>'+name+'</small><h3 style="margin:5px 0;color:'+color+'">'+weapon+'</h3><progress style="width:100%;accent-color:'+color+'" max="400" value="'+Math.min(400,xp)+'"></progress><button style="margin-top:8px;padding:8px 14px" '+(unlocked?'':'disabled')+'>'+(equipped?'Unequip':unlocked?'Equip':'Locked · '+xp+'/400 XP')+'</button>';
+        row.querySelector('button').onclick=()=>{if(!unlocked)return;(dojo.equipped||(dojo.equipped={}))[name]=!equipped;try{localStorage.setItem(DOJO_KEY,JSON.stringify(dojo))}catch{}renderDojo();};
+        section.appendChild(row);
+      }
+      dojoPanel.firstElementChild.appendChild(section);
+    }
     function renderDojo(){
       const rank=belts.filter(b=>dojo.honor>=b[0]).pop(), next=belts.find(b=>b[0]>dojo.honor);
       dojoPanel.innerHTML='<div style="max-width:480px;margin:auto"><button id="dojo-close" style="float:right;padding:8px 14px">Close ×</button><div style="color:#c8a66b;letter-spacing:3px;font-size:12px">WEST COAST HEROES</div><h1>THE DOJO</h1><div style="border:1px solid #786344;border-radius:12px;padding:18px"><div style="color:'+rank[2]+';font-weight:800">'+rank[1].toUpperCase()+' BELT</div><h2>'+dojo.honor+' Honor</h2><progress style="width:100%;accent-color:#c8a66b" max="'+(next?next[0]-rank[0]:1)+'" value="'+(next?dojo.honor-rank[0]:1)+'"></progress><small>'+(next?(next[0]-dojo.honor)+' Honor to '+next[1]+' Belt':'Highest rank achieved')+'</small><p>'+dojo.runs+' completed runs · Best wave '+dojo.best+'</p></div><h2>Hero mastery</h2>'+['NOAH','DESTINY','MARKIE','ESPIRIT','SMITESH','DAVE','DONNA'].map(n=>{const h=dojo.heroes[n]||{xp:0,runs:0};return '<div style="padding:12px 0;border-bottom:1px solid #453b49"><b>'+n+'</b><span style="float:right;color:#e5c58b">Mastery '+(1+Math.floor(h.xp/100))+'</span><progress style="width:100%;accent-color:#c8a66b" max="100" value="'+h.xp%100+'"></progress><small>'+h.xp+' XP · '+h.runs+' runs</small></div>'}).join('')+'<p style="opacity:.6;font-size:12px">Progress saved on this device. Ranks are cosmetic.</p></div>';
+      renderArmory();
       $('dojo-close').onclick=()=>dojoPanel.style.display='none';
     }
     dojoButton.onclick=()=>{dojo=loadDojo();renderDojo();dojoPanel.style.display='block'};
@@ -407,6 +422,7 @@
     const arena = WCHArena.createArena($('arena'), {
         getRoom: () => room,
         getMyId: myId,
+        legendaryEquipped,
         getLocalHero: localHero,
         interpolate: params.get('interp') !== '0'
     });
