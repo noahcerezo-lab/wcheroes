@@ -222,7 +222,7 @@
                         }
                     }
                     fx.push(f);
-                    if(h.name!=='ESPIRIT') fx.push({...f,kind:'elementTrail',life:Math.max(300,f.life),legendary:h.controller===opts.getMyId()&&!!opts.getMyId()&&opts.legendaryEquipped?.(h.name)});
+                    if(h.name!=='ESPIRIT'&&h.name!=='DONNA') fx.push({...f,kind:'elementTrail',life:Math.max(300,f.life),legendary:h.controller===opts.getMyId()&&!!opts.getMyId()&&opts.legendaryEquipped?.(h.name)});
                     if (!f.pose) attackBurst(f, h, now);
                 }
                 if (h.specialN > prev.s) fx.push({ kind: 'cast', i, start: now, life: 560 });
@@ -1426,14 +1426,17 @@
             const t=Math.min(1,Math.max(0,elapsed/f.flight));
             const sx=f.x*S+f.aim.x*23*k, sy=f.y*S-55*k;
             const ex=f.tx*S, ey=f.ty*S-38*k;
-            const x=lerp(sx,ex,t),y=lerp(sy,ey,t)-Math.sin(t*Math.PI)*13;
+            const bend=Math.min(65,Math.hypot(ex-sx,ey-sy)*.35);
+            const cx=sx+f.aim.x*bend,cy=sy+f.aim.y*bend-18;
+            const point=q=>({x:(1-q)*(1-q)*sx+2*(1-q)*q*cx+q*q*ex,y:(1-q)*(1-q)*sy+2*(1-q)*q*cy+q*q*ey});
+            const {x,y}=point(t);
             const size=(f.stage===2?1.5:1.15)*Math.min(k,1.4);
             g.save();g.globalCompositeOperation='lighter';g.lineCap='round';
             if(elapsed<=f.flight){
                 // Layered curved vine trail with luminous vein and leaf motes.
                 for(let j=0;j<3;j++){
                     const back=Math.max(0,t-(.12+j*.07));
-                    const bx=lerp(sx,ex,back),by=lerp(sy,ey,back)-Math.sin(back*Math.PI)*13;
+                    const {x:bx,y:by}=point(back);
                     g.globalAlpha=[.23,.5,.95][j];g.strokeStyle=['#2bcf6a','#75f99a','#edffb5'][j];
                     g.lineWidth=[24,11,3.5][j]*size;
                     g.beginPath();g.moveTo(bx,by);g.quadraticCurveTo((bx+x)/2,(by+y)/2-6,x,y);g.stroke();
