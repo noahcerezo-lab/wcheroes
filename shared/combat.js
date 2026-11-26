@@ -264,6 +264,7 @@ const inReach = (h, e, range) => Math.hypot(e.x - h.x, (e.y - h.y) * 1.2) <= ran
 // reach for the chain finisher.
 function attackTargets(w, h, rangeMul = 1) {
     const k = KITS[h.name], range = h.range * rangeMul;
+    if(h.name==='DONNA') return w.enemies.filter(e=>e.hp>0&&dist(e,h)<=range).sort((a,b)=>dist(a,h)-dist(b,h)).slice(0,1);
     if (h.name === 'ESPIRIT' || h.name === 'SMITESH' || h.name === 'DONNA') {
         const lane = w.enemies.filter(e => inArc(h, e, range, k.arc)).sort((a, b) => dist(a, h) - dist(b, h));
         return lane.slice(0, 1); // single arrow, nearest in the lane
