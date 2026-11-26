@@ -388,6 +388,7 @@
             }
             switch (e.t) {
                 case 'hit': {
+                    if(e.c||e.f){const hero=latestHero(e.h);if(hero)fx.push({kind:'signatureBurst',name:hero.name,x:e.x*S,y:e.y*S-30,angle:Math.atan2(e.y-hero.y,e.x-hero.x),crit:!!e.c,start:now,life:340});}
                     flashes.set(e.id, now + 200);
                     const hh = latestHero(e.h);
                     // Mastery impacts are enemy-centered: never overlay hero heads.
@@ -449,6 +450,7 @@
                     break;
                 }
                 case 'kill': {
+                    const killer=latestHero(e.h);if(killer)fx.push({kind:'elementDeath',name:killer.name,x:e.x*S,y:e.y*S-20,start:now,life:520});
                     burst(e.x * S, e.y * S - 30, '#FF6C78', 7, 4); // enemies.md death burst (smaller; the die frames carry it)
                     const last = e.prev || (prevSnap && prevSnap.enemies.find(v => v[0] === e.id));
                     if (last) { // die frames + a short knockback slide away from the killer
@@ -1477,6 +1479,26 @@
             }
             for (const f of fx) {
                 const el = now - f.start;
+                if(f.kind==='signatureBurst'||f.kind==='elementDeath'){
+                    if(el<0||el>f.life)continue;
+                    const t=el/f.life,death=f.kind==='elementDeath',col={NOAH:'#ad8cff',DESTINY:'#ffda83',MARKIE:'#ff7138',ESPIRIT:'#e7ce80',SMITESH:'#66e9ee',DAVE:'#d46aff',DONNA:'#8cf59b'}[f.name]||'#fff2b5';
+                    g.save();g.translate(f.x,f.y);g.globalCompositeOperation='lighter';g.globalAlpha=(1-t)*.85;
+                    const n=death?9:7;
+                    for(let j=0;j<n;j++){
+                        const a=death?j*6.283/n:(f.angle||0)+(j-3)*.27;
+                        const r=8+t*(death?43:56),x=Math.cos(a)*r,y=Math.sin(a)*r*.72-(death?t*22:0);
+                        g.save();g.translate(x,y);g.rotate(a);g.fillStyle=col;g.strokeStyle=col;g.lineWidth=2;
+                        const z=(1-t)*10+2;
+                        g.beginPath();
+                        if(f.name==='DONNA'||f.name==='DESTINY'){g.moveTo(-z,0);g.quadraticCurveTo(0,-z,z,0);g.quadraticCurveTo(0,z,-z,0);g.fill();}
+                        else if(f.name==='SMITESH'){g.moveTo(-z,0);g.quadraticCurveTo(-z/2,-z,z/2,0);g.quadraticCurveTo(z,z,z*1.5,0);g.stroke();}
+                        else if(f.name==='MARKIE'){g.moveTo(-z,-z/3);g.lineTo(z*.5,-z);g.lineTo(z,0);g.lineTo(0,z*.5);g.closePath();g.fill();}
+                        else {g.moveTo(-z,0);g.lineTo(z,-2);g.lineTo(z*.4,3);g.closePath();g.fill();}
+                        g.restore();
+                    }
+                    if(!death&&t<.22){g.globalAlpha=(1-t/.22)*.85;g.fillStyle='#fff8df';g.beginPath();g.moveTo(-14,0);g.lineTo(0,-4);g.lineTo(14,0);g.lineTo(0,4);g.closePath();g.fill();}
+                    g.restore();continue;
+                }
                 if(f.kind==='guardianSpirits'){
                     const h=view.heroes[f.follow];if(!h||el>f.life)continue;
                     const t=el/f.life;g.save();g.translate(h.x*S,h.y*S-25);g.globalCompositeOperation='lighter';g.globalAlpha=1-t;
