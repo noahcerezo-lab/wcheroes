@@ -239,7 +239,7 @@
       setTimeout(()=>note('Dojo: +'+reward+' Honor · +'+reward+' '+run.hero+' mastery XP',10000),500);
     }
     const virtueHud=document.createElement('div');
-    virtueHud.style.cssText='display:none;position:fixed;left:50%;top:5px;transform:translateX(-50%);width:min(290px,48vw);z-index:80;pointer-events:none;background:#16131de0;border:1px solid #65543b;border-radius:6px;padding:4px 7px;color:#f4e3bf;font:700 9px system-ui';
+    virtueHud.style.cssText='display:none;position:fixed;left:50%;bottom:max(8px,env(safe-area-inset-bottom));transform:translateX(-50%);width:min(290px,36vw);z-index:80;pointer-events:none;background:#16131de0;border:1px solid #65543b;border-radius:6px;padding:4px 7px;color:#f4e3bf;font:700 9px system-ui';
     const virtueKeys=['honor','loyalty','family','bravery'], virtueColors=['#e5bb63','#78aaff','#79d6a0','#ed8065'];
     virtueHud.innerHTML='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px">'+virtueKeys.map((key,i)=>'<div style="text-align:center">'+key.toUpperCase()+'<div style="height:4px;background:#3a3340;border-radius:3px;overflow:hidden"><div id="virtue-'+key+'" style="height:100%;width:0%;background:'+virtueColors[i]+'"></div></div></div>').join('')+'</div><div id="virtue-surge" style="display:none;text-align:center;color:#ffe3a1;padding:3px"></div>';
     document.body.appendChild(virtueHud);
