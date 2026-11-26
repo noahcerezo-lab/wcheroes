@@ -2015,7 +2015,7 @@
                 g.beginPath(); g.moveTo(8, 0); g.lineTo(-5, -6); g.lineTo(-2, 0); g.lineTo(-5, 6); g.closePath(); g.fill();
                 g.restore();
             }
-            drawAnimeMantle(h, i, now);
+            // Persistent mantle removed to keep hero silhouettes clear.
             const entity = Object.assign({ name: h.name, facing: h.facing === -1 ? -1 : 1, moving: !!h.moving && !h.state, color, upgradeTier: h.upgradeTier || 0, theme: ART_THEME }, poseFor(i, now));
             if (h.state) { // downed: lying on the ground, greyed, with a revive progress ring
                 g.save();
