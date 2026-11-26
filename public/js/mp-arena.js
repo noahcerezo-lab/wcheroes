@@ -1509,9 +1509,19 @@
                             const t=Math.min(1,(now-release)/flight), fade=Math.max(0,1-Math.max(0,now-release-flight)/120);
                             const x0=f.x*S,y0=f.y*S-34*k,x1=f.tx*S,y1=f.ty*S-34*k,dx=x1-x0,dy=y1-y0,len=Math.hypot(dx,dy)||1;
                             const x=x0+dx*t,y=y0+dy*t,tail=Math.max(0,t-.32);
-                            g.globalAlpha=fade*.65;g.strokeStyle=p[0];g.lineWidth=fin?12:8;g.beginPath();g.moveTo(x0+dx*tail,y0+dy*tail);g.lineTo(x,y);g.stroke();
-                            g.strokeStyle=p[1];g.lineWidth=2.5;g.stroke();
-                            for(let j=0;j<5;j++){const q=Math.max(0,t-j*.045),off=Math.sin(j*2+t*16)*(f.name==='DONNA'?9:5);g.fillStyle=j%2?p[1]:p[0];g.beginPath();g.ellipse(x0+dx*q-dy/len*off,y0+dy*q+dx/len*off,5,2,Math.atan2(dy,dx),0,Math.PI*2);g.fill();}
+                            g.globalAlpha=fade*.65;g.strokeStyle=p[0];g.lineWidth=f.name==='ESPIRIT'?3:fin?12:8;g.beginPath();g.moveTo(x0+dx*tail,y0+dy*tail);g.lineTo(x,y);g.stroke();
+                            g.strokeStyle=p[1];g.lineWidth=f.name==='ESPIRIT'?1:2.5;g.stroke();
+                            if(f.name==='ESPIRIT'){
+                                g.save();g.translate(x,y);g.rotate(Math.atan2(dy,dx));g.globalCompositeOperation='source-over';g.globalAlpha=fade;
+                                const l=fin?42:32;
+                                g.fillStyle='#9b713b';g.fillRect(-l,-1.5,l-5,3);
+                                g.fillStyle='#fff0b2';g.fillRect(-l,-1,l-5,1);
+                                g.fillStyle='#e8edf4';g.strokeStyle='#8e9eae';g.lineWidth=1;
+                                g.beginPath();g.moveTo(3,0);g.lineTo(-9,-5);g.lineTo(-6,0);g.lineTo(-9,5);g.closePath();g.fill();g.stroke();
+                                g.fillStyle='#d5b267';g.beginPath();g.moveTo(-l,0);g.lineTo(-l-4,-5);g.lineTo(-l+7,-3);g.lineTo(-l+10,0);g.lineTo(-l+7,3);g.lineTo(-l-4,5);g.closePath();g.fill();
+                                g.restore();
+                            }
+                            for(let j=0;j<(f.name==='ESPIRIT'?0:5);j++){const q=Math.max(0,t-j*.045),off=Math.sin(j*2+t*16)*(f.name==='DONNA'?9:5);g.fillStyle=j%2?p[1]:p[0];g.beginPath();g.ellipse(x0+dx*q-dy/len*off,y0+dy*q+dx/len*off,5,2,Math.atan2(dy,dx),0,Math.PI*2);g.fill();}
                         }
                     }else{
                         const t=Math.min(1,el/300),a=Math.atan2(f.aim.y,f.aim.x),r=(KIT[f.name].atkW||100)*.43*k*(fin?1.3:1);
