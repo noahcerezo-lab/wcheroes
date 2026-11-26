@@ -222,7 +222,7 @@
                         }
                     }
                     fx.push(f);
-                    fx.push({...f,kind:'elementTrail',life:Math.max(300,f.life),legendary:h.controller===opts.getMyId()&&!!opts.getMyId()&&opts.legendaryEquipped?.(h.name)});
+                    if(h.name!=='ESPIRIT') fx.push({...f,kind:'elementTrail',life:Math.max(300,f.life),legendary:h.controller===opts.getMyId()&&!!opts.getMyId()&&opts.legendaryEquipped?.(h.name)});
                     if (!f.pose) attackBurst(f, h, now);
                 }
                 if (h.specialN > prev.s) fx.push({ kind: 'cast', i, start: now, life: 560 });
@@ -1362,37 +1362,19 @@
         // Espirit's arrow: launched on the bow's release frame from the bow hand, Draper's glowing arrow loop
         // (arrowhead points right, rotated to the flight angle) with a short gold trail.
         function drawArrow(f, now, k) {
-            const el = now - f.rel; if (el < 0 || el > f.flight) return;
-            const t = el / f.flight, fin = f.stage === 2;
-            const sx = f.x * S + f.aim.x * 18 * k, sy = f.y * S - 38 * k + f.aim.y * 10 * k, ex = f.tx * S, ey = f.ty * S - 38 * k;
-            const hx = lerp(sx, ex, t), hy = lerp(sy, ey, t), ang = Math.atan2(ey - sy, ex - sx);
-            const t0 = Math.max(0, t - .22), tx0 = lerp(sx, ex, t0), ty0 = lerp(sy, ey, t0);
-            g.save();
-            g.globalCompositeOperation = 'lighter'; g.lineCap = 'round';
-            g.globalAlpha = .55; g.strokeStyle = '#FFB948'; g.lineWidth = (fin ? 4 : 2.5) * Math.min(k, 1.3);
-            g.beginPath(); g.moveTo(tx0, ty0); g.lineTo(hx, hy); g.stroke();
-            g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
-            g.translate(Math.round(hx), Math.round(hy)); g.rotate(ang);
-            const sc = (fin ? 1.25 : 1) * Math.min(k, 1.3);
-            if (!(SH && SH.draw(g, 'arrowGlow', Math.floor(now / 50) % 6, false, sc)) && A) A.loop(g, 'espiritArrow', now, 0, 0, KIT.ESPIRIT.atkW * k);
-            g.restore();
-            if (Math.random() < .4) emitO('arrowTrail', hx, hy, ang + Math.PI, 1, OC.ESPIRIT);
-            // Additional visible arrows correspond to additional server-authoritative targets.
-            // If no secondary enemy exists, show a harmless parallel arrow (never fake a hit).
-            const n = 1 + (f.mastery || 0);
-            for (let j = 1; j < n; j++) {
-                const dest = f.volley && f.volley[j];
-                const offset = (j % 2 ? 1 : -1) * Math.ceil(j / 2) * 13 * Math.min(k, 1.3);
-                const tx = dest ? dest.x * S : ex, ty = dest ? dest.y * S - 38 * k : ey + offset;
-                const x = lerp(sx, tx, t), y = lerp(sy + offset * .5, ty, t);
-                const px = lerp(sx, tx, t0), py = lerp(sy + offset * .5, ty, t0);
-                const a = Math.atan2(ty - (sy + offset * .5), tx - sx);
-                g.save(); g.globalCompositeOperation = 'lighter';
-                g.strokeStyle = '#b9ffd6'; g.globalAlpha = .7; g.lineWidth = 2.5;
-                g.beginPath(); g.moveTo(px, py); g.lineTo(x, y); g.stroke();
-                g.translate(Math.round(x), Math.round(y)); g.rotate(a);
-                g.fillStyle = '#eaffee'; g.fillRect(-10, -2, 18, 4);
-                g.beginPath(); g.moveTo(12, 0); g.lineTo(3, -5); g.lineTo(3, 5); g.closePath(); g.fill();
+            const release=f.rel??f.start, flight=f.flight||f.life, el=now-release;
+            if(el<0||el>flight)return;
+            const t=el/flight, sc=Math.min(k,1.3)*(f.stage===2?1.18:1);
+            const sx=f.x*S+f.aim.x*18*k,sy=f.y*S-38*k+f.aim.y*10*k;
+            const targets=[{x:f.tx,y:f.ty},...(f.volley||[]).slice(1)];
+            for(const dest of targets){
+                const ex=dest.x*S,ey=dest.y*S-38*k,x=lerp(sx,ex,t),y=lerp(sy,ey,t),a=Math.atan2(ey-sy,ex-sx);
+                g.save();g.translate(x,y);g.rotate(a);g.scale(sc,sc);
+                g.globalAlpha=.22;g.strokeStyle='#e8b85d';g.lineWidth=1.5;g.beginPath();g.moveTo(-42,0);g.lineTo(-27,0);g.stroke();
+                g.globalAlpha=1;g.fillStyle='#a97c48';g.fillRect(-26,-1.5,22,3);
+                g.fillStyle='#e5c58c';g.fillRect(-26,-1,22,1);
+                g.fillStyle='#d5b16d';g.beginPath();g.moveTo(-28,-4);g.lineTo(-19,-2);g.lineTo(-19,2);g.lineTo(-28,4);g.lineTo(-25,0);g.closePath();g.fill();
+                g.fillStyle='#e9edf2';g.strokeStyle='#8995a3';g.lineWidth=.8;g.beginPath();g.moveTo(3,0);g.lineTo(-7,-4);g.lineTo(-5,0);g.lineTo(-7,4);g.closePath();g.fill();g.stroke();
                 g.restore();
             }
         }
@@ -1651,7 +1633,7 @@
                 if (f.kind === 'ov') { drawOv(f, now, view, k); continue }
                 if (f.kind === 'attack' && f.name === 'DONNA') { drawThornburst(f, now, k); continue }
                 if (f.kind === 'attack' && f.name === 'SMITESH') { drawSpiritBolt(f, now, k); continue }
-                if (f.kind === 'attack' && f.pose && f.name === 'ESPIRIT') { drawArrow(f, now, k); continue }
+                if (f.kind === 'attack' && f.name === 'ESPIRIT') { drawArrow(f, now, k); continue }
                 if (f.kind === 'attack' && f.pose) continue; // drawn by hero-anim (blade-path crescent / sheets)
                 if (f.kind === 'attack' && A) {
                     const h = view.heroes[f.i] || f, kit = KIT[f.name];
