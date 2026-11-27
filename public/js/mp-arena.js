@@ -449,6 +449,12 @@
                     else if (e.f) addShake(4, 140, now);
                     break;
                 }
+                case 'elitePulse': {
+                    const c=['','#c5a0ff','#75ed9a','#ff8957'][e.kind]||'#fff';
+                    burst(e.x*S,e.y*S-25,c,10,5);
+                    fx.push({kind:'ring',x:e.x*S,y:e.y*S-12,r0:8,r1:e.kind===2?125*S:38,color:c,width:2,start:now,life:350});
+                    break;
+                }
                 case 'kill': {
                     const killer=latestHero(e.h);if(killer)fx.push({kind:'elementDeath',name:killer.name,x:e.x*S,y:e.y*S-20,start:now,life:520});
                     burst(e.x * S, e.y * S - 30, '#FF6C78', 7, 4); // enemies.md death burst (smaller; the die frames carry it)
@@ -2086,7 +2092,7 @@
         // 8 just struck): wind -> windup/charge/draw/plant, strike -> slash/fire/slam, moving -> walk
         // (front-facing, not flipped), else idle. Dying enemies play their die sheet then fade.
         function drawEnemy(e, now, k, fade, dieAt) {
-            let [id, type, ex, ey, hpPct, facing, flags] = e;
+            let [id, type, ex, ey, hpPct, facing, flags, elite, eliteShield] = e;
             let tilt = 0;
             const rc = dieAt === undefined && recoils.get(id);
             if (rc) { // hit-stop hold, then a quick recoil jolt + tilt away from the hit (stagger)
@@ -2160,6 +2166,12 @@
             }
             g.globalAlpha = fade !== undefined ? Math.max(0, fade) : 1;
             const top = art.key === 'voidEmperor' ? -156 : art.key === 'warden' ? -88 : -68;
+            if(elite && fade===undefined){
+                const colors=['','#c5a0ff','#75ed9a','#ff8957','#8bdcff'];
+                g.fillStyle=colors[elite];g.font='bold 9px sans-serif';g.textAlign='center';
+                g.fillText(['','ASSASSIN','SHAMAN','BERSERKER','GUARDIAN'][elite],0,top-9);
+                if(eliteShield){g.fillStyle='#8bdcff';g.fillRect(-20,top+6,40,2);}
+            }
             if (hpPct < 100 && fade === undefined) {
                 g.fillStyle = '#292035'; g.fillRect(-20, top, 40, 4);
                 g.fillStyle = '#ff5d73'; g.fillRect(-20, top, 40 * hpPct / 100, 4);
