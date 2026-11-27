@@ -325,7 +325,8 @@
         const attack = !!(keys[' '] || touch.attack || tapped.attack), special = !!(keys.q || touch.special || tapped.special);
         tapped.attack = tapped.special = false;
         seq++;
-        socket.emit('player:input', { seq, x: move.x, y: move.y, attack, special });
+        socket.emit('player:input', { seq, x: move.x, y: move.y, attack, special, aim: attack && (touch.attack || !keys[' ']) ? attackAim : null });
+        if(!touch.attack)attackAim=null;
         if (predictionOn && predicted) {
             pending.push({ seq, move });
             if (pending.length > 120) pending.shift();
@@ -414,7 +415,21 @@
             if (pointer === e.pointerId) { pointer = null; touch[field] = false; b.classList.remove('pressed') }
         });
     }
-    bindButton('attack-touch', 'attack');
+    let attackAim=null, attackPointer=null;
+    const attackJoy=$('attack-touch');
+    attackJoy.style.touchAction='none';attackJoy.style.position='relative';
+    attackJoy.innerHTML='<span style="pointer-events:none">⚔<br>ATTACK</span><span id="attack-knob" style="pointer-events:none;position:absolute;left:50%;top:50%;width:28px;height:28px;border:2px solid #ffe2a1;border-radius:50%;background:#ffd27944;transform:translate(-50%,-50%);display:none"></span>';
+    const attackKnob=$('attack-knob');
+    function aimAttack(e){const r=attackJoy.getBoundingClientRect(),dx=e.clientX-r.left-r.width/2,dy=e.clientY-r.top-r.height/2,d=Math.hypot(dx,dy),m=Math.min(d,r.width*.32);if(d>7){attackAim=SIM.dir8Of(dx,dy);attackKnob.style.transform='translate(calc(-50% + '+dx/d*m+'px),calc(-50% + '+dy/d*m+'px))';}}
+    function resetAttack(){attackPointer=null;touch.attack=false;attackJoy.classList.remove('pressed');attackKnob.style.display='none';attackKnob.style.transform='translate(-50%,-50%)';}
+    attackJoy.addEventListener('pointerdown',e=>{e.preventDefault();if(attackPointer!==null)return;attackPointer=e.pointerId;attackAim=null;try{attackJoy.setPointerCapture(e.pointerId)}catch{}touch.attack=true;tapped.attack=true;attackJoy.classList.add('pressed');attackKnob.style.display='block';aimAttack(e);});
+    attackJoy.addEventListener('pointermove',e=>{if(e.pointerId===attackPointer){e.preventDefault();aimAttack(e);}});
+    const releaseAttack=e=>{if(e.pointerId===attackPointer)resetAttack();};
+    for(const evt of ['pointerup','pointercancel','lostpointercapture'])attackJoy.addEventListener(evt,releaseAttack);
+    for(const evt of ['pointerup','pointercancel'])window.addEventListener(evt,releaseAttack,true);
+    window.addEventListener('blur',resetAttack);window.addEventListener('pagehide',resetAttack);
+    document.addEventListener('visibilitychange',()=>{if(document.hidden)resetAttack();});
+    window.addEventListener('touchend',e=>{if(!e.touches.length)resetAttack();},{passive:true});
     bindButton('special-touch', 'special');
     document.addEventListener('touchmove', e => { if (e.target.closest('#touch-controls')) e.preventDefault() }, { passive: false });
 
