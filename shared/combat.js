@@ -190,7 +190,6 @@ function damageEnemy(w, hero, e, base, o = {}) {
     const crit = rng(w) < critChance(hero, w);
     if (crit) d *= RULES.critMul;
     hero.critChain = crit ? (hero.critChain || 0) + 1 : 0; // consecutive crits; any normal hit breaks it
-    if(by?.type===ENEMY_INDEX.voidEmperor) d=Math.max(d, h.maxHp*.18);
     d = Math.max(1, Math.round(d));
     e.hp -= d;
     if(!hero.ai&&hero.controller&&hero.hp<=hero.maxHp*.4&&w.time>=(hero.braveryNext||0)){hero.braveryNext=w.time+500;virtue(w,'bravery',5);}
@@ -228,6 +227,7 @@ function damageHero(w, h, amount, by) {
     let d = amount * (w.fieldEvent?.kind==='blood'?1.15:1) * damageTakenMul(h.stats) * Math.pow(.85,evo(h,'guard'));
     if (w.time < h.shieldUntil) d *= KITS.MARKIE.shieldMul;
     if (w.time < h.wardUntil) d *= RULES.wardMul;
+    if(by?.type===ENEMY_INDEX.voidEmperor) d=Math.max(d, h.maxHp*.18);
     d = Math.max(1, Math.round(d));
     h.hp = Math.max(0, h.hp - d);
     const i = w.heroes.indexOf(h);
