@@ -187,6 +187,7 @@ function damageEnemy(w, hero, e, base, o = {}) {
         e.armor-=absorbed;d-=absorbed;
         if(e.armor<=0){e.stunUntil=Math.max(e.stunUntil,w.time+1800);emit(w,{t:'boss:phase',id:e.id,x:Math.round(e.x),y:Math.round(e.y),phase:1});}
     }
+    if(e.eliteShield>0){const absorb=Math.min(e.eliteShield,Math.round(d*.75));e.eliteShield-=absorb;d-=absorb;}
     const crit = rng(w) < critChance(hero, w);
     if (crit) d *= RULES.critMul;
     hero.critChain = crit ? (hero.critChain || 0) + 1 : 0; // consecutive crits; any normal hit breaks it
@@ -448,6 +449,12 @@ function spawnEnemy(w, typeIndex = pickEnemyType(w)) {
         e.armor=Math.round(e.max*.18); e.entranceUntil = w.time + 1400; e.attackCount = 0; e.attackMode = 'slam';
         emit(w, { t: 'boss:enter', id: e.id, x: Math.round(e.x), y: Math.round(e.y), name: 'VOID EMPEROR' });
     }
+    if(typeIndex!==ENEMY_INDEX.voidEmperor && w.wave>=4 && rng(w)<Math.min(.22,.08+w.wave*.004)){
+        e.elite=1+Math.floor(rng(w)*4);e.max=Math.round(e.max*1.65);e.hp=e.max;e.dmg=Math.round(e.dmg*1.25);
+        e.eliteAt=w.time+1800;
+        if(e.elite===1)e.speed*=1.25;
+        if(e.elite===4)e.eliteShield=Math.round(e.max*.45);
+    }
     w.enemies.push(e);
     return e;
 }
@@ -503,6 +510,20 @@ function stepEnemies(w) {
         }
         const d = dist(target, e) || 1;
         e.facing = Math.sign(target.x - e.x) || -1;
+        if(e.elite && e.entered){
+            if(e.elite===1 && d<160 && w.time>=e.eliteAt){
+                e.eliteAt=w.time+4500;const a=Math.atan2(target.y-e.y,target.x-e.x);
+                e.x=target.x+Math.cos(a)*35;e.y=target.y+Math.sin(a)*35;keepInside(e);
+                emit(w,{t:'elitePulse',kind:1,x:Math.round(e.x),y:Math.round(e.y)});
+                continue;
+            }
+            if(e.elite===2 && w.time>=e.eliteAt){
+                e.eliteAt=w.time+3000;let healed=false;
+                for(const u of w.enemies)if(u!==e&&u.hp>0&&u.hp<u.max&&dist(u,e)<125){u.hp=Math.min(u.max,u.hp+Math.ceil(u.max*.08));healed=true;}
+                if(healed)emit(w,{t:'elitePulse',kind:2,x:Math.round(e.x),y:Math.round(e.y)});
+            }
+            if(e.elite===3&&!e.enraged&&e.hp<e.max*.4){e.enraged=true;e.speed*=1.6;e.dmg=Math.round(e.dmg*1.35);emit(w,{t:'elitePulse',kind:3,x:Math.round(e.x),y:Math.round(e.y)});}
+        }
         if(e.type===ENEMY_INDEX.voidEmperor && d<180 && !e.windUntil){
             if(w.time >= (e.evadeNext||0)){
                 e.evadeNext=w.time+(e.phaseThree?1050:e.phaseTwo?1500:2100);
@@ -956,7 +977,7 @@ function snapshot(w) {
             pu: [left(w, h.furyUntil), left(w, h.hasteUntil), left(w, h.wardUntil), left(w, h.synergyUntil)],
         })),
         pk: w.pickups.map(p => [p.id, p.kind, p.x, p.y, Math.ceil((p.until - w.time) / 1000)]),
-        enemies: w.enemies.map(e => [e.id, e.type, Math.round(e.x), Math.round(e.y), Math.max(0, Math.round(e.hp / e.max * 100)), e.facing, enemyFlags(w, e)]),
+        enemies: w.enemies.map(e => [e.id, e.type, Math.round(e.x), Math.round(e.y), Math.max(0, Math.round(e.hp / e.max * 100)), e.facing, enemyFlags(w, e), e.elite||0, e.eliteShield>0?1:0]),
         ev: w.events,
     };
 }
