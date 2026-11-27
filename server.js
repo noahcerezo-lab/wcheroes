@@ -277,7 +277,7 @@ io.on('connection', socket => {
         if (SIM.stepHero(h, move, COMBAT.moveSpeed(r.world, h))) p.lastMoveTick = r.world.tick;
         // Intents only. The next tick checks cooldowns and resolves hits; any other fields
         // (damage, target, hp...) are ignored, so a modified client cannot deal or avoid damage.
-        if (data.attack === true) h.wantAttack = true;
+        if (data.attack === true) { h.wantAttack = true; h.attackAim=Number.isInteger(data.aim)&&data.aim>=0&&data.aim<8?data.aim:null; }
         if (data.special === true) h.wantSpecial = true;
     });
     socket.on('evolution:choose', limited(socket, (data, ack) => {
