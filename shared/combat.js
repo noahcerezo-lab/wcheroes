@@ -365,10 +365,16 @@ const FUSIONS = {
  'MARKIE|SMITESH': {name:'CATACLYSM',kind:'steam',radius:170}
 };
 function tryFusion(w,h) {
- if(h.ai || !h.controller || w.time < (h.fusionUntil||0)) return;
- const mate=w.heroes.find(u=>u!==h && alive(u) && !u.ai && u.controller && w.time >= (u.fusionUntil||0) &&
-     w.time-u.specialAt<=2000 && dist(u,h)<=145 && FUSIONS[[u.name,h.name].sort().join('|')]);
- if(!mate)return;
+ if(w.time < (h.fusionUntil||0)) return;
+ const compatible=u=>u!==h && alive(u) && (!h.ai || !u.ai) && w.time >= (u.fusionUntil||0) && dist(u,h)<=145 && FUSIONS[[u.name,h.name].sort().join('|')];
+ const mate=w.heroes.find(u=>compatible(u)&&w.time-u.specialAt<=2000);
+ if(!mate){
+   if(!h.ai && h.controller && w.enemies.some(e=>e.hp>0&&dist(e,h)<190)){
+     const ai=w.heroes.find(u=>u.ai&&compatible(u)&&w.time-u.specialAt>=RULES.aiSpecialCooldownMs);
+     if(ai)performSpecial(w,ai);
+   }
+   return;
+ }
  const f=FUSIONS[[mate.name,h.name].sort().join('|')], x=(h.x+mate.x)/2,y=(h.y+mate.y)/2;
  h.fusionUntil=mate.fusionUntil=w.time+45000;
  emit(w,{t:'fusion',kind:f.kind,name:f.name,x:Math.round(x),y:Math.round(y),r:f.radius,h:w.heroes.indexOf(h),mate:w.heroes.indexOf(mate)});
