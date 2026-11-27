@@ -485,8 +485,7 @@
                     // Target-accurate cosmetic attack, independent of hero attack counter.
                     if(Number.isFinite(e.tx)&&Number.isFinite(e.ty)) {
                         const pet=e.kind||0,angle=pet*Math.PI/2+now/1500+e.h*.4;
-                        const sx=e.x*S+Math.cos(angle)*(48+pet*8);
-                        const sy=e.y*S+12+Math.sin(angle)*19;
+                        const pos=petPosition(e.x,e.y,e.h,pet,now),sx=pos.x,sy=pos.y;
                         fx.push({kind:'petStrike',name:'DONNA',pet,boost:!!e.boosted,
                             x:sx,y:sy,tx:e.tx*S,ty:e.ty*S,start:now,life:460});
                         fx.push({kind:'ring',x:e.tx*S,y:e.ty*S-20,r0:5,r1:pet===2?46:30,
@@ -1987,11 +1986,11 @@
             // Draw the full unlocked pack rather than replacing earlier companions.
             for(let pet=0;pet<=kind;pet++) drawOneDruidPet(h,i,now,pet);
         }
+        function petPosition(x,y,i,kind,now){const t=now/1000,a=kind*Math.PI/2+i*.4+t*(.43+kind*.09),r=75+kind*12+22*Math.sin(t*.8+kind*2);return {x:x*S+Math.cos(a)*r,y:y*S+12+Math.sin(a)*r*.62+5*Math.sin(t*3+kind)};}
         function drawOneDruidPet(h,i,now,kind) {
             const t=now/1000;
             const a=kind*Math.PI*2/4+now/1500+i*.4;
-            const px=h.x*S+Math.cos(a)*(48+kind*8);
-            const py=h.y*S+12+Math.sin(a)*19+Math.cos(t*3+i+kind)*3;
+            const p=petPosition(h.x,h.y,i,kind,now);const px=p.x,py=p.y;
             const scale = [0.72, 0.92, 1.35, 1.12][kind];
             g.save(); g.translate(Math.round(px), Math.round(py)); g.scale(scale, scale);
             g.fillStyle = 'rgba(9,26,15,.4)'; g.beginPath(); g.ellipse(0,3,23,7,0,0,Math.PI*2); g.fill();
@@ -2008,7 +2007,7 @@
             if(kind===3) {block(15,-49,4,21,'#e6c66b');block(29,-49,4,21,'#e6c66b');block(7,-45,12,4,'#e6c66b');block(30,-45,12,4,'#e6c66b');}
             // Unique glowing combat markings for each active companion.
             block(12,-27,9,4,['#ffe5a5','#a4ffe3','#e0b9ff','#f4ffac'][kind]);
-            if(h.petBoost) {g.strokeStyle='#a9ff7c';g.lineWidth=2;g.strokeRect(-30,-51,74,57);}
+            if(h.petBoost) {g.fillStyle='#caff9a';for(let j=0;j<3;j++){const a=t*2+j*2.094;g.beginPath();g.arc(Math.cos(a)*24,-22+Math.sin(a)*17,2,0,Math.PI*2);g.fill();}}
             g.restore();
         }
         function drawHero(h, i, now, room, myId, k) {
@@ -2119,7 +2118,7 @@
             else if (walking && has(art.walk)) { key = art.walk; flip = false }
             else if (struck) ox = dir * 7; // procedural lunge fallback
             if (walking && key === art.key) oy = -Math.abs(Math.sin(now / 90 + id)) * 3; // bob fallback
-            if (flash) ox += Math.sin(now / 34) * 3; // hurt shake
+            if (flash) ox += Math.sin(now / 34) * 1.5; // hurt shake
             g.save();
             g.translate(Math.round(ex * S), Math.round(ey * S));
             g.scale(k, k);
@@ -2127,7 +2126,7 @@
             if (fade !== undefined) g.globalAlpha = Math.max(0, fade);
             // World-scale telegraph (sheets only hint at it): warden plant ring at the slam radius.
             if (wind && (art.key === 'warden' || (art.key === 'voidEmperor' && ((snaps[snaps.length - 1]?.hud?.boss?.mode !== 'target')))) && A) {
-                const radius = art.key === 'voidEmperor' ? 90 : SLAM_R;
+                const radius = art.key === 'voidEmperor' ? 120 : SLAM_R;
                 A.loop(g, 'warning', now, 0, 0, radius * S * 2 / k, radius * S / k);
             }
             if (!(env && env.shadow(g, art.key === 'warden' ? 2 : art.w > 90 ? 3 : 1, art.w * .8))) { g.fillStyle = '#0006'; g.beginPath(); g.ellipse(0, 1, art.w * .36, 6, 0, 0, Math.PI * 2); g.fill() }
@@ -2137,6 +2136,7 @@
                 const n = A.frameCount(key), f = Math.min(n - 1, Math.floor((now - t0) / A.SHEETS[key][4]));
                 return A.frame(g, key, f, ox, oy + 2, art.w, null, flip);
             };
+            g.globalCompositeOperation='source-over';g.globalAlpha=fade===undefined?1:Math.max(0,fade);
             const drawn = drawFrame();
             if (!drawn) R.drawSprite(g, 0, 0, '#000', true, '', now, { facing: dir, hurt: flash ? 6 : 0, flash: flash ? 1 : 0 }); // V19 fallback while loading
             // Ranged spirit archer: distinct purple robe silhouette and orbiting
@@ -2152,7 +2152,7 @@
             // Enemy silhouettes stay unobstructed at high waves. Threat is communicated by
             // the enemy art, combat animations and boss telegraphs, not permanent rings,
             // floating shoulder triangles or crowns on every mob.
-            if (drawn && flash) { // V19 hurt flash: 45% #FFF1C5, only on the sprite's own pixels
+            if (false && drawn && flash) { // V19 hurt flash: 45% #FFF1C5, only on the sprite's own pixels
                 g.globalCompositeOperation = 'lighter';
                 g.globalAlpha *= .45;
                 drawFrame();
