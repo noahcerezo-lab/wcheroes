@@ -179,9 +179,34 @@ const alive = h => h.state === 'alive';
 const emit = (w, e) => { w.events.push(e) };
 
 // ---------------- damage ----------------
+const LOOT_NAMES={NOAH:'Riftblade',DESTINY:'Phoenix Blade',MARKIE:'Worldbreaker Axe',ESPIRIT:'Stormpiercer Bow',SMITESH:'Ancestor Staff',DAVE:'Soul Reaver',DONNA:'Wildmother Relic'};
+function dropLoot(w,e){
+    if(rng(w)> (e.type===ENEMY_INDEX.voidEmperor?1:e.elite?.65:.025))return;
+    const roll=rng(w)*100, tier=roll<55?0:roll<83?1:roll<95?2:roll<99?3:4;
+    const scale=[5,10,17,26,38][tier], stat=['damage','haste','guard'][Math.floor(rng(w)*3)];
+    const item={id:w.nextLootId=(w.nextLootId||0)+1,x:Math.round(e.x),y:Math.round(e.y),tier,stat,value:scale+Math.floor(rng(w)*5),until:w.time+25000};
+    (w.loot||(w.loot=[])).push(item);
+}
+function stepLoot(w){
+    w.loot=(w.loot||[]).filter(i=>i.until>w.time);
+    for(const item of [...w.loot]){
+        const h=w.heroes.find(h=>alive(h)&&!h.ai&&h.controller&&!h.lootOffer&&dist(h,item)<32);
+        if(!h)continue;
+        w.loot=w.loot.filter(i=>i.id!==item.id);
+        h.lootOffer={...item,name:LOOT_NAMES[h.name],until:w.time+20000};
+    }
+    for(const h of w.heroes)if(h.lootOffer&&w.time>=h.lootOffer.until)chooseLoot(w,h,h.lootOffer.id,false);
+}
+function chooseLoot(w,h,id,equip){
+    if(!h.lootOffer||h.lootOffer.id!==id||w.over)return false;
+    if(equip)h.equipment={...h.lootOffer};
+    else h.salvage=(h.salvage||0)+[5,10,20,40,80][h.lootOffer.tier];
+    h.lootOffer=null;return true;
+}
+const lootBonus=(h,stat)=>h.equipment?.stat===stat?h.equipment.value/100:0;
 function damageEnemy(w, hero, e, base, o = {}) {
     if (e.hp <= 0) return;
-    let d = base * (w.time<(w.virtueUntil||0)?1.35:1) * (w.fieldEvent?.kind==='blessing'?1.25:1) * (w.time < hero.buffUntil ? KITS.DESTINY.buffMul : 1) * (w.time < (hero.awakenUntil || 0) ? 1.25 : 1);
+    let d = base * (1+lootBonus(hero,'damage')) * (w.time<(w.virtueUntil||0)?1.35:1) * (w.fieldEvent?.kind==='blessing'?1.25:1) * (w.time < hero.buffUntil ? KITS.DESTINY.buffMul : 1) * (w.time < (hero.awakenUntil || 0) ? 1.25 : 1);
     if(e.type===ENEMY_INDEX.voidEmperor && e.armor>0){
         const absorbed=Math.min(e.armor,Math.max(1,Math.round(d*.55)));
         e.armor-=absorbed;d-=absorbed;
@@ -219,13 +244,14 @@ function killEnemy(w, hero, e) {
     w.score += pts;
     w.kills++;
     if(!hero.ai&&hero.controller)virtue(w,'honor',e.type===ENEMY_INDEX.voidEmperor?30:5);
+    dropLoot(w,e);
     emit(w, { t: 'kill', id: e.id, h: w.heroes.indexOf(hero), x: Math.round(e.x), y: Math.round(e.y), combo: w.combo, mult, pts });
 }
 
 function damageHero(w, h, amount, by) {
     if (!alive(h) || w.over) return;
     if (h.evolutionOffer && w.time < h.evolutionOffer.until) return;
-    let d = amount * (w.fieldEvent?.kind==='blood'?1.15:1) * damageTakenMul(h.stats) * Math.pow(.85,evo(h,'guard'));
+    let d = amount * (1-lootBonus(h,'guard')) * (w.fieldEvent?.kind==='blood'?1.15:1) * damageTakenMul(h.stats) * Math.pow(.85,evo(h,'guard'));
     if (w.time < h.shieldUntil) d *= KITS.MARKIE.shieldMul;
     if (w.time < h.wardUntil) d *= RULES.wardMul;
     if(by?.type===ENEMY_INDEX.voidEmperor) d=Math.max(d, h.maxHp*.18);
@@ -283,7 +309,7 @@ function nextChainStage(w, h, cool) {
 function performAttack(w, h) {
     if (!alive(h) || w.over) return false;
     const flow = h.name === 'DAVE' ? Math.max(.72, 1 - Math.min(5, h.weaponFlow || 0) * .055) : 1;
-    const cool = (h.ai ? h.cool * RULES.aiAttackCooldownMul : h.cool) * flow * Math.pow(.88,evo(h,'haste')) * (w.time < h.hasteUntil ? RULES.hasteCooldownMul : 1);
+    const cool = (h.ai ? h.cool * RULES.aiAttackCooldownMul : h.cool) * flow * (1-lootBonus(h,'haste')) * Math.pow(.88,evo(h,'haste')) * (w.time < h.hasteUntil ? RULES.hasteCooldownMul : 1);
     const recovery = h.chain === 2 ? cool * RULES.finisherRecoveryMul : 0; // brief pause after a finisher
     if (w.time - h.attackAt < cool + recovery) return false;
     const stage = nextChainStage(w, h, cool + recovery);
@@ -934,6 +960,7 @@ function step(w) {
     stepFieldEvent(w);
     stepWaves(w);
     stepPickups(w);
+    stepLoot(w);
     if (w.heroes.every(h => h.state === 'downed')) {
         w.over = true;
         emit(w, { t: 'over', wave: w.wave, score: w.score, kills: w.kills });
@@ -956,7 +983,9 @@ function snapshot(w) {
         virtues: w.virtues||{honor:0,loyalty:0,family:0,bravery:0}, virtueSurge: Math.max(0,Math.ceil(((w.virtueUntil||0)-w.time)/1000)),
         fieldEvent: w.fieldEvent ? {kind:w.fieldEvent.kind,name:w.fieldEvent.name,desc:w.fieldEvent.desc,mark:w.fieldEvent.mark} : null,
         boss: w.bossWave && w.waveState === 'fighting' ? (() => { const e = w.enemies.find(e => e.type === ENEMY_INDEX.voidEmperor); return e ? { id: e.id, hp: Math.max(0, e.hp), max: e.max, name: 'VOID EMPEROR', mode: e.attackMode, entering: w.time < (e.entranceUntil || 0) ? 1 : 0 } : null })() : null,
+        loot:w.loot||[],
         heroes: w.heroes.map(h => ({
+            equipment:h.equipment||null,lootOffer:h.lootOffer||null,salvage:h.salvage||0,
             name: h.name, x: h.x, y: h.y, vx: h.vx, vy: h.vy, facing: h.facing, aim: h.aim, moving: h.moving, controller: h.controller, seq: h.seq,
             cs: h.chain, // chain stage of the last swing (2 = finisher)
             cc: h.critChain || 0, // Critical Chain: consecutive crits
@@ -982,4 +1011,4 @@ function snapshot(w) {
     };
 }
 
-module.exports = { chooseEvolution, levelUp, PICKUP_KINDS, moveSpeed, stepPickups, collectPickup, damageEnemy, nextChainStage, aimOf, RULES, ENEMY_TYPES, ENEMY_INDEX, KITS, createBattle, step, snapshot, spawnEnemy, performAttack, performSpecial, damageHero, attackTargets, isBossWave, waveSize, critChance, damageTakenMul, inArc };
+module.exports = { chooseLoot, chooseEvolution, levelUp, PICKUP_KINDS, moveSpeed, stepPickups, collectPickup, damageEnemy, nextChainStage, aimOf, RULES, ENEMY_TYPES, ENEMY_INDEX, KITS, createBattle, step, snapshot, spawnEnemy, performAttack, performSpecial, damageHero, attackTargets, isBossWave, waveSize, critChance, damageTakenMul, inArc };
