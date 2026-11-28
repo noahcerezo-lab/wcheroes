@@ -2263,6 +2263,12 @@
             safeFx('floor/special', () => drawFloorFx(now));
             drawDestinyAura(view, now);
             drawPickups(view, now, k);
+            for(const item of view.loot||[]){
+                const x=item.x*S,y=item.y*S,bob=Math.sin(now/240+item.id)*4,c=['#d1d5db','#63a9ff','#bd80ff','#ffbd55','#fff0b0'][item.tier];
+                g.save();g.globalAlpha=.22;g.fillStyle=c;g.fillRect(x-3,y-65,6,60);
+                g.globalAlpha=1;g.translate(x,y-12+bob);g.rotate(Math.PI/4);g.fillStyle=c;g.fillRect(-6,-6,12,12);g.strokeStyle='#fff';g.lineWidth=1;g.strokeRect(-6,-6,12,12);g.restore();
+                g.save();g.fillStyle=c;g.font='bold 9px sans-serif';g.textAlign='center';g.fillText(['COMMON','RARE','EPIC','LEGENDARY','DIVINE'][item.tier],x,y-26);g.restore();
+            }
             const units = view.heroes.map((h, i) => ({ y: h.y, h, i }));
             for (const e of view.enemies || []) units.push({ y: e[3], e });
             for (const gh of ghosts) { // die frames + knockback slide, then fade
