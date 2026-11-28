@@ -253,8 +253,8 @@
     // ---------- server events ----------
     socket.on('room:update', r => { room = r; render() });
     const lootPanel=document.createElement('div');
-    lootPanel.style.cssText='display:none;position:fixed;top:18%;left:50%;transform:translateX(-50%);width:min(300px,45vw);z-index:85;background:#151923ed;border:1px solid #c4ab7b;border-radius:12px;padding:10px;color:#eee;text-align:center;font:12px system-ui;box-shadow:0 6px 24px #0008';
-    lootPanel.innerHTML='<div id="loot-rarity" style="font-weight:800;letter-spacing:1px"></div><strong id="loot-name"></strong><div id="loot-stat" style="color:#9de3aa;margin:5px"></div><div id="loot-current" style="color:#b8b9c3;font-size:10px"></div><div style="display:flex;gap:6px;margin-top:8px"><button id="loot-equip" style="flex:1;padding:7px;background:#d9b875;color:#20180f">EQUIP</button><button id="loot-salvage" style="flex:1;padding:7px">SALVAGE</button></div>';
+    lootPanel.style.cssText='display:none;position:fixed;top:max(32px,env(safe-area-inset-top));right:max(8px,env(safe-area-inset-right));width:min(174px,28vw);z-index:85;background:#151923d9;border:1px solid #c4ab7b;border-radius:7px;padding:5px;color:#eee;text-align:left;font:10px system-ui;box-shadow:0 3px 9px #0005';
+    lootPanel.innerHTML='<div id="loot-rarity" style="font-weight:800;letter-spacing:1px"></div><strong id="loot-name"></strong><div id="loot-stat" style="color:#9de3aa;margin:2px 0"></div><div id="loot-current" style="color:#b8b9c3;font-size:10px"></div><div style="display:flex;gap:4px;margin-top:4px"><button id="loot-equip" style="flex:1;min-width:0;font-size:10px;padding:5px 2px;background:#d9b875;color:#20180f">EQUIP</button><button id="loot-salvage" style="flex:1;min-width:0;font-size:10px;padding:5px 2px">SALVAGE</button></div>';
     document.body.appendChild(lootPanel);
     const lootHud=document.createElement('div');
     lootHud.style.cssText='display:none;position:fixed;left:50%;top:4px;transform:translateX(-50%);z-index:70;pointer-events:none;color:#eee;background:#151923bb;border-radius:5px;padding:3px 7px;font:10px system-ui';
