@@ -252,10 +252,23 @@
     }
     // ---------- server events ----------
     socket.on('room:update', r => { room = r; render() });
-    socket.on('battle:start', w => { resetJoy(); renderFusion(null); world = w; arena.reset(); arena.push(w); resetPrediction(); reconcile(w); show('battle') });
-    socket.on('battle:state', w => { world = w; trackDojo(w); reconcile(w); arena.push(w); renderEvolution(w); renderFusion(w); renderField(w); renderVirtues(w) });
+    const retryPanel=document.createElement('div');
+    retryPanel.style.cssText='display:none;position:fixed;inset:0;z-index:1000;background:#090d18bb;align-items:center;justify-content:center;padding:16px';
+    retryPanel.innerHTML='<div style="background:#171c2b;border:1px solid #c9a76c;border-radius:18px;padding:20px;text-align:center;color:#f7e7c5;width:min(340px,90vw);box-shadow:0 12px 40px #0008"><div style="font-size:11px;letter-spacing:3px;color:#c9a76c">BOSS CHECKPOINT</div><h2 style="margin:8px 0">Squad defeated</h2><p id="retry-detail"></p><button id="retry-go" style="background:#e5c184;color:#211a12;border:0;border-radius:10px;padding:12px;width:100%;font-weight:800">RETRY CHECKPOINT</button><button id="retry-exit" style="background:transparent;color:#ddd;border:0;padding:12px">Return to lobby</button></div>';
+    document.body.appendChild(retryPanel);
+    function renderRetry(w){
+        const o=w?.retryOffer;retryPanel.style.display=o?'flex':'none';if(!o)return;
+        const host=room?.host===myId();
+        $('retry-detail').textContent='Boss wave '+o.boss+' · Restart at wave '+o.wave+' · '+o.remaining+' retries remaining';
+        $('retry-go').disabled=!host;$('retry-exit').disabled=!host;
+        $('retry-go').textContent=host?'RETRY FROM WAVE '+o.wave:'Waiting for host';
+    }
+    $('retry-go').onclick=()=>socket.emit('battle:retry',{},a=>{if(!a?.ok)note(a?.error||'Retry failed')});
+    $('retry-exit').onclick=()=>{const b=[...document.querySelectorAll('button')].find(b=>b!==$('retry-exit')&&b.textContent.toLowerCase().includes('return to lobby'));if(b)b.click();};
+    socket.on('battle:start', w => { renderRetry(null); resetJoy(); resetAttack(); renderFusion(null); world = w; arena.reset(); arena.push(w); resetPrediction(); reconcile(w); show('battle') });
+    socket.on('battle:state', w => { world = w; renderRetry(w); trackDojo(w); reconcile(w); arena.push(w); renderEvolution(w); renderFusion(w); renderField(w); renderVirtues(w) });
     socket.on('battle:end', e => {
-        finishDojo(e); renderField(null); renderVirtues(null);
+        renderRetry(null); finishDojo(e); renderField(null); renderVirtues(null);
         resetJoy(); world = null; renderEvolution(null); renderFusion(null); arena.reset(); resetPrediction();
         if (e?.reason === 'wipe') note('Squad defeated on wave ' + e.wave + ' — score ' + e.score + ', ' + e.kills + ' KOs. Ready up to play again!', 12000);
         else note('Back in the lobby' + (e?.by ? ' — ' + e.by + ' ended the round.' : '.'));
