@@ -822,6 +822,28 @@
                 margin-bottom: 30px
             }
         }
+     
+        body.in-battle #joystick, body.in-battle #attack-touch {
+            border: 2px solid #c4ab7b !important;
+            background: radial-gradient(circle at 50% 38%,#38445bba,#121a2ce8 72%) !important;
+            box-shadow: inset 0 0 0 5px #10152288,inset 0 0 0 7px #c4ab7b35,0 5px 16px #0006 !important;
+            opacity:.83 !important; border-radius:50%; touch-action:none;
+        }
+        body.in-battle #stick {
+            background: radial-gradient(circle at 35% 28%,#a3b5ca,#46566e 65%,#253044) !important;
+            border:2px solid #cbd6df !important;box-shadow:0 3px 9px #0008 !important;
+        }
+        body.in-battle #attack-touch {
+            background:radial-gradient(circle at 50% 35%,#765b39c9,#30251ce8 75%) !important;
+            color:#ffe4ae !important;letter-spacing:1px;
+        }
+        body.in-battle #special-touch {
+            border:2px solid #b3a3e4 !important;border-radius:50%;
+            background:radial-gradient(circle at 40% 25%,#7865ad,#30264e 75%) !important;
+            color:#f0e7ff !important;box-shadow:inset 0 0 0 4px #201a3877,0 4px 14px #0006 !important;opacity:.85 !important;
+        }
+        body.in-battle #joystick.active,body.in-battle #actions button.pressed {opacity:1 !important;filter:brightness(1.22);}
+        body.in-battle #attack-knob {background:radial-gradient(circle at 35% 25%,#fff1c6,#b48a4e) !important;box-shadow:0 2px 8px #0009;}
     </style>
 </head>
 
