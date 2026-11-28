@@ -295,6 +295,12 @@ io.on('connection', socket => {
         io.to(r.code).emit('battle:start',battleView(r,true));
         safeAck(ack,{ok:true});
     }));
+    socket.on('loot:choose',limited(socket,(data,ack)=>{
+        const {r,p}=ctx();
+        const h=r?.phase==='battle'&&p&&r.world?.heroes[r.activeRoster.indexOf(p.hero)];
+        if(!h||h.controller!==p.id||!COMBAT.chooseLoot(r.world,h,data.id,data.equip===true))return safeAck(ack,{ok:false,error:'Loot unavailable'});
+        safeAck(ack,{ok:true});
+    }));
     socket.on('evolution:choose', limited(socket, (data, ack) => {
         const {r,p}=ctx();
         const h=r?.phase==='battle' && r.world?.heroes[r.activeRoster.indexOf(p?.hero)];
