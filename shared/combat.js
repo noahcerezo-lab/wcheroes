@@ -181,7 +181,8 @@ const emit = (w, e) => { w.events.push(e) };
 // ---------------- damage ----------------
 const LOOT_NAMES={NOAH:'Riftblade',DESTINY:'Phoenix Blade',MARKIE:'Worldbreaker Axe',ESPIRIT:'Stormpiercer Bow',SMITESH:'Ancestor Staff',DAVE:'Soul Reaver',DONNA:'Wildmother Relic'};
 function dropLoot(w,e){
-    if(rng(w)> (e.type===ENEMY_INDEX.voidEmperor?1:e.elite?.65:.025))return;
+    if(e.type!==ENEMY_INDEX.voidEmperor && (w.time<(w.nextGearDropAt||0)||rng(w)>(e.elite?.20:.005)))return;
+    w.nextGearDropAt=w.time+45000;
     const roll=rng(w)*100, tier=roll<55?0:roll<83?1:roll<95?2:roll<99?3:4;
     const scale=[5,10,17,26,38][tier], stat=['damage','haste','guard'][Math.floor(rng(w)*3)];
     const item={id:w.nextLootId=(w.nextLootId||0)+1,x:Math.round(e.x),y:Math.round(e.y),tier,stat,value:scale+Math.floor(rng(w)*5),until:w.time+25000};
