@@ -252,6 +252,28 @@
     }
     // ---------- server events ----------
     socket.on('room:update', r => { room = r; render() });
+    const lootPanel=document.createElement('div');
+    lootPanel.style.cssText='display:none;position:fixed;top:18%;left:50%;transform:translateX(-50%);width:min(300px,45vw);z-index:85;background:#151923ed;border:1px solid #c4ab7b;border-radius:12px;padding:10px;color:#eee;text-align:center;font:12px system-ui;box-shadow:0 6px 24px #0008';
+    lootPanel.innerHTML='<div id="loot-rarity" style="font-weight:800;letter-spacing:1px"></div><strong id="loot-name"></strong><div id="loot-stat" style="color:#9de3aa;margin:5px"></div><div id="loot-current" style="color:#b8b9c3;font-size:10px"></div><div style="display:flex;gap:6px;margin-top:8px"><button id="loot-equip" style="flex:1;padding:7px;background:#d9b875;color:#20180f">EQUIP</button><button id="loot-salvage" style="flex:1;padding:7px">SALVAGE</button></div>';
+    document.body.appendChild(lootPanel);
+    const lootHud=document.createElement('div');
+    lootHud.style.cssText='display:none;position:fixed;left:50%;top:4px;transform:translateX(-50%);z-index:70;pointer-events:none;color:#eee;background:#151923bb;border-radius:5px;padding:3px 7px;font:10px system-ui';
+    document.body.appendChild(lootHud);
+    let activeLoot=null;
+    const lootDesc=i=>i?'+'+i.value+'% '+({damage:'damage',haste:'attack cooldown reduction',guard:'damage reduction'}[i.stat]||i.stat):'No weapon equipped';
+    function renderLoot(w){
+        const h=w?.heroes?.find(h=>h.controller===myId()),o=h?.lootOffer;
+        activeLoot=o||null;lootPanel.style.display=o&&!w.over&&!h.evolutionOffer?'block':'none';
+        lootHud.style.display=h&&!w.over?'block':'none';
+        if(h)lootHud.textContent=(h.equipment?h.equipment.name+' · '+lootDesc(h.equipment):'No equipment')+' | Salvage '+h.salvage;
+        if(!o)return;
+        const c=['#d1d5db','#63a9ff','#bd80ff','#ffbd55','#fff0b0'][o.tier];
+        $('loot-rarity').textContent=['COMMON','RARE','EPIC','LEGENDARY','DIVINE'][o.tier];$('loot-rarity').style.color=c;lootPanel.style.borderColor=c;
+        $('loot-name').textContent=o.name;$('loot-stat').textContent=lootDesc(o);
+        $('loot-current').textContent='Current: '+lootDesc(h.equipment)+' · '+Math.max(0,Math.ceil((o.until-w.time)/1000))+'s';
+    }
+    function selectLoot(equip){if(activeLoot)socket.emit('loot:choose',{id:activeLoot.id,equip},a=>{if(!a?.ok)note(a?.error||'Loot unavailable')});}
+    $('loot-equip').onclick=()=>selectLoot(true);$('loot-salvage').onclick=()=>selectLoot(false);
     const retryPanel=document.createElement('div');
     retryPanel.style.cssText='display:none;position:fixed;inset:0;z-index:1000;background:#090d18bb;align-items:center;justify-content:center;padding:16px';
     retryPanel.innerHTML='<div style="background:#171c2b;border:1px solid #c9a76c;border-radius:18px;padding:20px;text-align:center;color:#f7e7c5;width:min(340px,90vw);box-shadow:0 12px 40px #0008"><div style="font-size:11px;letter-spacing:3px;color:#c9a76c">BOSS CHECKPOINT</div><h2 style="margin:8px 0">Squad defeated</h2><p id="retry-detail"></p><button id="retry-go" style="background:#e5c184;color:#211a12;border:0;border-radius:10px;padding:12px;width:100%;font-weight:800">RETRY CHECKPOINT</button><button id="retry-exit" style="background:transparent;color:#ddd;border:0;padding:12px">Return to lobby</button></div>';
@@ -265,10 +287,10 @@
     }
     $('retry-go').onclick=()=>socket.emit('battle:retry',{},a=>{if(!a?.ok)note(a?.error||'Retry failed')});
     $('retry-exit').onclick=()=>{const b=[...document.querySelectorAll('button')].find(b=>b!==$('retry-exit')&&b.textContent.toLowerCase().includes('return to lobby'));if(b)b.click();};
-    socket.on('battle:start', w => { renderRetry(null); resetJoy(); resetAttack(); renderFusion(null); world = w; arena.reset(); arena.push(w); resetPrediction(); reconcile(w); show('battle') });
-    socket.on('battle:state', w => { world = w; renderRetry(w); trackDojo(w); reconcile(w); arena.push(w); renderEvolution(w); renderFusion(w); renderField(w); renderVirtues(w) });
+    socket.on('battle:start', w => { renderRetry(null); renderLoot(null); resetJoy(); resetAttack(); renderFusion(null); world = w; arena.reset(); arena.push(w); resetPrediction(); reconcile(w); show('battle') });
+    socket.on('battle:state', w => { world = w; renderRetry(w); renderLoot(w); trackDojo(w); reconcile(w); arena.push(w); renderEvolution(w); renderFusion(w); renderField(w); renderVirtues(w) });
     socket.on('battle:end', e => {
-        renderRetry(null); finishDojo(e); renderField(null); renderVirtues(null);
+        renderRetry(null); renderLoot(null); finishDojo(e); renderField(null); renderVirtues(null);
         resetJoy(); world = null; renderEvolution(null); renderFusion(null); arena.reset(); resetPrediction();
         if (e?.reason === 'wipe') note('Squad defeated on wave ' + e.wave + ' — score ' + e.score + ', ' + e.kills + ' KOs. Ready up to play again!', 12000);
         else note('Back in the lobby' + (e?.by ? ' — ' + e.by + ' ended the round.' : '.'));
