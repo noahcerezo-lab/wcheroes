@@ -176,6 +176,7 @@ function initialWorld(r) {
     r.activeRoster = [...chosen, ...HEROES.map((_, i) => i).filter(i => !chosen.includes(i))].slice(0, 4);
     r.world = COMBAT.createBattle({ heroIndices: r.activeRoster, seed: COMBAT_SEED ?? crypto.randomBytes(4).readUInt32LE(0), firstWaveDelayMs: FIRST_WAVE_DELAY_MS, enemyDamageMul: ENEMY_DAMAGE_MUL });
     r.world.round = r.round;
+    r.checkpoints=new Map();r.bossFailures={};r.retryOffer=null;
     r.overAt = 0;
     syncControllers(r);
 }
@@ -185,6 +186,7 @@ function initialWorld(r) {
 function battleView(r, full) {
     const v = COMBAT.snapshot(r.world);
     v.round = r.round;
+    v.retryOffer=r.retryOffer||null;
     if (full) { v.arena = ARENA; v.enemyTypes = COMBAT.ENEMY_TYPES.map(t => ({ key: t.key, scale: t.scale })) }
     return v;
 }
@@ -280,6 +282,19 @@ io.on('connection', socket => {
         if (data.attack === true) { h.wantAttack = true; h.attackAim=Number.isInteger(data.aim)&&data.aim>=0&&data.aim<8?data.aim:null; }
         if (data.special === true) h.wantSpecial = true;
     });
+    socket.on('battle:retry', limited(socket,(data,ack)=>{
+        const {r,p}=ctx();
+        if(!r||!p||r.host!==p.id||!r.retryOffer||!r.world?.over)return safeAck(ack,{ok:false,error:'Retry unavailable or host only.'});
+        const offer=r.retryOffer, saved=r.checkpoints.get(offer.wave);
+        if(!saved)return safeAck(ack,{ok:false,error:'Checkpoint unavailable.'});
+        r.world=JSON.parse(saved);r.world.hooks={};r.world.over=false;
+        r.world.nextWaveAt=r.world.time+2500;
+        for(const h of r.world.heroes){h.state='alive';h.hp=h.maxHp;h.reviveMs=0;h.wantAttack=h.wantSpecial=false;h.vx=h.vy=0;}
+        r.retryOffer=null;r.overAt=0;
+        syncControllers(r);
+        io.to(r.code).emit('battle:start',battleView(r,true));
+        safeAck(ack,{ok:true});
+    }));
     socket.on('evolution:choose', limited(socket, (data, ack) => {
         const {r,p}=ctx();
         const h=r?.phase==='battle' && r.world?.heroes[r.activeRoster.indexOf(p?.hero)];
@@ -317,13 +332,24 @@ function syncControllers(r) {
 // here the combat sim resolves attacks/specials, runs enemies and AI teammates, revives and waves.
 function stepWorld(r) {
     syncControllers(r);
-    COMBAT.step(r.world);
-    if (r.world.over && !r.overAt) r.overAt = Date.now();
+    const w=r.world;
+    if(!w.over&&w.waveState==='intermission'&&!r.checkpoints.has(w.wave+1)){
+        r.checkpoints.set(w.wave+1,JSON.stringify(w));
+        for(const k of r.checkpoints.keys())if(k<w.wave-4)r.checkpoints.delete(k);
+    }
+    COMBAT.step(w);
+    if(w.over&&!r.overAt){
+        r.overAt=Date.now();
+        if(w.bossWave&&r.checkpoints.has(w.wave-2)){
+            const n=r.bossFailures[w.wave]=(r.bossFailures[w.wave]||0)+1;
+            if(n<3)r.retryOffer={boss:w.wave,wave:w.wave-2,remaining:3-n};
+        }
+    }
 }
 setInterval(() => {
     for (const r of rooms.values()) {
         if (r.phase !== 'battle' || !r.world) continue;
-        if (r.overAt && Date.now() - r.overAt >= GAME_OVER_RETURN_MS) {
+        if (r.overAt && Date.now() - r.overAt >= (r.retryOffer ? 60000 : GAME_OVER_RETURN_MS)) {
             const w = r.world;
             endBattle(r, { reason: 'wipe', wave: w.wave, score: w.score, kills: w.kills });
             continue;
